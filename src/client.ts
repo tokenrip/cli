@@ -36,7 +36,8 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
       if (error.code === 'ECONNABORTED') {
         throw new CliError('TIMEOUT', 'Request timeout — is the Tokenrip server running?');
       }
-      throw new CliError('NETWORK_ERROR', 'Network error — is the Tokenrip server running?');
+      const details = error.code || error.message || 'Unknown error';
+      throw new CliError('NETWORK_ERROR', `Network error (${details}) — is the API server running? Try: tokenrip config set-url http://localhost:3434`);
     },
   );
 

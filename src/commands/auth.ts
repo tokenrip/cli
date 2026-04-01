@@ -25,6 +25,7 @@ export async function authCreateKey(options: { name?: string; save?: boolean }):
         apiKey,
         message: 'API key created and saved',
         note: 'Keep this key safe — treat it like a password',
+        config_file: `~/.config/tokenrip/config.json`,
       }, formatAuthKey);
     } else {
       outputSuccess({
