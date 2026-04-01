@@ -1,5 +1,8 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.idea
 
 bun.lock
+
+CLAUDE.md
