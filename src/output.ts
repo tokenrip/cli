@@ -1,17 +1,16 @@
 import { CliError, toCliError } from './errors.js';
 import type { Formatter } from './formatters.js';
 
-let forceJson = false;
+let forceHuman = false;
 
-export function setForceJson(value: boolean): void {
-  forceJson = value;
+export function setForceHuman(value: boolean): void {
+  forceHuman = value;
 }
 
 function isJsonMode(): boolean {
-  if (forceJson) return true;
-  if (process.env.TOKENRIP_OUTPUT === 'json') return true;
-  if (!process.stdout.isTTY) return true;
-  return false;
+  if (forceHuman) return false;
+  if (process.env.TOKENRIP_OUTPUT === 'human') return false;
+  return true;
 }
 
 export function outputSuccess(data: Record<string, unknown>, formatter?: Formatter): void {
@@ -57,4 +56,6 @@ const ERROR_HINTS: Record<string, string> = {
   FILE_NOT_FOUND: 'Check the file path and try again.',
   INVALID_TYPE: 'Valid types: markdown, html, chart, code, text.',
   AUTH_FAILED: 'Could not create API key. Is the server running?',
+  CONTACT_NOT_FOUND: 'Run `tokenrip contacts list` to see available contacts.',
+  INVALID_AGENT_ID: 'Agent IDs start with trip1. Example: trip1x9a2f...',
 };

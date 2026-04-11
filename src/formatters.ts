@@ -70,6 +70,119 @@ export const formatAuthKey: Formatter = (data) => {
   return lines.join('\n');
 };
 
+export const formatInbox: Formatter = (data) => {
+  const lines: string[] = [];
+  const threads = (data as any).threads ?? [];
+  const assets = (data as any).assets ?? [];
+
+  if (threads.length > 0) {
+    lines.push(`THREADS (${threads.length})`);
+    for (const t of threads) {
+      const count = t.new_message_count ? `+${t.new_message_count} msg${t.new_message_count > 1 ? 's' : ''}` : 'no new';
+      const intent = t.last_intent ? `  last: ${t.last_intent}` : '';
+      const preview = t.last_body_preview ? `  "${t.last_body_preview}"` : '';
+      const ago = formatTimeAgo(new Date(t.updated_at));
+      lines.push(`  ${t.thread_id.slice(0, 8)}  ${count.padEnd(10)}${intent}${preview}  ${ago}`);
+    }
+  } else {
+    lines.push('THREADS (none)');
+  }
+
+  lines.push('');
+
+  if (assets.length > 0) {
+    lines.push(`ASSETS (${assets.length})`);
+    for (const a of assets) {
+      const title = a.title ?? '(untitled)';
+      const versions = `+${a.new_version_count} ver${a.new_version_count > 1 ? 's' : ''}`;
+      const ago = formatTimeAgo(new Date(a.updated_at));
+      lines.push(`  ${title.padEnd(20)}  v${a.latest_version}  ${versions}  ${ago}`);
+    }
+  } else {
+    lines.push('ASSETS (none)');
+  }
+
+  return lines.join('\n');
+};
+
+export const formatContacts: Formatter = (data) => {
+  const contacts = data as unknown as Record<string, { agent_id: string; alias?: string; notes?: string }>;
+  const entries = Object.entries(contacts);
+  if (entries.length === 0) return 'No contacts.';
+  const lines = [`${entries.length} contact(s):\n`];
+  lines.push(`${'NAME'.padEnd(16)} ${'AGENT ID'.padEnd(24)} ${'ALIAS'.padEnd(16)} NOTES`);
+  for (const [name, c] of entries) {
+    const alias = c.alias || '—';
+    const notes = c.notes || '';
+    const idShort = c.agent_id.length > 20 ? c.agent_id.slice(0, 20) + '...' : c.agent_id;
+    lines.push(`${name.padEnd(16)} ${idShort.padEnd(24)} ${alias.padEnd(16)} ${notes}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatContactResolved: Formatter = (data) => {
+  return `${data.name}: ${data.agent_id}`;
+};
+
+export const formatMessageSent: Formatter = (data) => {
+  const lines: string[] = [];
+  if (data.thread_id) lines.push(`Thread: ${data.thread_id}`);
+  if (data.message_id) lines.push(`Message: ${data.message_id}`);
+  if (data.id) lines.push(`Message: ${data.id}`);
+  if (data.sequence) lines.push(`Sequence: #${data.sequence}`);
+  return lines.join('\n');
+};
+
+export const formatMessages: Formatter = (data) => {
+  const messages = data as unknown as Array<{
+    sequence: number;
+    body: string;
+    intent?: string;
+    sender?: { agent_id?: string; user_id?: string };
+    created_at: string;
+  }>;
+  if (!Array.isArray(messages) || messages.length === 0) return 'No messages.';
+  const lines: string[] = [];
+  for (const m of messages) {
+    const sender = m.sender?.agent_id?.slice(0, 12) || m.sender?.user_id || 'unknown';
+    const intent = m.intent ? `  [${m.intent}]` : '';
+    const ago = formatTimeAgo(new Date(m.created_at));
+    lines.push(`#${m.sequence}  ${sender}...  ${ago}${intent}`);
+    lines.push(`    ${m.body}`);
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
+};
+
+export const formatShareLink: Formatter = (data) => {
+  const lines = ['Share link generated'];
+  if (data.url) lines.push(`  URL:   ${data.url}`);
+  if (data.token) lines.push(`  Token: ${data.token}`);
+  const perm = data.perm as unknown as string[];
+  if (Array.isArray(perm)) lines.push(`  Perms: ${perm.join(', ')}`);
+  if (data.exp) lines.push(`  Expires: ${new Date((data.exp as number) * 1000).toISOString()}`);
+  if (data.aud) lines.push(`  For: ${data.aud}`);
+  return lines.join('\n');
+};
+
+export const formatThreadCreated: Formatter = (data) => {
+  const lines = ['Thread created'];
+  if (data.id) lines.push(`  ID:           ${data.id}`);
+  const participants = data.participants as unknown as Array<{ agent_id?: string }>;
+  if (Array.isArray(participants)) {
+    lines.push(`  Participants: ${participants.length}`);
+  }
+  return lines.join('\n');
+};
+
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];

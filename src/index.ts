@@ -6,3 +6,8 @@ export { CliError, toCliError } from './errors.js';
 export { outputSuccess, outputError, wrapCommand } from './output.js';
 export { requireAuthClient } from './auth-client.js';
 export type { AuthContext } from './auth-client.js';
+export * from './crypto.js';
+export * from './identity.js';
+export { loadState, saveState, type TokenripState } from './state.js';
+export { loadContacts, saveContacts, addContact, removeContact, resolveRecipient, resolveRecipients } from './contacts.js';
+export type { Contact, Contacts } from './contacts.js';

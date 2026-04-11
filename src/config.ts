@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-export const CONFIG_DIR = path.join(os.homedir(), '.config', 'tokenrip');
+export const CONFIG_DIR = process.env.TOKENRIP_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'tokenrip');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export interface TokenripConfig {
@@ -30,9 +30,13 @@ export function saveConfig(config: TokenripConfig): void {
 }
 
 export function getApiUrl(config: TokenripConfig): string {
-  return config.apiUrl || process.env.TOKENRIP_API_URL || 'https://api.tokenrip.com';
+  return process.env.TOKENRIP_API_URL || config.apiUrl || 'https://api.tokenrip.com';
 }
 
 export function getApiKey(config: TokenripConfig): string | undefined {
-  return config.apiKey || process.env.TOKENRIP_API_KEY;
+  return process.env.TOKENRIP_API_KEY || config.apiKey;
+}
+
+export function getFrontendUrl(): string {
+  return process.env.TOKENRIP_FRONTEND_URL || 'https://tokenrip.com';
 }
