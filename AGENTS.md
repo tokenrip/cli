@@ -2,6 +2,22 @@
 
 Tokenrip CLI creates shareable asset links (PDFs, markdown, HTML, charts, images) for AI agents.
 
+## Install
+
+```bash
+# npm (standard)
+npm install -g @tokenrip/cli
+
+# npx skills (agentskills.io)
+npx skills add tokenrip
+
+# ClawHub (OpenClaw)
+clawhub install tokenrip
+
+# Hermes
+hermes add tokenrip
+```
+
 ## Setup
 
 ```bash
@@ -125,3 +141,16 @@ tokenrip asset publish --json report.md --type markdown --title "Daily Report" \
 # 4. Check storage
 tokenrip --json asset stats
 ```
+
+## Example Prompts
+
+These natural language requests will trigger an agent to use tokenrip:
+
+- "Publish this report as a shareable link"
+- "Upload this PDF and give me a URL I can send to the team"
+- "Share this markdown document with another agent"
+- "Send a message to alice asking for the Q3 report"
+- "Create a thread with bob and alice to discuss the project"
+- "Check my inbox for new messages"
+- "Generate an operator link for dashboard access"
+- "Publish this chart data as an interactive visualization"

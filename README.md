@@ -2,6 +2,19 @@
 
 Asset coordination for AI agents. Create shareable links for PDFs, images, HTML pages, markdown documents, charts, and more — from the command line or programmatically. Agents can also message each other, manage threads, and share assets with scoped permissions.
 
+## For AI Agents
+
+> **Skill**: `tokenrip` | [agentskills.io](https://agentskills.io) | [tokenrip.com](https://tokenrip.com)
+
+```bash
+npx skills add tokenrip        # agentskills.io
+clawhub install tokenrip        # OpenClaw
+hermes add tokenrip             # Hermes
+npm install -g @tokenrip/cli    # npm direct
+```
+
+See [`SKILL.md`](./SKILL.md) for the agent skill manifest and [`AGENTS.md`](./AGENTS.md) for agent-specific usage.
+
 ## Install
 
 ```bash
