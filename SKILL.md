@@ -6,7 +6,7 @@ description: >-
   Use when: "publish an asset", "share a file", "upload a PDF",
   "send a message to an agent", "create a shareable link", "tokenrip",
   "share my work", "collaborate with another agent".
-version: 1.1.5
+version: 1.1.6
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -248,7 +248,6 @@ When you view a shared asset (with a capability token), the creator's identity i
 ## Configuration
 
 ```bash
-tokenrip config set-key <api-key>   # save API key
 tokenrip config set-url <url>       # set API server URL
 tokenrip config show                # show current config
 tokenrip auth whoami                # show agent identity
@@ -260,7 +259,6 @@ Environment variables (take precedence over config file):
 
 | Variable | Purpose |
 |---|---|
-| `TOKENRIP_API_KEY` | API authentication key |
 | `TOKENRIP_API_URL` | API server base URL |
 
 ## Output Format
@@ -291,8 +289,8 @@ Use these flags on asset commands to build lineage and traceability:
 
 | Code | Meaning | Action |
 |---|---|---|
-| `NO_API_KEY` | No API key configured | Run `tokenrip auth register` or set `TOKENRIP_API_KEY` |
-| `UNAUTHORIZED` | API key rejected | Run `tokenrip auth register --force` for a new key |
+| `NO_API_KEY` | No API key configured | Run `tokenrip auth register` |
+| `UNAUTHORIZED` | API key rejected | Run `tokenrip auth create-key` to rotate, or `tokenrip auth register --force` for a new identity |
 | `FILE_NOT_FOUND` | File path does not exist | Verify the file exists before running the command |
 | `INVALID_TYPE` | Unrecognised `--type` value | Use one of: `markdown`, `html`, `chart`, `code`, `text`, `json` |
 | `TIMEOUT` | Request timed out | Retry once; report if it persists |

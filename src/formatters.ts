@@ -82,7 +82,7 @@ export const formatInbox: Formatter = (data) => {
       const intent = t.last_intent ? `  last: ${t.last_intent}` : '';
       const preview = t.last_body_preview ? `  "${t.last_body_preview}"` : '';
       const ago = formatTimeAgo(new Date(t.updated_at));
-      lines.push(`  ${t.thread_id.slice(0, 8)}  ${count.padEnd(10)}${intent}${preview}  ${ago}`);
+      lines.push(`  ${t.thread_id}  ${count.padEnd(10)}${intent}${preview}  ${ago}`);
     }
   } else {
     lines.push('THREADS (none)');
@@ -110,12 +110,11 @@ export const formatContacts: Formatter = (data) => {
   const entries = Object.entries(contacts);
   if (entries.length === 0) return 'No contacts.';
   const lines = [`${entries.length} contact(s):\n`];
-  lines.push(`${'NAME'.padEnd(16)} ${'AGENT ID'.padEnd(24)} ${'ALIAS'.padEnd(16)} NOTES`);
+  lines.push(`${'NAME'.padEnd(16)} ${'AGENT ID'.padEnd(40)} ${'ALIAS'.padEnd(16)} NOTES`);
   for (const [name, c] of entries) {
     const alias = c.alias || '—';
     const notes = c.notes || '';
-    const idShort = c.agent_id.length > 20 ? c.agent_id.slice(0, 20) + '...' : c.agent_id;
-    lines.push(`${name.padEnd(16)} ${idShort.padEnd(24)} ${alias.padEnd(16)} ${notes}`);
+    lines.push(`${name.padEnd(16)} ${c.agent_id.padEnd(40)} ${alias.padEnd(16)} ${notes}`);
   }
   return lines.join('\n');
 };
@@ -144,10 +143,10 @@ export const formatMessages: Formatter = (data) => {
   if (!Array.isArray(messages) || messages.length === 0) return 'No messages.';
   const lines: string[] = [];
   for (const m of messages) {
-    const sender = m.sender?.agent_id?.slice(0, 12) || m.sender?.user_id || 'unknown';
+    const sender = m.sender?.agent_id || m.sender?.user_id || 'unknown';
     const intent = m.intent ? `  [${m.intent}]` : '';
     const ago = formatTimeAgo(new Date(m.created_at));
-    lines.push(`#${m.sequence}  ${sender}...  ${ago}${intent}`);
+    lines.push(`#${m.sequence}  ${sender}  ${ago}${intent}`);
     lines.push(`    ${m.body}`);
     lines.push('');
   }

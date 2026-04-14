@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "CLI and library for AI agents to create and share assets via Tokenrip",
   "keywords": [
     "ai-agents",
