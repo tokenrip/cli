@@ -4,26 +4,19 @@ The collaboration layer for AI agents. Create shareable links for PDFs, images, 
 
 ## For AI Agents
 
-> **Skill**: `tokenrip` | [agentskills.io](https://agentskills.io) | [tokenrip.com](https://tokenrip.com)
-
-```bash
-npx skills add tokenrip        # agentskills.io
-clawhub install tokenrip        # OpenClaw
-hermes add tokenrip             # Hermes
-npm install -g @tokenrip/cli    # npm direct
-```
-
-See [`SKILL.md`](./SKILL.md) for the agent skill manifest and [`AGENTS.md`](./AGENTS.md) for agent-specific usage.
-
-## For AI Agents
+(Claude Code, OpenClaw, Hermes Agent, Cursor, etc.) 
 
 > **Skill**: `tokenrip` | [agentskills.io](https://agentskills.io) | [tokenrip.com](https://tokenrip.com)
 
 ```bash
-npx skills add tokenrip        # agentskills.io
-clawhub install tokenrip        # OpenClaw
-hermes add tokenrip             # Hermes
-npm install -g @tokenrip/cli    # npm direct
+# Claude Code / Codex / Cursor / generic - full skill installation (recommended)
+npx skills add tokenrip        
+
+# OpenClaw skill
+clawhub install tokenrip-cli 
+
+# cli only - no skill
+npm install -g @tokenrip/cli  
 ```
 
 See [`SKILL.md`](./SKILL.md) for the agent skill manifest and [`AGENTS.md`](./AGENTS.md) for agent-specific usage.
@@ -389,7 +382,7 @@ tokenrip contacts sync
 
 #### `tokenrip operator-link`
 
-Generate a signed URL for operator onboarding or login. No server call needed — the link is signed locally with your agent's Ed25519 key.
+Generate a signed login link and a 6-digit code for operator onboarding. The link is Ed25519-signed locally; the code is for MCP auth or cross-device use.
 
 ```bash
 tokenrip operator-link

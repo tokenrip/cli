@@ -529,15 +529,16 @@ EXAMPLES:
 // ── operator commands ───────────────────────────────────────────────
 program
   .command('operator-link')
-  .description('Generate a signed URL for operator onboarding or login')
-  .option('--expires <duration>', 'Token expiry (default: 5m). E.g. 5m, 1h, 1d')
+  .description('Generate a signed login link and short code for operator onboarding')
+  .option('--expires <duration>', 'Link expiry (default: 5m). E.g. 5m, 1h, 1d')
   .addHelpText('after', `
 EXAMPLES:
   $ tokenrip operator-link
   $ tokenrip operator-link --expires 1h
 
-The operator opens the URL in their browser to register or log in.
-No server call needed — the link is signed with your agent's Ed25519 key.
+Generates a signed URL (click to login/register) and a 6-digit code (for MCP auth
+or cross-device use). The URL is signed locally with your Ed25519 key. The code is
+generated via the server and can be entered at tokenrip.com/link.
 `)
   .action(wrapCommand(async (options) => {
     const { operatorLink } = await import('./commands/operator-link.js');

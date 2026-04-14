@@ -1,11 +1,12 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "CLI and library for AI agents to create and share assets via Tokenrip",
   "keywords": [
     "ai-agents",
     "agent-skills",
     "claude",
+    "codex",
     "openclaw",
     "hermes",
     "agentskills",
@@ -40,7 +41,8 @@
   "scripts": {
     "build": "tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "postinstall": "node -e \"console.log('\\n  Tokenrip CLI installed. For full agent integration, install the skill:\\n  npx skills add tokenrip\\n');\""
   },
   "dependencies": {
     "axios": "^1.11.0",
@@ -53,6 +55,9 @@
     "@types/mime-types": "^2.1.4",
     "@types/node": "^22.10.7",
     "typescript": "^5.7.3"
+  },
+  "bugs": {
+    "url": "https://github.com/tokenrip/tokenrip/issues"
   },
   "publishConfig": {
     "access": "public"
