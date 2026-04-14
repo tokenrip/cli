@@ -4,8 +4,8 @@ import { createCapabilityToken } from '../crypto.js';
 import { getFrontendUrl } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatThreadCreated, formatShareLink } from '../formatters.js';
-import { resolveRecipients } from '../contacts.js';
+import { formatThreadCreated, formatShareLink, formatThreadDetails, formatThreadClosed, formatParticipantAdded } from '../formatters.js';
+import { resolveRecipient, resolveRecipients } from '../contacts.js';
 import { parseDuration } from './share.js';
 
 export async function threadCreate(options: {
@@ -52,4 +52,33 @@ export async function threadShare(
   const url = `${frontendUrl}/threads/${threadId}?cap=${encodeURIComponent(token)}`;
 
   outputSuccess({ url, token, threadId, perm, exp: exp ?? null, aud: aud ?? null }, formatShareLink);
+}
+
+export async function threadGet(threadId: string): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.get(`/v0/threads/${threadId}`);
+  outputSuccess(data.data, formatThreadDetails);
+}
+
+export async function threadClose(
+  threadId: string,
+  options: { resolution?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+
+  const resolution: Record<string, unknown> = { closed: true };
+  if (options.resolution) resolution.message = options.resolution;
+
+  const { data } = await client.patch(`/v0/threads/${threadId}`, { resolution });
+  outputSuccess(data.data, formatThreadClosed);
+}
+
+export async function threadAddParticipant(
+  threadId: string,
+  agent: string,
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const agentId = resolveRecipient(agent);
+  const { data } = await client.post(`/v0/threads/${threadId}/participants`, { agent_id: agentId });
+  outputSuccess(data.data, formatParticipantAdded);
 }

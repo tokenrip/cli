@@ -9,17 +9,19 @@ export async function msgSend(
   options: {
     to?: string;
     thread?: string;
+    asset?: string;
     intent?: string;
     type?: string;
     data?: string;
     inReplyTo?: string;
   },
 ): Promise<void> {
-  if (!options.to && !options.thread) {
-    throw new CliError('MISSING_OPTION', 'Provide --to <recipient> or --thread <id>');
+  const targets = [options.to, options.thread, options.asset].filter(Boolean);
+  if (targets.length === 0) {
+    throw new CliError('MISSING_OPTION', 'Provide --to <recipient>, --thread <id>, or --asset <uuid>');
   }
-  if (options.to && options.thread) {
-    throw new CliError('CONFLICTING_OPTIONS', 'Use --to or --thread, not both');
+  if (targets.length > 1) {
+    throw new CliError('CONFLICTING_OPTIONS', 'Use only one of --to, --thread, or --asset');
   }
 
   const { client } = requireAuthClient();
@@ -33,6 +35,8 @@ export async function msgSend(
   if (options.to) {
     payload.to = [resolveRecipient(options.to)];
     endpoint = '/v0/messages';
+  } else if (options.asset) {
+    endpoint = `/v0/assets/${options.asset}/messages`;
   } else {
     if (options.inReplyTo) payload.in_reply_to = options.inReplyTo;
     endpoint = `/v0/threads/${options.thread}/messages`;
@@ -43,12 +47,16 @@ export async function msgSend(
 }
 
 export async function msgList(options: {
-  thread: string;
+  thread?: string;
+  asset?: string;
   since?: string;
   limit?: string;
 }): Promise<void> {
-  if (!options.thread) {
-    throw new CliError('MISSING_OPTION', '--thread <id> is required');
+  if (!options.thread && !options.asset) {
+    throw new CliError('MISSING_OPTION', '--thread <id> or --asset <uuid> is required');
+  }
+  if (options.thread && options.asset) {
+    throw new CliError('CONFLICTING_OPTIONS', 'Use --thread or --asset, not both');
   }
 
   const { client } = requireAuthClient();
@@ -56,6 +64,10 @@ export async function msgList(options: {
   if (options.since) params.since_sequence = options.since;
   if (options.limit) params.limit = options.limit;
 
-  const { data } = await client.get(`/v0/threads/${options.thread}/messages`, { params });
+  const endpoint = options.asset
+    ? `/v0/assets/${options.asset}/messages`
+    : `/v0/threads/${options.thread}/messages`;
+
+  const { data } = await client.get(endpoint, { params });
   outputSuccess(data.data as unknown as Record<string, unknown>, formatMessages);
 }

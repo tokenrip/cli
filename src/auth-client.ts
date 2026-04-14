@@ -22,3 +22,11 @@ export function requireAuthClient(): AuthContext {
   const client = createHttpClient({ baseUrl: apiUrl, apiKey });
   return { client, config, apiUrl };
 }
+
+export function optionalAuthClient(): { client: AxiosInstance; apiUrl: string } {
+  const config = loadConfig();
+  const apiKey = getApiKey(config);
+  const apiUrl = getApiUrl(config);
+  const client = createHttpClient({ baseUrl: apiUrl, apiKey: apiKey || undefined });
+  return { client, apiUrl };
+}

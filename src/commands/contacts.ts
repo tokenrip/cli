@@ -1,14 +1,25 @@
-import { loadContacts, addContact, removeContact } from '../contacts.js';
-import { CliError } from '../errors.js';
+import { loadContacts, addContactWithSync, removeContactWithSync, syncFromServer } from '../contacts.js';
 import { outputSuccess } from '../output.js';
 import { formatContacts, formatContactResolved } from '../formatters.js';
+import { CliError } from '../errors.js';
+import type { AxiosInstance } from 'axios';
+
+async function tryGetAuthClient(): Promise<AxiosInstance | null> {
+  try {
+    const { requireAuthClient } = await import('../auth-client.js');
+    return requireAuthClient().client;
+  } catch {
+    return null;
+  }
+}
 
 export async function contactsAdd(
   name: string,
   agentId: string,
   options: { alias?: string; notes?: string },
 ): Promise<void> {
-  addContact(name, agentId, { alias: options.alias, notes: options.notes });
+  const client = await tryGetAuthClient();
+  await addContactWithSync(client, name, agentId, { alias: options.alias, notes: options.notes });
   outputSuccess({
     name,
     agent_id: agentId,
@@ -32,6 +43,15 @@ export async function contactsResolve(name: string): Promise<void> {
 }
 
 export async function contactsRemove(name: string): Promise<void> {
-  removeContact(name);
+  const client = await tryGetAuthClient();
+  await removeContactWithSync(client, name);
   outputSuccess({ name, message: `Contact "${name}" removed` });
+}
+
+export async function contactsSync(): Promise<void> {
+  const { requireAuthClient } = await import('../auth-client.js');
+  const { client } = requireAuthClient();
+  const contacts = await syncFromServer(client);
+  const count = Object.keys(contacts).length;
+  outputSuccess({ count, message: `Synced ${count} contact(s)` });
 }

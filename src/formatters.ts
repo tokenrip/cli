@@ -175,6 +175,88 @@ export const formatThreadCreated: Formatter = (data) => {
   return lines.join('\n');
 };
 
+export const formatAssetDownloaded: Formatter = (data) => {
+  const lines = [`Downloaded: ${data.file}`];
+  if (data.sizeBytes) lines.push(`  Size: ${formatBytes(data.sizeBytes as number)}`);
+  if (data.mimeType) lines.push(`  MIME: ${data.mimeType}`);
+  return lines.join('\n');
+};
+
+export const formatAssetMetadata: Formatter = (data) => {
+  const lines = [data.title || '(untitled)'];
+  if (data.id) lines.push(`  ID:          ${data.id}`);
+  if (data.type) lines.push(`  Type:        ${data.type}`);
+  if (data.mimeType) lines.push(`  MIME:        ${data.mimeType}`);
+  if (data.description) lines.push(`  Description: ${data.description}`);
+  if (data.versionCount !== undefined) lines.push(`  Versions:    ${data.versionCount}`);
+  if (data.creatorContext) lines.push(`  Context:     ${data.creatorContext}`);
+  if (data.createdAt) lines.push(`  Created:     ${data.createdAt}`);
+  return lines.join('\n');
+};
+
+export const formatVersionList: Formatter = (data) => {
+  const versions = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(versions) || versions.length === 0) {
+    return 'No versions found.';
+  }
+  const lines = [`${versions.length} version(s):\n`];
+  for (const v of versions) {
+    const label = v.label ? ` "${v.label}"` : '';
+    const size = v.sizeBytes ? ` ${formatBytes(v.sizeBytes as number)}` : '';
+    lines.push(`  v${v.version}  ${v.id}${label}${size}  ${v.createdAt}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatVersionMetadata: Formatter = (data) => {
+  const lines = [`Version ${data.version}`];
+  if (data.id) lines.push(`  ID:       ${data.id}`);
+  if (data.label) lines.push(`  Label:    ${data.label}`);
+  if (data.mimeType) lines.push(`  MIME:     ${data.mimeType}`);
+  if (data.sizeBytes) lines.push(`  Size:     ${formatBytes(data.sizeBytes as number)}`);
+  if (data.createdAt) lines.push(`  Created:  ${data.createdAt}`);
+  return lines.join('\n');
+};
+
+export const formatThreadDetails: Formatter = (data) => {
+  const lines = [`Thread ${data.id}`];
+  if (data.created_by) lines.push(`  Created by:    ${data.created_by}`);
+  const participants = data.participants as unknown as Array<{ agent_id?: string; user_id?: string; role?: string }>;
+  if (Array.isArray(participants)) {
+    lines.push(`  Participants:  ${participants.length}`);
+    for (const p of participants) {
+      const id = p.agent_id || p.user_id || 'anonymous';
+      const role = p.role ? ` (${p.role})` : '';
+      lines.push(`    - ${id}${role}`);
+    }
+  }
+  if (data.resolution) lines.push(`  Resolution:    ${JSON.stringify(data.resolution)}`);
+  if (data.created_at) lines.push(`  Created:       ${data.created_at}`);
+  if (data.updated_at) lines.push(`  Updated:       ${data.updated_at}`);
+  return lines.join('\n');
+};
+
+export const formatThreadClosed: Formatter = (data) => {
+  const lines = [`Thread ${data.id} closed`];
+  if (data.resolution) lines.push(`  Resolution: ${JSON.stringify(data.resolution)}`);
+  return lines.join('\n');
+};
+
+export const formatParticipantAdded: Formatter = (data) => {
+  const lines = ['Participant added'];
+  if (data.thread_id) lines.push(`  Thread:  ${data.thread_id}`);
+  if (data.agent_id) lines.push(`  Agent:   ${data.agent_id}`);
+  return lines.join('\n');
+};
+
+export const formatProfileUpdated: Formatter = (data) => {
+  const lines = ['Profile updated'];
+  if (data.agent_id) lines.push(`  Agent:    ${data.agent_id}`);
+  if (data.alias !== undefined) lines.push(`  Alias:    ${data.alias ?? '(none)'}`);
+  if (data.metadata) lines.push(`  Metadata: ${JSON.stringify(data.metadata)}`);
+  return lines.join('\n');
+};
+
 function formatTimeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return `${seconds}s ago`;

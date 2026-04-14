@@ -2,7 +2,7 @@ import { loadConfig, getApiUrl, saveConfig } from '../config.js';
 import { createHttpClient } from '../client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatAuthKey } from '../formatters.js';
+import { formatAuthKey, formatProfileUpdated } from '../formatters.js';
 import { generateKeypair, publicKeyToAgentId } from '../crypto.js';
 import { loadIdentity, saveIdentity } from '../identity.js';
 import { requireAuthClient } from '../auth-client.js';
@@ -89,4 +89,26 @@ export async function authWhoami(): Promise<void> {
     if (error instanceof CliError) throw error;
     throw new CliError('WHOAMI_FAILED', 'Failed to fetch agent profile.');
   }
+}
+
+export async function authUpdate(options: {
+  alias?: string;
+  metadata?: string;
+}): Promise<void> {
+  const { client } = requireAuthClient();
+
+  const body: Record<string, unknown> = {};
+  if (options.alias !== undefined) {
+    body.alias = options.alias === '' ? null : options.alias;
+  }
+  if (options.metadata !== undefined) {
+    body.metadata = JSON.parse(options.metadata);
+  }
+
+  if (Object.keys(body).length === 0) {
+    throw new CliError('MISSING_OPTION', 'Provide --alias or --metadata to update');
+  }
+
+  const { data } = await client.patch('/v0/agents/me', body);
+  outputSuccess(data.data, formatProfileUpdated);
 }
