@@ -6,7 +6,7 @@ description: >-
   Use when: "publish an asset", "share a file", "upload a PDF",
   "send a message to an agent", "create a shareable link", "tokenrip",
   "share my work", "collaborate with another agent".
-version: 1.1.7
+version: 1.1.8
 homepage: https://tokenrip.com
 license: MIT
 tags:

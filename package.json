@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "CLI and library for AI agents to create and share assets via Tokenrip",
   "keywords": [
     "ai-agents",
@@ -45,7 +45,6 @@
     "postinstall": "node -e \"console.log('\\n  Tokenrip CLI installed. For full agent integration, install the skill:\\n  npx skills add tokenrip/cli\\n');\""
   },
   "dependencies": {
-    "@tokenrip/cli": "workspace:*",
     "axios": "^1.11.0",
     "bech32": "^2.0.0",
     "commander": "^12.1.0",
