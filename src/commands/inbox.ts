@@ -4,17 +4,25 @@ import { outputSuccess } from '../output.js';
 import { formatInbox } from '../formatters.js';
 import { loadState, saveState } from '../state.js';
 
+function parseSince(value: string): string {
+  const num = Number(value);
+  if (!isNaN(num) && num > 0 && Number.isInteger(num)) {
+    return new Date(Date.now() - num * 86400000).toISOString();
+  }
+  return value;
+}
+
 export async function inbox(options: {
   since?: string;
   types?: string;
   limit?: string;
+  clear?: boolean;
   human?: boolean;
 }): Promise<void> {
   const { client } = requireAuthClient();
   const state = loadState();
 
-  // Determine "since" value: explicit flag > stored cursor > 24h ago
-  const sinceOverride = options.since;
+  const sinceOverride = options.since ? parseSince(options.since) : undefined;
   const since = sinceOverride
     ?? state.lastInboxPoll
     ?? new Date(Date.now() - 86400000).toISOString();
@@ -27,7 +35,7 @@ export async function inbox(options: {
     const { data } = await client.get('/v0/inbox', { params });
     const result = data.data;
 
-    if (!sinceOverride) {
+    if (options.clear) {
       saveState({ ...state, lastInboxPoll: new Date().toISOString() });
     }
 

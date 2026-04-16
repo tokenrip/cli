@@ -1,7 +1,7 @@
 import { generateKeyPairSync, sign as ed25519Sign, createPrivateKey } from 'node:crypto';
 import { bech32 } from 'bech32';
 
-const AGENT_HRP = 'trip';
+const AGENT_HRP = 'rip';
 const BECH32_LIMIT = 90;
 
 // ASN.1 DER prefix for Ed25519 PKCS8 private key (prepend to 32-byte raw key)

@@ -10,4 +10,5 @@ export * from './crypto.js';
 export * from './identity.js';
 export { loadState, saveState, type TokenripState } from './state.js';
 export { loadContacts, saveContacts, addContact, removeContact, resolveRecipient, resolveRecipients } from './contacts.js';
+export { search } from './commands/search.js';
 export type { Contact, Contacts } from './contacts.js';

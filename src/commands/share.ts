@@ -20,7 +20,7 @@ export async function share(
 ): Promise<void> {
   const identity = loadIdentity();
   if (!identity) {
-    throw new CliError('NO_IDENTITY', 'No agent identity found. Run `tokenrip auth register` first.');
+    throw new CliError('NO_IDENTITY', 'No agent identity found. Run `rip auth register` first.');
   }
 
   const perm = options.commentOnly ? ['comment'] : ['comment', 'version:create'];

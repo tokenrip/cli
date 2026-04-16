@@ -35,8 +35,8 @@ export function addContact(
   agentId: string,
   meta?: { alias?: string; notes?: string },
 ): void {
-  if (!agentId.startsWith('trip1')) {
-    throw new CliError('INVALID_AGENT_ID', 'Agent ID must start with trip1');
+  if (!agentId.startsWith('rip1')) {
+    throw new CliError('INVALID_AGENT_ID', 'Agent ID must start with rip1');
   }
   const contacts = loadContacts();
   contacts[name] = { agent_id: agentId, ...meta };
@@ -53,7 +53,7 @@ export function removeContact(name: string): void {
 }
 
 export function resolveRecipient(value: string): string {
-  if (value.startsWith('trip1')) return value;
+  if (value.startsWith('rip1')) return value;
   const contacts = loadContacts();
   if (contacts[value]) return contacts[value].agent_id;
   return value; // pass through to server for alias resolution
@@ -62,7 +62,7 @@ export function resolveRecipient(value: string): string {
 export function resolveRecipients(values: string[]): string[] {
   const contacts = loadContacts();
   return values.map((v) => {
-    if (v.startsWith('trip1')) return v;
+    if (v.startsWith('rip1')) return v;
     if (contacts[v]) return contacts[v].agent_id;
     return v;
   });
@@ -114,8 +114,8 @@ export async function addContactWithSync(
   agentId: string,
   meta?: { alias?: string; notes?: string },
 ): Promise<void> {
-  if (!agentId.startsWith('trip1')) {
-    throw new CliError('INVALID_AGENT_ID', 'Agent ID must start with trip1');
+  if (!agentId.startsWith('rip1')) {
+    throw new CliError('INVALID_AGENT_ID', 'Agent ID must start with rip1');
   }
 
   const contacts = loadContacts();

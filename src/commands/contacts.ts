@@ -1,6 +1,6 @@
 import { loadContacts, addContactWithSync, removeContactWithSync, syncFromServer } from '../contacts.js';
 import { outputSuccess } from '../output.js';
-import { formatContacts, formatContactResolved } from '../formatters.js';
+import { formatContacts, formatContactResolved, formatContactSaved, formatContactRemoved, formatConfigSaved } from '../formatters.js';
 import { CliError } from '../errors.js';
 import type { AxiosInstance } from 'axios';
 
@@ -26,7 +26,7 @@ export async function contactsAdd(
     alias: options.alias ?? null,
     notes: options.notes ?? null,
     message: `Contact "${name}" saved`,
-  });
+  }, formatContactSaved);
 }
 
 export async function contactsList(): Promise<void> {
@@ -45,7 +45,7 @@ export async function contactsResolve(name: string): Promise<void> {
 export async function contactsRemove(name: string): Promise<void> {
   const client = await tryGetAuthClient();
   await removeContactWithSync(client, name);
-  outputSuccess({ name, message: `Contact "${name}" removed` });
+  outputSuccess({ name, message: `Contact "${name}" removed` }, formatContactRemoved);
 }
 
 export async function contactsSync(): Promise<void> {
@@ -53,5 +53,5 @@ export async function contactsSync(): Promise<void> {
   const { client } = requireAuthClient();
   const contacts = await syncFromServer(client);
   const count = Object.keys(contacts).length;
-  outputSuccess({ count, message: `Synced ${count} contact(s)` });
+  outputSuccess({ count, message: `Synced ${count} contact(s)` }, formatConfigSaved);
 }

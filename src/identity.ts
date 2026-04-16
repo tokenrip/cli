@@ -21,5 +21,9 @@ export function loadIdentity(): Identity | null {
 
 export function saveIdentity(identity: Identity): void {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  // Back up existing identity before overwriting — the secret key is unrecoverable
+  if (fs.existsSync(IDENTITY_FILE)) {
+    fs.copyFileSync(IDENTITY_FILE, `${IDENTITY_FILE}.bak`);
+  }
   fs.writeFileSync(IDENTITY_FILE, JSON.stringify(identity, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }

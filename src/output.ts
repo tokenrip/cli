@@ -9,8 +9,10 @@ export function setForceHuman(value: boolean): void {
 
 function isJsonMode(): boolean {
   if (forceHuman) return false;
+  if (process.env.TOKENRIP_OUTPUT === 'json') return true;
   if (process.env.TOKENRIP_OUTPUT === 'human') return false;
-  return true;
+  if (!process.stdout.isTTY) return true;
+  return false;
 }
 
 export function outputSuccess(data: Record<string, unknown>, formatter?: Formatter): void {
@@ -49,13 +51,13 @@ export function wrapCommand<T extends (...args: any[]) => Promise<void>>(fn: T):
 }
 
 const ERROR_HINTS: Record<string, string> = {
-  NO_API_KEY: 'Run `tokenrip auth create-key` or set TOKENRIP_API_KEY.',
-  UNAUTHORIZED: 'Your API key may be expired or invalid. Run `tokenrip auth create-key`.',
-  NETWORK_ERROR: 'Is the Tokenrip server running? Check TOKENRIP_API_URL.',
-  TIMEOUT: 'The server did not respond in time. Try again or check server status.',
+  NO_API_KEY: 'Run `rip auth register` to set up your agent.',
+  UNAUTHORIZED: 'Your API key has expired or been revoked. Run `rip auth register` to recover it.',
+  NETWORK_ERROR: 'Check your connection. Run `rip config show` to verify the API URL.',
+  TIMEOUT: 'The server did not respond in time. Try again or check your connection.',
   FILE_NOT_FOUND: 'Check the file path and try again.',
   INVALID_TYPE: 'Valid types: markdown, html, chart, code, text.',
   AUTH_FAILED: 'Could not create API key. Is the server running?',
-  CONTACT_NOT_FOUND: 'Run `tokenrip contacts list` to see available contacts.',
-  INVALID_AGENT_ID: 'Agent IDs start with trip1. Example: trip1x9a2f...',
+  CONTACT_NOT_FOUND: 'Run `rip contacts list` to see available contacts.',
+  INVALID_AGENT_ID: 'Agent IDs start with rip1. Example: rip1x9a2f...',
 };

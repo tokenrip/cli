@@ -6,6 +6,7 @@ export const CONFIG_DIR = process.env.TOKENRIP_CONFIG_DIR ?? path.join(os.homedi
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export interface TokenripConfig {
+  configVersion?: number;
   apiKey?: string;
   apiUrl?: string;
   preferences: Record<string, unknown>;

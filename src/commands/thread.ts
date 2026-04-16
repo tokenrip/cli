@@ -4,13 +4,28 @@ import { createCapabilityToken } from '../crypto.js';
 import { getFrontendUrl } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatThreadCreated, formatShareLink, formatThreadDetails, formatThreadClosed, formatParticipantAdded } from '../formatters.js';
+import { formatThreadCreated, formatThreadList, formatShareLink, formatThreadDetails, formatThreadClosed, formatParticipantAdded, formatRefsAdded, formatRefRemoved } from '../formatters.js';
 import { resolveRecipient, resolveRecipients } from '../contacts.js';
 import { parseDuration } from './share.js';
+
+export async function threadList(options: {
+  state?: string;
+  limit?: string;
+}): Promise<void> {
+  const { client } = requireAuthClient();
+
+  const params: Record<string, string> = {};
+  if (options.state) params.state = options.state;
+  if (options.limit) params.limit = options.limit;
+
+  const { data } = await client.get('/v0/threads', { params });
+  outputSuccess(data.data, formatThreadList);
+}
 
 export async function threadCreate(options: {
   participants?: string;
   message?: string;
+  refs?: string;
 }): Promise<void> {
   const { client } = requireAuthClient();
 
@@ -20,6 +35,13 @@ export async function threadCreate(options: {
     payload.participants = resolveRecipients(
       options.participants.split(',').map((p) => p.trim()),
     );
+  }
+
+  if (options.refs) {
+    payload.refs = options.refs.split(',').map((r) => {
+      const v = r.trim();
+      return { type: 'url', target_id: v };
+    });
   }
 
   if (options.message) {
@@ -36,7 +58,7 @@ export async function threadShare(
 ): Promise<void> {
   const identity = loadIdentity();
   if (!identity) {
-    throw new CliError('NO_IDENTITY', 'No agent identity found. Run `tokenrip auth register` first.');
+    throw new CliError('NO_IDENTITY', 'No agent identity found. Run `rip auth register` first.');
   }
 
   const perm = ['comment'];
@@ -81,4 +103,26 @@ export async function threadAddParticipant(
   const agentId = resolveRecipient(agent);
   const { data } = await client.post(`/v0/threads/${threadId}/participants`, { agent_id: agentId });
   outputSuccess(data.data, formatParticipantAdded);
+}
+
+export async function threadAddRefs(
+  threadId: string,
+  refs: string,
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const refList = refs.split(',').map((r) => {
+    const v = r.trim();
+    return { type: 'url', target_id: v };
+  });
+  const { data } = await client.post(`/v0/threads/${threadId}/refs`, { refs: refList });
+  outputSuccess(data.data, formatRefsAdded);
+}
+
+export async function threadRemoveRef(
+  threadId: string,
+  refId: string,
+): Promise<void> {
+  const { client } = requireAuthClient();
+  await client.delete(`/v0/threads/${threadId}/refs/${refId}`);
+  outputSuccess({ thread_id: threadId, ref_id: refId }, formatRefRemoved);
 }

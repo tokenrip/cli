@@ -105,6 +105,24 @@ export const formatInbox: Formatter = (data) => {
   return lines.join('\n');
 };
 
+export const formatThreadList: Formatter = (data) => {
+  const threads = (data as any).threads ?? [];
+  const total = (data as any).total ?? threads.length;
+
+  if (threads.length === 0) return 'No threads.';
+
+  const lines = [`${total} thread(s):\n`];
+  for (const t of threads) {
+    const state = t.state === 'closed' ? '[closed]' : '[open]  ';
+    const participants = `${t.participant_count} participant${t.participant_count !== 1 ? 's' : ''}`;
+    const preview = t.last_message_preview ? `"${t.last_message_preview}"` : '(no messages)';
+    const ago = t.updated_at ? formatTimeAgo(new Date(t.updated_at)) : '';
+    lines.push(`  ${state}  ${t.thread_id}  ${participants.padEnd(16)}  ${preview}  ${ago}`);
+  }
+
+  return lines.join('\n');
+};
+
 export const formatContacts: Formatter = (data) => {
   const contacts = data as unknown as Record<string, { agent_id: string; alias?: string; notes?: string }>;
   const entries = Object.entries(contacts);
@@ -121,6 +139,25 @@ export const formatContacts: Formatter = (data) => {
 
 export const formatContactResolved: Formatter = (data) => {
   return `${data.name}: ${data.agent_id}`;
+};
+
+export const formatContactSaved: Formatter = (data) => {
+  const lines = [`Contact "${data.name}" saved`];
+  if (data.agent_id) lines.push(`  Agent: ${data.agent_id}`);
+  if (data.alias) lines.push(`  Alias: ${data.alias}`);
+  return lines.join('\n');
+};
+
+export const formatContactRemoved: Formatter = (data) => {
+  return data.message as string || `Contact "${data.name}" removed`;
+};
+
+export const formatConfigShow: Formatter = (data) => {
+  const lines = ['Configuration:'];
+  if (data.apiUrl) lines.push(`  API URL:     ${data.apiUrl}`);
+  if (data.apiKey) lines.push(`  API Key:     ${data.apiKey}`);
+  if (data.configFile) lines.push(`  Config file: ${data.configFile}`);
+  return lines.join('\n');
 };
 
 export const formatMessageSent: Formatter = (data) => {
@@ -170,6 +207,10 @@ export const formatThreadCreated: Formatter = (data) => {
   const participants = data.participants as unknown as Array<{ agent_id?: string }>;
   if (Array.isArray(participants)) {
     lines.push(`  Participants: ${participants.length}`);
+  }
+  const refs = data.refs as unknown as Array<{ type: string; target_id: string }>;
+  if (Array.isArray(refs) && refs.length > 0) {
+    lines.push(`  Linked:       ${refs.length}`);
   }
   return lines.join('\n');
 };
@@ -229,6 +270,13 @@ export const formatThreadDetails: Formatter = (data) => {
       lines.push(`    - ${id}${role}`);
     }
   }
+  const refs = data.refs as unknown as Array<{ id: string; type: string; target_id: string }>;
+  if (Array.isArray(refs) && refs.length > 0) {
+    lines.push(`  Linked:        ${refs.length}`);
+    for (const r of refs) {
+      lines.push(`    - [${r.type}] ${r.target_id}`);
+    }
+  }
   if (data.resolution) lines.push(`  Resolution:    ${JSON.stringify(data.resolution)}`);
   if (data.created_at) lines.push(`  Created:       ${data.created_at}`);
   if (data.updated_at) lines.push(`  Updated:       ${data.updated_at}`);
@@ -248,11 +296,93 @@ export const formatParticipantAdded: Formatter = (data) => {
   return lines.join('\n');
 };
 
+export const formatRefsAdded: Formatter = (data) => {
+  const refs = data as unknown as Array<{ id: string; type: string; target_id: string }>;
+  if (!Array.isArray(refs) || refs.length === 0) return 'No refs added.';
+  const lines = [`Added ${refs.length} ref(s):`];
+  for (const r of refs) {
+    lines.push(`  [${r.type}] ${r.target_id}  (${r.id})`);
+  }
+  return lines.join('\n');
+};
+
+export const formatRefRemoved: Formatter = (data) => {
+  return `Removed ref ${data.ref_id} from thread ${data.thread_id}`;
+};
+
+export const formatWhoami: Formatter = (data) => {
+  const lines = [String(data.agent_id)];
+  if (data.alias) lines.push(`  Alias:       ${data.alias}`);
+  if (data.registered_at) lines.push(`  Registered:  ${data.registered_at}`);
+  return lines.join('\n');
+};
+
 export const formatProfileUpdated: Formatter = (data) => {
   const lines = ['Profile updated'];
   if (data.agent_id) lines.push(`  Agent:    ${data.agent_id}`);
   if (data.alias !== undefined) lines.push(`  Alias:    ${data.alias ?? '(none)'}`);
   if (data.metadata) lines.push(`  Metadata: ${JSON.stringify(data.metadata)}`);
+  return lines.join('\n');
+};
+
+export const formatCollectionRows: Formatter = (data) => {
+  const rows = (data as any).rows ?? [];
+  const nextCursor = (data as any).nextCursor;
+  if (!Array.isArray(rows) || rows.length === 0) return 'No rows.';
+  const lines = [`${rows.length} row(s):\n`];
+  for (const r of rows) {
+    const dataStr = JSON.stringify(r.data);
+    const ago = formatTimeAgo(new Date(r.createdAt));
+    lines.push(`  ${r.id}  ${ago}  ${dataStr}`);
+  }
+  if (nextCursor) lines.push(`\n  More rows available. Use --after ${nextCursor}`);
+  return lines.join('\n');
+};
+
+export const formatRowsAppended: Formatter = (data) => {
+  const count = (data as any).count ?? 0;
+  const rows = (data as any).rows ?? [];
+  const lines = [`Appended ${count} row(s)`];
+  for (const r of rows) {
+    if (r.id) lines.push(`  ${r.id}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatRowUpdated: Formatter = (data) => {
+  return `Updated row ${data.id}`;
+};
+
+export const formatRowsDeleted: Formatter = (data) => {
+  return `Deleted ${data.deleted} row(s)`;
+};
+
+export const formatSearchResults: Formatter = (data) => {
+  const results = (data as any).results ?? [];
+  const total = (data as any).total ?? results.length;
+  if (results.length === 0) return 'No results.';
+
+  const lines: string[] = [`${total} result(s):\n`];
+  for (const r of results) {
+    const title = r.title || '(untitled)';
+    const ago = formatTimeAgo(new Date(r.updated_at));
+    if (r.type === 'thread') {
+      const state = r.thread?.state === 'closed' ? '[closed]' : '[open]  ';
+      const intent = r.thread?.last_intent ? `  last: ${r.thread.last_intent}` : '';
+      const participants = r.thread?.participant_count != null
+        ? `${r.thread.participant_count} participant${r.thread.participant_count !== 1 ? 's' : ''}`
+        : '';
+      lines.push(`  thread  ${state}  ${r.id}  ${participants.padEnd(16)}${intent}  ${ago}`);
+      if (title !== '(untitled)') lines.push(`          ${title}`);
+    } else {
+      const assetType = (r.asset?.asset_type ?? '').padEnd(10);
+      const versions = r.asset?.version_count ? `v${r.asset.version_count}` : '';
+      lines.push(`  asset   ${assetType}  ${r.id}  ${title}  ${versions}  ${ago}`);
+    }
+  }
+  if (results.length < total) {
+    lines.push(`\n  Showing ${results.length} of ${total}. Use --offset ${results.length} for more.`);
+  }
   return lines.join('\n');
 };
 

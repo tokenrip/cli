@@ -27,7 +27,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
       if (error.response?.status === 401) {
         throw new CliError(
           'UNAUTHORIZED',
-          'API key required or invalid. Run `tokenrip auth create-key` or set TOKENRIP_API_KEY.',
+          'API key required or invalid. Run `rip auth register` to recover your key.',
         );
       }
       if (error.response?.data?.error) {
@@ -37,7 +37,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         throw new CliError('TIMEOUT', 'Request timeout — is the Tokenrip server running?');
       }
       const details = error.code || error.message || 'Unknown error';
-      throw new CliError('NETWORK_ERROR', `Network error (${details}) — is the API server running? Try: tokenrip config set-url http://localhost:3434`);
+      throw new CliError('NETWORK_ERROR', `Network error (${details}) — is the API running? Check status at https://api.tokenrip.com`);
     },
   );
 
