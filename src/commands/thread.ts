@@ -1,12 +1,13 @@
 import { requireAuthClient } from '../auth-client.js';
 import { loadIdentity } from '../identity.js';
 import { createCapabilityToken } from '../crypto.js';
-import { getFrontendUrl } from '../config.js';
+import { getFrontendUrl, loadConfig } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatThreadCreated, formatThreadList, formatShareLink, formatThreadDetails, formatThreadClosed, formatParticipantAdded, formatRefsAdded, formatRefRemoved } from '../formatters.js';
 import { resolveRecipient, resolveRecipients } from '../contacts.js';
 import { parseDuration } from './share.js';
+import { parseRefList } from '../refs.js';
 
 export async function threadList(options: {
   state?: string;
@@ -38,10 +39,7 @@ export async function threadCreate(options: {
   }
 
   if (options.refs) {
-    payload.refs = options.refs.split(',').map((r) => {
-      const v = r.trim();
-      return { type: 'url', target_id: v };
-    });
+    payload.refs = parseRefList(options.refs);
   }
 
   if (options.message) {
@@ -70,7 +68,7 @@ export async function threadShare(
     identity.secretKey,
   );
 
-  const frontendUrl = getFrontendUrl();
+  const frontendUrl = getFrontendUrl(loadConfig());
   const url = `${frontendUrl}/threads/${threadId}?cap=${encodeURIComponent(token)}`;
 
   outputSuccess({ url, token, threadId, perm, exp: exp ?? null, aud: aud ?? null }, formatShareLink);
@@ -91,7 +89,7 @@ export async function threadClose(
   const resolution: Record<string, unknown> = { closed: true };
   if (options.resolution) resolution.message = options.resolution;
 
-  const { data } = await client.patch(`/v0/threads/${threadId}`, { resolution });
+  const { data } = await client.patch(`/v0/threads/${threadId}`, { state: 'closed', resolution });
   outputSuccess(data.data, formatThreadClosed);
 }
 
@@ -110,10 +108,7 @@ export async function threadAddRefs(
   refs: string,
 ): Promise<void> {
   const { client } = requireAuthClient();
-  const refList = refs.split(',').map((r) => {
-    const v = r.trim();
-    return { type: 'url', target_id: v };
-  });
+  const refList = parseRefList(refs);
   const { data } = await client.post(`/v0/threads/${threadId}/refs`, { refs: refList });
   outputSuccess(data.data, formatRefsAdded);
 }

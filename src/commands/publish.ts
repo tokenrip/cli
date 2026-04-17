@@ -4,6 +4,8 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAssetCreated } from '../formatters.js';
+import { parseJsonOption } from '../json.js';
+import { getFrontendUrl } from '../config.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'collection', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
@@ -48,15 +50,15 @@ export async function publish(
       title,
     };
     if (options.headers) body.headers = true;
-    if (options.schema) body.schema = JSON.parse(options.schema);
+    if (options.schema) body.schema = parseJsonOption(options.schema, '--schema');
     if (options.alias) body.alias = options.alias;
     if (options.parent) body.parentAssetId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
 
-    const { client } = requireAuthClient();
+    const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/assets', body);
-    const url = data.data.url || `https://tokenrip.com/s/${data.data.id}`;
+    const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
     outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type }, formatAssetCreated);
     return;
   }
@@ -65,13 +67,13 @@ export async function publish(
   if (options.type === 'collection') {
     let schema: unknown;
     if (options.schema) {
-      schema = JSON.parse(options.schema);
+      schema = parseJsonOption(options.schema, '--schema');
     } else {
       const absPath = path.resolve(filePath);
       if (!fs.existsSync(absPath)) {
         throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
       }
-      schema = JSON.parse(fs.readFileSync(absPath, 'utf-8'));
+      schema = parseJsonOption(fs.readFileSync(absPath, 'utf-8'), filePath);
     }
 
     const title = options.title || 'Untitled Collection';
@@ -81,7 +83,7 @@ export async function publish(
       return;
     }
 
-    const { client } = requireAuthClient();
+    const { client, config } = requireAuthClient();
     const body: Record<string, unknown> = { type: 'collection', title, schema };
     if (options.alias) body.alias = options.alias;
     if (options.parent) body.parentAssetId = options.parent;
@@ -89,7 +91,7 @@ export async function publish(
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
 
     const { data } = await client.post('/v0/assets', body);
-    const url = data.data.url || `https://tokenrip.com/s/${data.data.id}`;
+    const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
     outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type }, formatAssetCreated);
     return;
   }
@@ -107,7 +109,7 @@ export async function publish(
     return;
   }
 
-  const { client } = requireAuthClient();
+  const { client, config } = requireAuthClient();
   const content = fs.readFileSync(absPath, 'utf-8');
 
   const body: Record<string, unknown> = {
@@ -122,7 +124,7 @@ export async function publish(
 
   const { data } = await client.post('/v0/assets', body);
 
-  const url = data.data.url || `https://tokenrip.com/s/${data.data.id}`;
+  const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
   outputSuccess({
     id: data.data.id,
     url,

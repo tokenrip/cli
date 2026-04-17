@@ -1,4 +1,4 @@
-import { loadConfig, saveConfig, getApiUrl, getApiKey } from '../config.js';
+import { loadConfig, saveConfig, getApiUrl, getApiKey, getFrontendUrl } from '../config.js';
 import { outputSuccess } from '../output.js';
 import { formatConfigSaved, formatConfigShow } from '../formatters.js';
 
@@ -20,9 +20,11 @@ export async function configShow(): Promise<void> {
   const config = loadConfig();
   const apiUrl = getApiUrl(config);
   const apiKey = getApiKey(config);
+  const frontendUrl = getFrontendUrl(config);
   const hasKey = apiKey ? 'yes (saved)' : 'no (env/not set)';
   outputSuccess({
     apiUrl,
+    frontendUrl,
     apiKey: hasKey,
     configFile: '~/.config/tokenrip/config.json',
   }, formatConfigShow);

@@ -6,6 +6,7 @@ import { formatAuthKey, formatProfileUpdated, formatWhoami } from '../formatters
 import { generateKeypair, publicKeyToAgentId, signPayload } from '../crypto.js';
 import { loadIdentity, saveIdentity } from '../identity.js';
 import { requireAuthClient } from '../auth-client.js';
+import { parseJsonObjectOption } from '../json.js';
 
 export async function authRegister(options: { alias?: string; force?: boolean }): Promise<void> {
   const existing = loadIdentity();
@@ -136,7 +137,7 @@ export async function authUpdate(options: {
     body.alias = options.alias === '' ? null : options.alias;
   }
   if (options.metadata !== undefined) {
-    body.metadata = JSON.parse(options.metadata);
+    body.metadata = parseJsonObjectOption(options.metadata, '--metadata');
   }
 
   if (Object.keys(body).length === 0) {

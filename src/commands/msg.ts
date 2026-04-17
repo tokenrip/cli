@@ -3,6 +3,7 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatMessageSent, formatMessages } from '../formatters.js';
 import { resolveRecipient } from '../contacts.js';
+import { parseJsonObjectOption } from '../json.js';
 
 export async function msgSend(
   body: string,
@@ -29,7 +30,7 @@ export async function msgSend(
   const payload: Record<string, unknown> = { body };
   if (options.intent) payload.intent = options.intent;
   if (options.type) payload.type = options.type;
-  if (options.data) payload.data = JSON.parse(options.data);
+  if (options.data) payload.data = parseJsonObjectOption(options.data, '--data');
 
   let endpoint: string;
   if (options.to) {

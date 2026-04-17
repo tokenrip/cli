@@ -6,6 +6,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAssetCreated } from '../formatters.js';
+import { getFrontendUrl } from '../config.js';
 
 export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean }): Promise<void> {
   const absPath = path.resolve(filePath);
@@ -22,7 +23,7 @@ export async function upload(filePath: string, options: { title?: string; parent
     return;
   }
 
-  const { client } = requireAuthClient();
+  const { client, config } = requireAuthClient();
 
   const form = new FormData();
   form.append('file', fs.createReadStream(absPath));
@@ -40,7 +41,7 @@ export async function upload(filePath: string, options: { title?: string; parent
     maxBodyLength: Infinity,
   });
 
-  const url = data.data.url || `https://tokenrip.com/s/${data.data.id}`;
+  const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
   outputSuccess({
     id: data.data.id,
     url,

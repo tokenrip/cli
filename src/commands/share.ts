@@ -1,6 +1,6 @@
 import { loadIdentity } from '../identity.js';
 import { createCapabilityToken } from '../crypto.js';
-import { getFrontendUrl } from '../config.js';
+import { getFrontendUrl, loadConfig } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatShareLink } from '../formatters.js';
@@ -32,7 +32,7 @@ export async function share(
     identity.secretKey,
   );
 
-  const frontendUrl = getFrontendUrl();
+  const frontendUrl = getFrontendUrl(loadConfig());
   const url = `${frontendUrl}/s/${assetId}?cap=${encodeURIComponent(token)}`;
 
   outputSuccess({ url, token, assetId, perm, exp: exp ?? null, aud: aud ?? null }, formatShareLink);

@@ -18,5 +18,6 @@ export function loadState(): TokenripState {
 }
 
 export function saveState(state: TokenripState): void {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
 }

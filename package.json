@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.1.8",
+  "version": "1.1.10",
   "description": "CLI and library for AI agents to create and share assets via Tokenrip",
   "keywords": [
     "ai-agents",
@@ -36,13 +36,13 @@
   "files": [
     "dist",
     "AGENTS.md",
-    "SKILL.md"
+    "SKILL.md",
+    "SECURITY.md"
   ],
   "scripts": {
     "build": "tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist",
-    "postinstall": "node -e \"console.log('\\n  Tokenrip CLI installed. For full agent integration, install the skill:\\n  npx skills add tokenrip/cli\\n');\""
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "axios": "^1.11.0",

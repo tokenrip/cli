@@ -30,9 +30,21 @@ export const formatAssetList: Formatter = (data) => {
 
 export const formatStats: Formatter = (data) => {
   const lines: string[] = [];
-  if (data.totalCount !== undefined) lines.push(`Total assets: ${data.totalCount}`);
+  if (data.assetCount !== undefined) lines.push(`Total assets: ${data.assetCount}`);
   if (data.totalBytes !== undefined) lines.push(`Total size:   ${formatBytes(data.totalBytes as number)}`);
-  const byType = data.byType as Record<string, unknown>[] | undefined;
+
+  const countsByType = data.countsByType as Record<string, number> | undefined;
+  const bytesByType = data.bytesByType as Record<string, number> | undefined;
+  const byType = countsByType
+    ? Object.keys(countsByType)
+        .sort()
+        .map((type) => ({
+          type,
+          count: countsByType[type],
+          totalBytes: bytesByType?.[type] ?? 0,
+        }))
+    : undefined;
+
   if (Array.isArray(byType) && byType.length > 0) {
     lines.push('');
     lines.push('By type:');
@@ -155,6 +167,7 @@ export const formatContactRemoved: Formatter = (data) => {
 export const formatConfigShow: Formatter = (data) => {
   const lines = ['Configuration:'];
   if (data.apiUrl) lines.push(`  API URL:     ${data.apiUrl}`);
+  if (data.frontendUrl) lines.push(`  Frontend:    ${data.frontendUrl}`);
   if (data.apiKey) lines.push(`  API Key:     ${data.apiKey}`);
   if (data.configFile) lines.push(`  Config file: ${data.configFile}`);
   return lines.join('\n');

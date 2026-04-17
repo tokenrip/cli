@@ -168,7 +168,7 @@ asset
   .command('update')
   .argument('<uuid>', 'Asset public ID')
   .argument('<file>', 'File containing the new version content')
-  .option('--type <type>', 'Content type (markdown, html, chart, code, text) — omit for binary file upload')
+  .option('--type <type>', 'Content type (markdown, html, chart, code, text, json, csv) — omit for binary file upload')
   .option('--label <text>', 'Human-readable label for this version')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--dry-run', 'Validate without publishing')

@@ -10,13 +10,14 @@ export interface ClientConfig {
 }
 
 export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
+  const baseUrl = config.baseUrl || 'https://api.tokenrip.com';
   const headers: Record<string, string> = {};
   if (config.apiKey) {
     headers['Authorization'] = `Bearer ${config.apiKey}`;
   }
 
   const client = axios.create({
-    baseURL: config.baseUrl || 'https://api.tokenrip.com',
+    baseURL: baseUrl,
     timeout: config.timeout || DEFAULT_TIMEOUT,
     headers,
   });
@@ -33,11 +34,16 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
       if (error.response?.data?.error) {
         throw new CliError(error.response.data.error, error.response.data.message || 'Unknown API error');
       }
-      if (error.code === 'ECONNABORTED') {
-        throw new CliError('TIMEOUT', 'Request timeout — is the Tokenrip server running?');
+      if (error.response?.status === 413) {
+        throw new CliError('PAYLOAD_TOO_LARGE', `Payload too large — the server rejected the request body. Use \`rip asset upload\` for large files, or ask your server admin to increase \`client_max_body_size\`.`);
       }
+      if (error.code === 'ECONNABORTED') {
+        throw new CliError('TIMEOUT', `Request timeout while contacting ${baseUrl}`);
+      }
+      const status = error.response?.status;
       const details = error.code || error.message || 'Unknown error';
-      throw new CliError('NETWORK_ERROR', `Network error (${details}) — is the API running? Check status at https://api.tokenrip.com`);
+      const statusInfo = status ? ` (HTTP ${status})` : '';
+      throw new CliError('NETWORK_ERROR', `Network error (${details}${statusInfo}) while contacting ${baseUrl}`);
     },
   );
 

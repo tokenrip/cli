@@ -9,6 +9,7 @@ export interface TokenripConfig {
   configVersion?: number;
   apiKey?: string;
   apiUrl?: string;
+  frontendUrl?: string;
   preferences: Record<string, unknown>;
 }
 
@@ -38,6 +39,22 @@ export function getApiKey(config: TokenripConfig): string | undefined {
   return process.env.TOKENRIP_API_KEY || config.apiKey;
 }
 
-export function getFrontendUrl(): string {
-  return process.env.TOKENRIP_FRONTEND_URL || 'https://tokenrip.com';
+function deriveFrontendUrl(apiUrl: string): string {
+  try {
+    const parsed = new URL(apiUrl);
+    if (parsed.hostname === 'api.tokenrip.com') {
+      return 'https://tokenrip.com';
+    }
+    if (parsed.hostname.startsWith('api.')) {
+      parsed.hostname = parsed.hostname.slice(4);
+    }
+    return parsed.origin;
+  } catch {
+    return 'https://tokenrip.com';
+  }
+}
+
+export function getFrontendUrl(config?: TokenripConfig): string {
+  const resolved = config ?? loadConfig();
+  return process.env.TOKENRIP_FRONTEND_URL || resolved.frontendUrl || deriveFrontendUrl(getApiUrl(resolved));
 }

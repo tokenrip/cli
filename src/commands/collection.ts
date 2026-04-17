@@ -4,6 +4,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatCollectionRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
+import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
 
 export async function collectionAppend(
   uuid: string,
@@ -16,11 +17,9 @@ export async function collectionAppend(
     if (!fs.existsSync(absPath)) {
       throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
     }
-    const raw = JSON.parse(fs.readFileSync(absPath, 'utf-8'));
-    rows = Array.isArray(raw) ? raw : [raw];
+    rows = parseJsonObjectArrayOption(fs.readFileSync(absPath, 'utf-8'), '--file');
   } else if (options.data) {
-    const parsed = JSON.parse(options.data);
-    rows = Array.isArray(parsed) ? parsed : [parsed];
+    rows = parseJsonObjectArrayOption(options.data, '--data');
   } else {
     throw new CliError('MISSING_FIELD', 'Provide --data or --file');
   }
@@ -56,7 +55,7 @@ export async function collectionUpdate(
   rowId: string,
   options: { data: string },
 ): Promise<void> {
-  const parsed = JSON.parse(options.data);
+  const parsed = parseJsonObjectOption(options.data, '--data');
   const { client } = requireAuthClient();
   const { data } = await client.put(`/v0/assets/${uuid}/rows/${rowId}`, { data: parsed });
   outputSuccess(data.data, formatRowUpdated);

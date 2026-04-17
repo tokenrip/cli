@@ -7,7 +7,7 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatVersionCreated } from '../formatters.js';
 
-const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text'] as const;
+const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
 
 export async function update(
