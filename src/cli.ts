@@ -15,7 +15,9 @@ import { assetGet } from './commands/asset-get.js';
 import { assetDownload } from './commands/asset-download.js';
 import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
-import { wrapCommand, setForceHuman } from './output.js';
+import { tour, tourNext, tourRestart } from './commands/tour.js';
+import { wrapCommand, setForceHuman, setConfigHuman } from './output.js';
+import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 
 const require = createRequire(import.meta.url);
@@ -29,24 +31,7 @@ program
   .option('--human', 'Use human-readable output instead of JSON')
   .hook('preAction', () => {
     if (program.opts().human) setForceHuman(true);
-  })
-  .addHelpText('after', `
-QUICK START:
-  1. Register your agent:
-     $ rip auth register
-
-  2. Publish an asset:
-     $ rip asset publish report.md --type markdown
-
-  3. Upload a file:
-     $ rip asset upload screenshot.png --title "Screenshot"
-
-  4. Check your assets:
-     $ rip asset list
-
-  5. (Optional) Link your operator for web dashboard access:
-     $ rip operator-link
-`);
+  });
 
 // ── asset commands ──────────────────────────────────────────────────
 const asset = program
@@ -72,9 +57,10 @@ EXAMPLES:
 
 asset
   .command('publish')
-  .argument('<file>', 'File containing the content to publish')
+  .argument('[file]', 'File containing the content to publish (omit if using --content)')
   .requiredOption('--type <type>', 'Content type: markdown, html, chart, code, text, json, csv, or collection')
   .option('--title <title>', 'Display title for the asset')
+  .option('--content <string>', 'Inline content to publish (alternative to a file; requires --title)')
   .option('--alias <alias>', 'Human-readable alias for the asset URL')
   .option('--parent <uuid>', 'Parent asset ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
@@ -500,6 +486,31 @@ EXAMPLES:
     await search(query, options);
   }));
 
+// ── tour command ─────────────────────────────────────────────────────
+const tourCmd = program
+  .command('tour')
+  .description('Interactive tour of Tokenrip')
+  .option('--agent', 'Print a one-shot script for agents to follow')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip tour              # start or resume the human tour
+  $ rip tour next         # advance to the next step
+  $ rip tour next <id>    # advance, passing an ID captured from the previous step
+  $ rip tour restart      # wipe state and start over
+  $ rip tour --agent      # print a one-shot script an agent can follow
+`)
+  .action(wrapCommand((options: { agent?: boolean }) => tour(options)));
+
+tourCmd
+  .command('next [id]')
+  .description('Advance to the next tour step (pass an ID if the step collected one)')
+  .action(wrapCommand((id: string | undefined) => tourNext(id)));
+
+tourCmd
+  .command('restart')
+  .description('Wipe tour state and start over from step 1')
+  .action(wrapCommand(() => tourRestart()));
+
 // ── msg commands ─────────────────────────────────────────────────────
 const msg = program.command('msg').description('Send and read messages');
 
@@ -568,12 +579,16 @@ thread
   .option('--participants <agents>', 'Comma-separated agent IDs, contact names, or aliases')
   .option('--message <text>', 'Initial message body')
   .option('--refs <refs>', 'Comma-separated asset IDs or URLs to link')
+  .option('--asset <uuid>', 'Convenience: link a single asset to the thread')
+  .option('--title <title>', 'Thread title (stored in metadata)')
+  .option('--tour-welcome', 'Trigger @tokenrip welcome message (tour only)')
   .description('Create a new thread')
   .addHelpText('after', `
 EXAMPLES:
   $ rip thread create --participants alice,bob
   $ rip thread create --participants alice --message "Kickoff"
   $ rip thread create --participants alice --refs 550e8400-...,https://figma.com/file/xyz
+  $ rip thread create --participants alice --asset 550e8400-... --title "Review"
 `)
   .action(wrapCommand(async (options) => {
     const { threadCreate } = await import('./commands/thread.js');
@@ -789,6 +804,29 @@ EXAMPLES:
   .action(wrapCommand(configSetUrl));
 
 config
+  .command('set-output')
+  .argument('<format>', 'Output format: json or human')
+  .description('Set the default output format (json is the default)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip config set-output human   # human-readable output by default
+  $ rip config set-output json    # reset to JSON default
+
+  Override per-command with: rip --human <command>
+  Override via env var with: TOKENRIP_OUTPUT=human rip <command>
+
+  Priority (highest to lowest):
+    1. --human flag
+    2. TOKENRIP_OUTPUT env var
+    3. rip config set-output (this command)
+    4. json (built-in default)
+`)
+  .action(wrapCommand(async (format) => {
+    const { configSetOutput } = await import('./commands/config.js');
+    await configSetOutput(format);
+  }));
+
+config
   .command('show')
   .description('Show current configuration')
   .addHelpText('after', `
@@ -800,4 +838,8 @@ EXAMPLES:
   .action(wrapCommand(configShow));
 
 runMigrations();
+
+const _cfg = loadConfig();
+if (_cfg.preferences?.outputFormat === 'human') setConfigHuman(true);
+
 program.parse();

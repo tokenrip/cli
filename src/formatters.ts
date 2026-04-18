@@ -166,10 +166,11 @@ export const formatContactRemoved: Formatter = (data) => {
 
 export const formatConfigShow: Formatter = (data) => {
   const lines = ['Configuration:'];
-  if (data.apiUrl) lines.push(`  API URL:     ${data.apiUrl}`);
-  if (data.frontendUrl) lines.push(`  Frontend:    ${data.frontendUrl}`);
-  if (data.apiKey) lines.push(`  API Key:     ${data.apiKey}`);
-  if (data.configFile) lines.push(`  Config file: ${data.configFile}`);
+  if (data.apiUrl) lines.push(`  API URL:       ${data.apiUrl}`);
+  if (data.frontendUrl) lines.push(`  Frontend:      ${data.frontendUrl}`);
+  if (data.apiKey) lines.push(`  API Key:       ${data.apiKey}`);
+  if (data.outputFormat) lines.push(`  Output format: ${data.outputFormat}`);
+  if (data.configFile) lines.push(`  Config file:   ${data.configFile}`);
   return lines.join('\n');
 };
 
@@ -217,6 +218,7 @@ export const formatShareLink: Formatter = (data) => {
 export const formatThreadCreated: Formatter = (data) => {
   const lines = ['Thread created'];
   if (data.id) lines.push(`  ID:           ${data.id}`);
+  if (data.url) lines.push(`  URL:          ${data.url}`);
   const participants = data.participants as unknown as Array<{ agent_id?: string }>;
   if (Array.isArray(participants)) {
     lines.push(`  Participants: ${participants.length}`);

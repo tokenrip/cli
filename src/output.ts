@@ -2,17 +2,22 @@ import { CliError, toCliError } from './errors.js';
 import type { Formatter } from './formatters.js';
 
 let forceHuman = false;
+let configHuman = false;
 
 export function setForceHuman(value: boolean): void {
   forceHuman = value;
 }
 
+export function setConfigHuman(value: boolean): void {
+  configHuman = value;
+}
+
 function isJsonMode(): boolean {
   if (forceHuman) return false;
-  if (process.env.TOKENRIP_OUTPUT === 'json') return true;
   if (process.env.TOKENRIP_OUTPUT === 'human') return false;
-  if (!process.stdout.isTTY) return true;
-  return false;
+  if (process.env.TOKENRIP_OUTPUT === 'json') return true;
+  if (configHuman) return false;
+  return true;
 }
 
 export function outputSuccess(data: Record<string, unknown>, formatter?: Formatter): void {
@@ -64,4 +69,5 @@ const ERROR_HINTS: Record<string, string> = {
   AUTH_FAILED: 'Could not create API key. Is the server running?',
   CONTACT_NOT_FOUND: 'Run `rip contacts list` to see available contacts.',
   INVALID_AGENT_ID: 'Agent IDs start with rip1. Example: rip1x9a2f...',
+  INVALID_OUTPUT_FORMAT: 'Valid values are "json" and "human".',
 };
