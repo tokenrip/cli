@@ -3,6 +3,7 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatInbox } from '../formatters.js';
 import { loadState, saveState } from '../state.js';
+import { resolveTeam } from '../teams.js';
 
 function parseSince(value: string): string {
   const num = Number(value);
@@ -18,6 +19,7 @@ export async function inbox(options: {
   limit?: string;
   clear?: boolean;
   human?: boolean;
+  team?: string;
 }): Promise<void> {
   const { client } = requireAuthClient();
   const state = loadState();
@@ -30,6 +32,7 @@ export async function inbox(options: {
   const params: Record<string, string> = { since };
   if (options.types) params.types = options.types;
   if (options.limit) params.limit = options.limit;
+  if (options.team) params.team = resolveTeam(options.team);
 
   try {
     const { data } = await client.get('/v0/inbox', { params });

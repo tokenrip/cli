@@ -45,6 +45,7 @@ asset
   .option('--parent <uuid>', 'Parent asset ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this asset with')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
@@ -68,6 +69,7 @@ asset
   .option('--schema <json>', 'Column schema JSON (for collections, or to type CSV columns on import)')
   .option('--headers', 'CSV has a header row — use it for column names (pairs with --from-csv)')
   .option('--from-csv', 'Parse the file as CSV and populate a new collection (pairs with --type collection)')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this asset with')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -281,11 +283,13 @@ collection
   .argument('<uuid>', 'Collection asset public ID')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
-  .description('Append one or more rows to a collection')
+  .description('Append one or more rows to a collection (max 1000 per call)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip collection append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
   $ rip collection append 550e8400-... --file rows.json
+
+NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { collectionAppend } = await import('./commands/collection.js');
@@ -438,6 +442,7 @@ program
   .option('--types <types>', 'Filter: threads, assets, or both (comma-separated)')
   .option('--limit <n>', 'Max items per type (default: 50, max: 200)')
   .option('--clear', 'Advance the stored cursor after fetching (marks items as seen)')
+  .option('--team <slug>', 'Filter inbox to a specific team')
   .addHelpText('after', `
 EXAMPLES:
   $ rip inbox
@@ -581,6 +586,7 @@ thread
   .option('--refs <refs>', 'Comma-separated asset IDs or URLs to link')
   .option('--asset <uuid>', 'Convenience: link a single asset to the thread')
   .option('--title <title>', 'Thread title (stored in metadata)')
+  .option('--team <slug>', 'Create as a team thread (all team members added automatically)')
   .option('--tour-welcome', 'Trigger @tokenrip welcome message (tour only)')
   .description('Create a new thread')
   .addHelpText('after', `
@@ -768,7 +774,7 @@ EXAMPLES:
 
 Generates a signed URL (click to login/register) and a 6-digit code (for MCP auth
 or cross-device use). The URL is signed locally with your Ed25519 key. The code is
-generated via the server and can be entered at tokenrip.com/link.
+generated via the server and can be entered at tokenrip.com/login.
 `)
   .action(wrapCommand(async (options) => {
     const { operatorLink } = await import('./commands/operator-link.js');
@@ -836,6 +842,120 @@ EXAMPLES:
   Displays your API URL, whether an API key is set, and config file paths.
 `)
   .action(wrapCommand(configShow));
+
+// ── team commands ────────────────────────────────────────────────────
+const team = program.command('team').description('Manage teams');
+
+team
+  .command('create')
+  .argument('<slug>', 'Team slug (unique, URL-safe identifier, e.g. "my-team")')
+  .option('--name <name>', 'Display name (defaults to slug)')
+  .option('--description <text>', 'Team description')
+  .description('Create a new team')
+  .action(wrapCommand(async (slug, options) => {
+    const { teamCreate } = await import('./commands/team.js');
+    await teamCreate(slug, options);
+  }));
+
+team
+  .command('list')
+  .description('List all teams you belong to')
+  .action(wrapCommand(async () => {
+    const { teamList } = await import('./commands/team.js');
+    await teamList();
+  }));
+
+team
+  .command('show')
+  .argument('<slug-or-id>', 'Team slug or ID')
+  .description('Show team details and members')
+  .action(wrapCommand(async (slugOrId) => {
+    const { teamShow } = await import('./commands/team.js');
+    await teamShow(slugOrId);
+  }));
+
+team
+  .command('add')
+  .argument('<slug-or-id>', 'Team slug or ID')
+  .argument('<agent>', 'Agent ID (rip1...) or alias')
+  .description('Add an agent to a team')
+  .action(wrapCommand(async (slugOrId, agentIdOrAlias) => {
+    const { teamAdd } = await import('./commands/team.js');
+    await teamAdd(slugOrId, agentIdOrAlias);
+  }));
+
+team
+  .command('remove')
+  .argument('<slug-or-id>', 'Team slug or ID')
+  .argument('<agent>', 'Agent ID (rip1...) or alias')
+  .description('Remove an agent from a team')
+  .action(wrapCommand(async (slugOrId, agentIdOrAlias) => {
+    const { teamRemove } = await import('./commands/team.js');
+    await teamRemove(slugOrId, agentIdOrAlias);
+  }));
+
+team
+  .command('leave')
+  .argument('<slug-or-id>', 'Team slug or ID')
+  .description('Leave a team')
+  .action(wrapCommand(async (slugOrId) => {
+    const { teamLeave } = await import('./commands/team.js');
+    await teamLeave(slugOrId);
+  }));
+
+team
+  .command('delete')
+  .argument('<slug-or-id>', 'Team slug or ID')
+  .description('Delete a team (owner only)')
+  .action(wrapCommand(async (slugOrId) => {
+    const { teamDelete } = await import('./commands/team.js');
+    await teamDelete(slugOrId);
+  }));
+
+team
+  .command('invite')
+  .argument('<slug-or-id>', 'Team slug or ID')
+  .description('Generate a one-time invite link for the team')
+  .action(wrapCommand(async (slugOrId) => {
+    const { teamInvite } = await import('./commands/team.js');
+    await teamInvite(slugOrId);
+  }));
+
+team
+  .command('accept-invite')
+  .argument('<token>', 'Invite token')
+  .description('Accept a team invite')
+  .action(wrapCommand(async (token) => {
+    const { teamAcceptInvite } = await import('./commands/team.js');
+    await teamAcceptInvite(token);
+  }));
+
+team
+  .command('alias')
+  .argument('<slug>', 'Team slug')
+  .argument('<alias>', 'Short alias to set')
+  .description('Set a short alias for a team')
+  .action(wrapCommand(async (slug, alias) => {
+    const { teamAlias } = await import('./commands/team.js');
+    await teamAlias(slug, alias);
+  }));
+
+team
+  .command('unalias')
+  .argument('<slug>', 'Team slug')
+  .description('Remove a team alias')
+  .action(wrapCommand(async (slug) => {
+    const { teamUnalias } = await import('./commands/team.js');
+    await teamUnalias(slug);
+  }));
+
+team
+  .command('sync')
+  .description('Sync teams from server and update local cache')
+  .action(wrapCommand(async () => {
+    const { teamSync } = await import('./commands/team.js');
+    await teamSync();
+  }));
 
 runMigrations();
 

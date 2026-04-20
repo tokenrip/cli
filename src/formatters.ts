@@ -1,3 +1,5 @@
+import { loadTeams } from './teams.js';
+
 export type Formatter = (data: Record<string, unknown>) => string;
 
 export const formatAssetCreated: Formatter = (data) => {
@@ -398,6 +400,49 @@ export const formatSearchResults: Formatter = (data) => {
   if (results.length < total) {
     lines.push(`\n  Showing ${results.length} of ${total}. Use --offset ${results.length} for more.`);
   }
+  return lines.join('\n');
+};
+
+export const formatTeamCreated: Formatter = (data) => {
+  const lines = [`Team created: @${data.slug}`];
+  if (data.name && data.name !== data.slug) lines.push(`  Name: ${data.name}`);
+  if (data.id) lines.push(`  ID:   ${data.id}`);
+  return lines.join('\n');
+};
+
+export const formatTeamList: Formatter = (data) => {
+  const teams = data as unknown as Array<{ slug: string; name: string; member_count: number; id: string }>;
+  if (!Array.isArray(teams) || teams.length === 0) return 'No teams found.';
+  const localTeams = loadTeams();
+  const lines = [`${teams.length} team(s):\n`];
+  for (const t of teams) {
+    const alias = localTeams[t.slug]?.alias;
+    const aliasSuffix = alias ? `  (alias: ${alias})` : '';
+    lines.push(`  @${t.slug.padEnd(24)} ${String(t.member_count).padStart(3)} member(s)  ${t.id}${aliasSuffix}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatTeamDetails: Formatter = (data) => {
+  const lines = [`@${data.slug}  —  ${data.name}`];
+  if (data.description) lines.push(`  ${data.description}`);
+  lines.push(`  ID:    ${data.id}`);
+  lines.push(`  Owner: ${data.owner_id}`);
+  const members = data.members as Array<{ agent_id: string; alias?: string | null; joined_at: string }> | undefined;
+  if (Array.isArray(members) && members.length > 0) {
+    lines.push(`  Members (${members.length}):`);
+    for (const m of members) {
+      const label = m.alias ? `${m.alias} (${m.agent_id})` : m.agent_id;
+      lines.push(`    ${label}`);
+    }
+  }
+  return lines.join('\n');
+};
+
+export const formatTeamInvite: Formatter = (data) => {
+  const lines = ['Invite link generated'];
+  if (data.token) lines.push(`  Token:   ${data.token}`);
+  if (data.expires_in) lines.push(`  Expires: ${data.expires_in}`);
   return lines.join('\n');
 };
 

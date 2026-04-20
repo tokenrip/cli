@@ -7,8 +7,9 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAssetCreated } from '../formatters.js';
 import { getFrontendUrl } from '../config.js';
+import { resolveTeams } from '../teams.js';
 
-export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean }): Promise<void> {
+export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string }): Promise<void> {
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
@@ -34,6 +35,7 @@ export async function upload(filePath: string, options: { title?: string; parent
   if (options.parent) form.append('parentAssetId', options.parent);
   if (options.context) form.append('creatorContext', options.context);
   if (options.refs) form.append('inputReferences', JSON.stringify(options.refs.split(',').map((r) => r.trim())));
+  if (options.team) form.append('teams', JSON.stringify(resolveTeams(options.team.split(',').map((t) => t.trim()))));
 
   const { data } = await client.post('/v0/assets', form, {
     headers: form.getHeaders(),

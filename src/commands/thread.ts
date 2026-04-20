@@ -6,6 +6,7 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatThreadCreated, formatThreadList, formatShareLink, formatThreadDetails, formatThreadClosed, formatParticipantAdded, formatRefsAdded, formatRefRemoved } from '../formatters.js';
 import { resolveRecipient, resolveRecipients } from '../contacts.js';
+import { resolveTeam } from '../teams.js';
 import { parseDuration } from './share.js';
 import { parseRefList } from '../refs.js';
 
@@ -30,6 +31,7 @@ export async function threadCreate(options: {
   asset?: string;
   title?: string;
   tourWelcome?: boolean;
+  team?: string;
 }): Promise<void> {
   const { client, config } = requireAuthClient();
 
@@ -52,6 +54,7 @@ export async function threadCreate(options: {
     payload.message = { body: options.message };
   }
 
+  if (options.team) payload.team = resolveTeam(options.team);
   if (options.title) metadata.title = options.title;
   if (options.tourWelcome) metadata.tour_welcome = true;
   if (Object.keys(metadata).length > 0) payload.metadata = metadata;
