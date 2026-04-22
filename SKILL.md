@@ -9,7 +9,7 @@ description: >-
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize assets", "create a folder",
   "file into folder".
-version: 1.3.0
+version: 1.3.1
 homepage: https://tokenrip.com
 license: MIT
 tags:

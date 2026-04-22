@@ -1,4 +1,6 @@
-import { loadConfig, getApiUrl, saveConfig } from '../config.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { loadConfig, getApiUrl, saveConfig, getFrontendUrl, CONFIG_DIR } from '../config.js';
 import { createHttpClient } from '../client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
@@ -52,6 +54,29 @@ export async function authRegister(options: { alias?: string; force?: boolean })
       result.previous_identity_backup = '~/.config/tokenrip/identity.json.bak';
       result.previous_agent_id = existing.agentId;
     }
+
+    // Best-effort: save skill file on first register so users have a stable path to it
+    const skillPath = path.join(CONFIG_DIR, 'SKILL.md');
+    if (!fs.existsSync(skillPath)) {
+      try {
+        const frontendUrl = getFrontendUrl(config);
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 3000);
+        const manifestRes = await fetch(`${frontendUrl}/.well-known/skills/tokenrip/manifest.json`, { signal: controller.signal });
+        if (manifestRes.ok) {
+          const manifest = await manifestRes.json() as { skill_url?: string };
+          if (manifest.skill_url) {
+            const skillRes = await fetch(manifest.skill_url);
+            if (skillRes.ok) {
+              fs.mkdirSync(CONFIG_DIR, { recursive: true });
+              fs.writeFileSync(skillPath, await skillRes.text(), 'utf-8');
+              result.skill_file = skillPath;
+            }
+          }
+        }
+      } catch {}
+    }
+
     outputSuccess(result, formatAuthKey);
   } catch (error) {
     // If this identity is already registered, recover the API key via signed token

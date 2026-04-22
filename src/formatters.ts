@@ -459,22 +459,31 @@ export const formatTeamInvite: Formatter = (data) => {
 };
 
 export const formatSelfUpdate: Formatter = (data) => {
-  if (data.status === 'current') {
-    return data.message as string;
-  }
-
   if (data.status === 'failed') {
     return data.message as string;
   }
 
+  if (data.status === 'current') {
+    const lines = [`@tokenrip/cli ${data.version} is already current`];
+    if (data.skill_file_path) lines.push(`Skill file: ${data.skill_file_path}`);
+    return lines.join('\n');
+  }
+
+  // updated
   const lines = [`Updated @tokenrip/cli ${data.from} → ${data.to}`];
-  lines.push('');
-  lines.push('Skill update:');
-  lines.push('  Your agent skill (SKILL.md) may also need updating.');
-  lines.push('');
-  lines.push('  Claude Code:  npx skills add tokenrip/cli');
-  lines.push('  Claude Cowork: Copy the latest skill from:');
-  lines.push(`                 ${data.skill_url}`);
+
+  if (data.skill_file_path) {
+    const label = data.skill_changed ? 'Skill file refreshed' : 'Skill file current';
+    lines.push(`${label} → ${data.skill_file_path}`);
+    lines.push('');
+    lines.push(`Reload in Claude Code:  npx skills add tokenrip/cli`);
+    lines.push(`Load manually:          ${data.skill_file_path}`);
+  } else {
+    lines.push('');
+    lines.push('Reload your agent skill:');
+    lines.push('  Claude Code:  npx skills add tokenrip/cli');
+    if (data.skill_url) lines.push(`  Load from:    ${data.skill_url}`);
+  }
 
   if (data.message) {
     lines.push('');
