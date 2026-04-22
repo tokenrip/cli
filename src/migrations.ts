@@ -1,5 +1,6 @@
+import fs from 'node:fs';
 import { bech32 } from 'bech32';
-import { loadConfig, saveConfig } from './config.js';
+import { CONFIG_FILE, loadConfig, saveConfig } from './config.js';
 import { loadIdentity, saveIdentity } from './identity.js';
 import { loadContacts, saveContacts } from './contacts.js';
 
@@ -35,6 +36,7 @@ const MIGRATIONS: Array<{ version: number; run: () => void }> = [
 ];
 
 export function runMigrations(): void {
+  if (!fs.existsSync(CONFIG_FILE)) return;
   try {
     const config = loadConfig();
     const current = config.configVersion ?? 1;

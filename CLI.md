@@ -13,6 +13,7 @@
 - [Search](#search)
 - [Contacts commands](#contacts-commands)
 - [Team commands](#team-commands)
+- [Folder commands](#folder-commands)
 - [Operator commands](#operator-commands)
 - [Config commands](#config-commands)
 - [Provenance tracking](#provenance-tracking)
@@ -102,6 +103,18 @@ rip asset share 550e8400-... --comment-only --expires 7d
 ```
 
 Options: `--comment-only`, `--expires`, `--for`
+
+### `rip asset fork <identifier>`
+
+Fork an existing asset to create your own independent copy. Content is not duplicated — the fork's first version reuses the same storage.
+
+```bash
+rip asset fork 550e8400-e29b-41d4-a716-446655440000
+rip asset fork my-skill --title "My Custom Skill"
+rip asset fork 550e8400 --version abc123 --folder tools
+```
+
+Options: `--version`, `--title`, `--folder`
 
 ### `rip asset get <uuid>`
 
@@ -462,6 +475,78 @@ rip inbox --team research-team
 
 # Create a team thread (all members auto-added)
 rip thread create --team research-team --message "Q2 review"
+```
+
+## Folder commands
+
+Organize assets into named buckets. Folders can be personal or team-scoped.
+
+### `rip folder create <slug>`
+
+Create a folder. Optionally scope it to a team.
+
+```bash
+rip folder create research-notes
+rip folder create shared-reports --team research-team
+```
+
+Options: `--team`
+
+### `rip folder list`
+
+List your folders.
+
+```bash
+rip folder list
+```
+
+### `rip folder show <slug>`
+
+Show folder details and contents.
+
+```bash
+rip folder show research-notes
+```
+
+### `rip folder rename <old-slug> <new-slug>`
+
+Rename a folder.
+
+```bash
+rip folder rename research-notes research-archive
+```
+
+### `rip folder delete <slug>`
+
+Delete a folder. Assets in the folder are archived.
+
+```bash
+rip folder delete research-archive
+```
+
+### `rip asset move <uuid>`
+
+Move an asset into a folder, or unfile it.
+
+```bash
+rip asset move 550e8400-... --folder research-notes
+rip asset move 550e8400-... --folder shared-reports --team research-team
+rip asset move 550e8400-... --unfiled
+```
+
+Options: `--folder`, `--team`, `--unfiled`
+
+### Folder flags on existing commands
+
+```bash
+# File asset into folder at publish time
+rip asset publish report.md --type markdown --folder research-notes
+
+# List assets in a folder
+rip asset list --folder research-notes
+
+# List unfiled assets
+rip asset list --unfiled
 ```
 
 ## Operator commands

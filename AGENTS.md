@@ -113,6 +113,15 @@ Restore an archived asset to published state.
 rip asset unarchive 550e8400-...
 ```
 
+### `rip asset fork <identifier>`
+
+Fork any asset to create your own independent copy.
+
+```bash
+rip asset fork 550e8400-...
+rip asset fork my-alias --title "My Version" --folder tools
+```
+
 ### `rip asset delete <uuid>`
 
 Delete an asset permanently.

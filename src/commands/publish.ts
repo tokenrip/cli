@@ -4,7 +4,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAssetCreated } from '../formatters.js';
-import { parseJsonOption } from '../json.js';
+import { parseJsonOption, parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeams } from '../teams.js';
 
@@ -26,10 +26,17 @@ export async function publish(
     fromCsv?: boolean;
     dryRun?: boolean;
     team?: string;
+    folder?: string;
+    metadata?: string;
   },
 ): Promise<void> {
   if (!VALID_TYPES.includes(options.type as ContentType)) {
     throw new CliError('INVALID_TYPE', `Type must be one of: ${VALID_TYPES.join(', ')}`);
+  }
+
+  let parsedMetadata: Record<string, unknown> | undefined;
+  if (options.metadata) {
+    parsedMetadata = parseJsonObjectOption(options.metadata, '--metadata');
   }
 
   // Validate: exactly one of {filePath, --content}. We treat empty string the
@@ -75,6 +82,8 @@ export async function publish(
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
     if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+    if (options.folder) body.folder = options.folder;
+    if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { data } = await client.post('/v0/assets', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -112,6 +121,8 @@ export async function publish(
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
     if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+    if (options.folder) body.folder = options.folder;
+    if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/assets', body);
@@ -147,6 +158,8 @@ export async function publish(
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
     if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+    if (options.folder) body.folder = options.folder;
+    if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { data } = await client.post('/v0/assets', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -180,6 +193,8 @@ export async function publish(
   if (options.context) body.creatorContext = options.context;
   if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
   if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+  if (options.folder) body.folder = options.folder;
+  if (parsedMetadata) body.metadata = parsedMetadata;
 
   const { data } = await client.post('/v0/assets', body);
 

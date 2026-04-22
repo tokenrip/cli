@@ -11,6 +11,15 @@ export const formatAssetCreated: Formatter = (data) => {
   return lines.join('\n');
 };
 
+export const formatAssetPatched: Formatter = (data) => {
+  const lines = [`Patched: ${data.id}`];
+  if (data.alias) lines.push(`  Alias:    ${data.alias}`);
+  if (data.url) lines.push(`  URL:      ${data.url}`);
+  if (data.metadata) lines.push(`  Metadata: ${JSON.stringify(data.metadata)}`);
+  if (data.updatedAt) lines.push(`  Updated:  ${data.updatedAt}`);
+  return lines.join('\n');
+};
+
 export const formatAssetDeleted: Formatter = (data) => {
   return `Deleted: ${data.id}`;
 };
@@ -26,6 +35,7 @@ export const formatAssetList: Formatter = (data) => {
     const type = a.type || '';
     const id = a.id || '';
     lines.push(`  ${type.toString().padEnd(10)} ${title}  (${id})`);
+    if (a.url) lines.push(`             ${a.url}`);
   }
   return lines.join('\n');
 };
@@ -110,7 +120,7 @@ export const formatInbox: Formatter = (data) => {
       const title = a.title ?? '(untitled)';
       const versions = `+${a.new_version_count} ver${a.new_version_count > 1 ? 's' : ''}`;
       const ago = formatTimeAgo(new Date(a.updated_at));
-      lines.push(`  ${title.padEnd(20)}  v${a.latest_version}  ${versions}  ${ago}`);
+      lines.push(`  ${title.padEnd(20)}  v${a.latest_version}  ${versions}  ${ago}  (${a.asset_id})`);
     }
   } else {
     lines.push('ASSETS (none)');
@@ -242,6 +252,7 @@ export const formatAssetDownloaded: Formatter = (data) => {
 export const formatAssetMetadata: Formatter = (data) => {
   const lines = [data.title || '(untitled)'];
   if (data.id) lines.push(`  ID:          ${data.id}`);
+  if (data.url) lines.push(`  URL:         ${data.url}`);
   if (data.type) lines.push(`  Type:        ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:        ${data.mimeType}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
@@ -395,6 +406,7 @@ export const formatSearchResults: Formatter = (data) => {
       const assetType = (r.asset?.asset_type ?? '').padEnd(10);
       const versions = r.asset?.version_count ? `v${r.asset.version_count}` : '';
       lines.push(`  asset   ${assetType}  ${r.id}  ${title}  ${versions}  ${ago}`);
+      if (r.url) lines.push(`          ${r.url}`);
     }
   }
   if (results.length < total) {
@@ -443,6 +455,32 @@ export const formatTeamInvite: Formatter = (data) => {
   const lines = ['Invite link generated'];
   if (data.token) lines.push(`  Token:   ${data.token}`);
   if (data.expires_in) lines.push(`  Expires: ${data.expires_in}`);
+  return lines.join('\n');
+};
+
+export const formatSelfUpdate: Formatter = (data) => {
+  if (data.status === 'current') {
+    return data.message as string;
+  }
+
+  if (data.status === 'failed') {
+    return data.message as string;
+  }
+
+  const lines = [`Updated @tokenrip/cli ${data.from} → ${data.to}`];
+  lines.push('');
+  lines.push('Skill update:');
+  lines.push('  Your agent skill (SKILL.md) may also need updating.');
+  lines.push('');
+  lines.push('  Claude Code:  npx skills add tokenrip/cli');
+  lines.push('  Claude Cowork: Copy the latest skill from:');
+  lines.push(`                 ${data.skill_url}`);
+
+  if (data.message) {
+    lines.push('');
+    lines.push(data.message as string);
+  }
+
   return lines.join('\n');
 };
 

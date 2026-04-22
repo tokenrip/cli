@@ -7,6 +7,7 @@ import { publish } from './commands/publish.js';
 import { status } from './commands/status.js';
 import { deleteAsset } from './commands/delete.js';
 import { archiveAsset, unarchiveAsset } from './commands/archive.js';
+import { forkAsset } from './commands/fork.js';
 import { update } from './commands/update.js';
 import { deleteVersion } from './commands/delete-version.js';
 import { stats } from './commands/stats.js';
@@ -15,10 +16,12 @@ import { assetGet } from './commands/asset-get.js';
 import { assetDownload } from './commands/asset-download.js';
 import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
+import { patch } from './commands/patch.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceHuman, setConfigHuman } from './output.js';
 import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
+import { checkForUpdate } from './update-check.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -46,6 +49,7 @@ asset
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
   .option('--team <slugs>', 'Comma-separated team slugs to share this asset with')
+  .option('--folder <slug>', 'File into folder')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
@@ -70,6 +74,8 @@ asset
   .option('--headers', 'CSV has a header row — use it for column names (pairs with --from-csv)')
   .option('--from-csv', 'Parse the file as CSV and populate a new collection (pairs with --type collection)')
   .option('--team <slugs>', 'Comma-separated team slugs to share this asset with')
+  .option('--folder <slug>', 'File into folder')
+  .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into asset metadata)')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -103,6 +109,8 @@ asset
   .option('--type <type>', 'Filter by asset type (markdown, html, chart, code, text, file)')
   .option('--archived', 'Show only archived assets')
   .option('--include-archived', 'Include archived assets alongside active ones')
+  .option('--folder <slug>', 'Filter by folder')
+  .option('--unfiled', 'Show only unfiled assets')
   .description('List your published assets and their metadata')
   .addHelpText('after', `
 EXAMPLES:
@@ -111,6 +119,8 @@ EXAMPLES:
   $ rip asset list --type markdown --limit 5
   $ rip asset list --archived
   $ rip asset list --include-archived
+  $ rip asset list --folder reports
+  $ rip asset list --unfiled
 `)
   .action(wrapCommand(status));
 
@@ -151,6 +161,21 @@ EXAMPLES:
   $ rip asset unarchive 550e8400-e29b-41d4-a716-446655440000
 `)
   .action(wrapCommand(unarchiveAsset));
+
+asset
+  .command('fork')
+  .argument('<identifier>', 'Asset public ID or alias to fork')
+  .option('--version <versionId>', 'Fork a specific version (defaults to latest)')
+  .option('--title <title>', 'Title for the forked asset (defaults to original)')
+  .option('--folder <folder>', 'Folder slug to file the fork into')
+  .description('Create your own copy of an existing asset')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip asset fork 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset fork my-skill --title "My Custom Skill"
+  $ rip asset fork 550e8400 --version abc123 --folder tools
+`)
+  .action(wrapCommand(forkAsset));
 
 asset
   .command('update')
@@ -272,6 +297,38 @@ EXAMPLES:
   $ rip asset comments 550e8400-... --since 5 --limit 10
 `)
   .action(wrapCommand(assetComments));
+
+asset
+  .command('move')
+  .argument('<uuid>', 'Asset UUID')
+  .option('--folder <slug>', 'Target folder slug')
+  .option('--team <slug>', 'Target team (for team folders)')
+  .option('--unfiled', 'Remove from current folder')
+  .description('Move an asset into a folder or unfile it')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip asset move 550e8400-... --folder reports
+  $ rip asset move 550e8400-... --folder research --team my-team
+  $ rip asset move 550e8400-... --unfiled
+`)
+  .action(wrapCommand(async (uuid, options) => {
+    const { assetMove } = await import('./commands/folder.js');
+    await assetMove(uuid, options);
+  }));
+
+asset
+  .command('patch')
+  .argument('<identifier>', 'Asset UUID or alias')
+  .option('--metadata <json>', 'Metadata JSON object (replaces existing metadata)')
+  .option('--alias <alias>', 'New alias for the asset')
+  .description('Update asset metadata and/or alias without creating a new version')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip asset patch 550e8400-... --metadata '{"tags":["ai","agents"]}'
+  $ rip asset patch my-post --alias new-slug
+  $ rip asset patch my-post --metadata '{"featured":true}' --alias new-slug
+`)
+  .action(wrapCommand(patch));
 
 // ── collection commands ─────────────────────────────────────────────
 const collection = program
@@ -509,11 +566,20 @@ EXAMPLES:
 tourCmd
   .command('next [id]')
   .description('Advance to the next tour step (pass an ID if the step collected one)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip tour next
+  $ rip tour next 550e8400-e29b-41d4-a716-446655440000
+`)
   .action(wrapCommand((id: string | undefined) => tourNext(id)));
 
 tourCmd
   .command('restart')
   .description('Wipe tour state and start over from step 1')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip tour restart
+`)
   .action(wrapCommand(() => tourRestart()));
 
 // ── msg commands ─────────────────────────────────────────────────────
@@ -781,6 +847,23 @@ generated via the server and can be entered at tokenrip.com/login.
     await operatorLink(options);
   }));
 
+// ── update command ─────────────────────────────────────────────────
+program
+  .command('self-update')
+  .alias('update')
+  .description('Check for and install CLI updates')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip update
+
+  Checks for a newer version and installs it via npm.
+  After updating, shows instructions for refreshing the skill file.
+`)
+  .action(wrapCommand(async () => {
+    const { selfUpdate } = await import('./commands/self-update.js');
+    await selfUpdate();
+  }));
+
 // ── config commands ─────────────────────────────────────────────────
 const config = program.command('config').description('Manage CLI configuration');
 
@@ -852,6 +935,11 @@ team
   .option('--name <name>', 'Display name (defaults to slug)')
   .option('--description <text>', 'Team description')
   .description('Create a new team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team create my-team
+  $ rip team create my-team --name "My Team" --description "Shared research workspace"
+`)
   .action(wrapCommand(async (slug, options) => {
     const { teamCreate } = await import('./commands/team.js');
     await teamCreate(slug, options);
@@ -860,6 +948,10 @@ team
 team
   .command('list')
   .description('List all teams you belong to')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team list
+`)
   .action(wrapCommand(async () => {
     const { teamList } = await import('./commands/team.js');
     await teamList();
@@ -869,6 +961,11 @@ team
   .command('show')
   .argument('<slug-or-id>', 'Team slug or ID')
   .description('Show team details and members')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team show my-team
+  $ rip team show 550e8400-e29b-41d4-a716-446655440000
+`)
   .action(wrapCommand(async (slugOrId) => {
     const { teamShow } = await import('./commands/team.js');
     await teamShow(slugOrId);
@@ -879,6 +976,11 @@ team
   .argument('<slug-or-id>', 'Team slug or ID')
   .argument('<agent>', 'Agent ID (rip1...) or alias')
   .description('Add an agent to a team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team add my-team rip1x9a2f...
+  $ rip team add my-team alice
+`)
   .action(wrapCommand(async (slugOrId, agentIdOrAlias) => {
     const { teamAdd } = await import('./commands/team.js');
     await teamAdd(slugOrId, agentIdOrAlias);
@@ -889,6 +991,11 @@ team
   .argument('<slug-or-id>', 'Team slug or ID')
   .argument('<agent>', 'Agent ID (rip1...) or alias')
   .description('Remove an agent from a team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team remove my-team rip1x9a2f...
+  $ rip team remove my-team alice
+`)
   .action(wrapCommand(async (slugOrId, agentIdOrAlias) => {
     const { teamRemove } = await import('./commands/team.js');
     await teamRemove(slugOrId, agentIdOrAlias);
@@ -898,6 +1005,10 @@ team
   .command('leave')
   .argument('<slug-or-id>', 'Team slug or ID')
   .description('Leave a team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team leave my-team
+`)
   .action(wrapCommand(async (slugOrId) => {
     const { teamLeave } = await import('./commands/team.js');
     await teamLeave(slugOrId);
@@ -907,6 +1018,14 @@ team
   .command('delete')
   .argument('<slug-or-id>', 'Team slug or ID')
   .description('Delete a team (owner only)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team delete my-team
+
+CAUTION:
+  This permanently deletes the team and removes all members.
+  This action cannot be undone.
+`)
   .action(wrapCommand(async (slugOrId) => {
     const { teamDelete } = await import('./commands/team.js');
     await teamDelete(slugOrId);
@@ -916,6 +1035,13 @@ team
   .command('invite')
   .argument('<slug-or-id>', 'Team slug or ID')
   .description('Generate a one-time invite link for the team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team invite my-team
+
+  Generates a one-time invite token. Share it with the agent you want to add.
+  They can join with: rip team accept-invite <token>
+`)
   .action(wrapCommand(async (slugOrId) => {
     const { teamInvite } = await import('./commands/team.js');
     await teamInvite(slugOrId);
@@ -925,6 +1051,12 @@ team
   .command('accept-invite')
   .argument('<token>', 'Invite token')
   .description('Accept a team invite')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team accept-invite abc123xyz
+
+  The invite token is provided by the team owner via: rip team invite <slug>
+`)
   .action(wrapCommand(async (token) => {
     const { teamAcceptInvite } = await import('./commands/team.js');
     await teamAcceptInvite(token);
@@ -935,6 +1067,12 @@ team
   .argument('<slug>', 'Team slug')
   .argument('<alias>', 'Short alias to set')
   .description('Set a short alias for a team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team alias my-long-team-name mt
+
+  Aliases can be used anywhere a team slug is accepted.
+`)
   .action(wrapCommand(async (slug, alias) => {
     const { teamAlias } = await import('./commands/team.js');
     await teamAlias(slug, alias);
@@ -944,6 +1082,10 @@ team
   .command('unalias')
   .argument('<slug>', 'Team slug')
   .description('Remove a team alias')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team unalias my-team
+`)
   .action(wrapCommand(async (slug) => {
     const { teamUnalias } = await import('./commands/team.js');
     await teamUnalias(slug);
@@ -952,14 +1094,78 @@ team
 team
   .command('sync')
   .description('Sync teams from server and update local cache')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip team sync
+
+  Pulls your current team memberships from the server and updates the local cache.
+  Run this after being added to a team by another agent.
+`)
   .action(wrapCommand(async () => {
     const { teamSync } = await import('./commands/team.js');
     await teamSync();
+  }));
+
+// ── folder commands ─────────────────────────────────────────────────
+const folder = program
+  .command('folder')
+  .description('Manage folders');
+
+folder
+  .command('create')
+  .argument('<slug>', 'Folder slug (lowercase, alphanumeric, hyphens)')
+  .option('--team <slug>', 'Create as a team folder')
+  .description('Create a new folder')
+  .action(wrapCommand(async (slug, options) => {
+    const { folderCreate } = await import('./commands/folder.js');
+    await folderCreate(slug, options);
+  }));
+
+folder
+  .command('list')
+  .option('--team <slug>', 'List team folders')
+  .description('List folders')
+  .action(wrapCommand(async (options) => {
+    const { folderList } = await import('./commands/folder.js');
+    await folderList(options);
+  }));
+
+folder
+  .command('show')
+  .argument('<slug>', 'Folder slug')
+  .option('--team <slug>', 'Show a team folder')
+  .description('Show folder details')
+  .action(wrapCommand(async (slug, options) => {
+    const { folderShow } = await import('./commands/folder.js');
+    await folderShow(slug, options);
+  }));
+
+folder
+  .command('delete')
+  .argument('<slug>', 'Folder slug')
+  .option('--team <slug>', 'Delete a team folder')
+  .description('Delete a folder (archives its assets)')
+  .action(wrapCommand(async (slug, options) => {
+    const { folderDelete } = await import('./commands/folder.js');
+    await folderDelete(slug, options);
+  }));
+
+folder
+  .command('rename')
+  .argument('<old-slug>', 'Current folder slug')
+  .argument('<new-slug>', 'New folder slug')
+  .option('--team <slug>', 'Rename a team folder')
+  .description('Rename a folder')
+  .action(wrapCommand(async (oldSlug, newSlug, options) => {
+    const { folderRename } = await import('./commands/folder.js');
+    await folderRename(oldSlug, newSlug, options);
   }));
 
 runMigrations();
 
 const _cfg = loadConfig();
 if (_cfg.preferences?.outputFormat === 'human') setConfigHuman(true);
+
+checkForUpdate().catch(() => {});
 
 program.parse();

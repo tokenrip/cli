@@ -6,5 +6,5 @@
     "outDir": "./dist/cjs",
     "declaration": false
   },
-  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/cli.ts"]
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/cli.ts", "src/update-check.ts", "src/commands/self-update.ts"]
 }

@@ -3,13 +3,15 @@ import path from 'node:path';
 import os from 'node:os';
 
 export const CONFIG_DIR = process.env.TOKENRIP_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'tokenrip');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export interface TokenripConfig {
   configVersion?: number;
   apiKey?: string;
   apiUrl?: string;
   frontendUrl?: string;
+  lastUpdateCheck?: string;
+  latestVersion?: string;
   preferences: Record<string, unknown>;
 }
 

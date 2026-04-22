@@ -86,7 +86,7 @@ export async function syncFromServer(client: AxiosInstance): Promise<Contacts> {
 
   // Merge server contacts into local (server is source of truth for shared contacts)
   for (const sc of serverContacts) {
-    const name = sc.label || sc.alias || sc.agentId.slice(0, 16);
+    const name = sc.label || sc.alias || sc.agentId;
     // Find existing local entry by agent_id
     const existingKey = Object.keys(contacts).find((k) => contacts[k].agent_id === sc.agentId);
     if (existingKey) {
