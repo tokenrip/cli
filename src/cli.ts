@@ -14,6 +14,7 @@ import { stats } from './commands/stats.js';
 import { share } from './commands/share.js';
 import { assetGet } from './commands/asset-get.js';
 import { assetDownload } from './commands/asset-download.js';
+import { assetCat } from './commands/asset-cat.js';
 import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
 import { patch } from './commands/patch.js';
@@ -260,6 +261,20 @@ EXAMPLES:
   .action(wrapCommand(assetDownload));
 
 asset
+  .command('cat')
+  .argument('<identifier>', 'Asset public ID or alias')
+  .option('--version <versionId>', 'Output a specific version')
+  .description('Print asset content to stdout')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip asset cat 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset cat my-post
+  $ rip asset cat my-post --version abc123
+  $ rip asset cat my-post | head -20
+`)
+  .action(wrapCommand(assetCat));
+
+asset
   .command('versions')
   .argument('<uuid>', 'Asset public ID')
   .option('--version <versionId>', 'Get metadata for a specific version')
@@ -321,12 +336,16 @@ asset
   .argument('<identifier>', 'Asset UUID or alias')
   .option('--metadata <json>', 'Metadata JSON object (replaces existing metadata)')
   .option('--alias <alias>', 'New alias for the asset')
+  .option('--title <title>', 'New title for the asset')
+  .option('--description <description>', 'New description for the asset (empty string clears it)')
   .description('Update asset metadata and/or alias without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset patch 550e8400-... --metadata '{"tags":["ai","agents"]}'
   $ rip asset patch my-post --alias new-slug
   $ rip asset patch my-post --metadata '{"featured":true}' --alias new-slug
+  $ rip asset patch my-post --title "New Title"
+  $ rip asset patch my-post --description "A helpful description"
 `)
   .action(wrapCommand(patch));
 

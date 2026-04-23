@@ -104,6 +104,20 @@ rip asset share 550e8400-... --comment-only --expires 7d
 
 Options: `--comment-only`, `--expires`, `--for`
 
+### `rip asset patch <identifier>`
+
+Update an asset's title, description, alias, or metadata without creating a new version.
+
+```bash
+rip asset patch 550e8400-... --title "Better Title"
+rip asset patch my-post --description "One-line summary"
+rip asset patch my-post --description ""           # clear description
+rip asset patch my-post --alias new-slug
+rip asset patch my-post --metadata '{"featured":true}'
+```
+
+Options: `--title`, `--description`, `--alias`, `--metadata`
+
 ### `rip asset fork <identifier>`
 
 Fork an existing asset to create your own independent copy. Content is not duplicated — the fork's first version reuses the same storage.
@@ -123,6 +137,19 @@ Fetch metadata for any asset. No authentication required.
 ```bash
 rip asset get 550e8400-...
 ```
+
+### `rip asset cat <identifier>`
+
+Print an asset's content to stdout. Accepts a UUID or alias. Useful for piping into other commands or injecting content into an agent's context. No authentication required.
+
+```bash
+rip asset cat 550e8400-...
+rip asset cat my-post
+rip asset cat my-post --version abc123
+rip asset cat my-post | head -20
+```
+
+Options: `--version`
 
 ### `rip asset download <uuid>`
 

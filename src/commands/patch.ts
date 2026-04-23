@@ -7,10 +7,10 @@ import { getFrontendUrl } from '../config.js';
 
 export async function patch(
   identifier: string,
-  options: { metadata?: string; alias?: string },
+  options: { metadata?: string; alias?: string; title?: string; description?: string },
 ): Promise<void> {
-  if (!options.metadata && !options.alias) {
-    throw new CliError('INVALID_ARGS', 'Provide at least one of --metadata or --alias.');
+  if (!options.metadata && !options.alias && options.title === undefined && options.description === undefined) {
+    throw new CliError('INVALID_ARGS', 'Provide at least one of --title, --description, --metadata, or --alias.');
   }
 
   const body: Record<string, unknown> = {};
@@ -19,6 +19,12 @@ export async function patch(
   }
   if (options.alias) {
     body.alias = options.alias;
+  }
+  if (options.title !== undefined) {
+    body.title = options.title;
+  }
+  if (options.description !== undefined) {
+    body.description = options.description;
   }
 
   const { client, config } = requireAuthClient();

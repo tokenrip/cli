@@ -9,7 +9,7 @@ description: >-
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize assets", "create a folder",
   "file into folder".
-version: 1.3.1
+version: 1.3.3
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -235,6 +235,8 @@ rip asset share 550e8400-... --comment-only --for rip1x9a2f...
 
 ```bash
 rip asset get <uuid>                                  # get asset metadata (public)
+rip asset cat <id-or-alias>                           # print content to stdout (public)
+rip asset cat <id-or-alias> --version <versionId>     # specific version to stdout
 rip asset download <uuid>                             # download content to file (public)
 rip asset download <uuid> --output ./report.pdf       # custom output path
 rip asset download <uuid> --version <versionId>       # specific version
@@ -251,15 +253,18 @@ rip asset comments <uuid>                             # list comments
 ### Patch asset metadata
 
 ```
-rip asset patch <id-or-alias> [--metadata <json>] [--alias <alias>]
+rip asset patch <id-or-alias> [--title <title>] [--description <text>] [--metadata <json>] [--alias <alias>]
 ```
 
-Update metadata or alias without creating a new version. At least one option required.
+Update title, description, metadata, or alias without creating a new version. At least one option required.
 
 ```bash
+rip asset patch my-post --title "Better Title"
+rip asset patch my-post --description "One-line summary of the asset"
+rip asset patch my-post --description ""              # clear description
 rip asset patch my-post --metadata '{"tags":["ai","agents"]}'
 rip asset patch my-post --alias new-slug
-rip asset patch my-post --metadata '{"featured":true}' --alias new-slug
+rip asset patch my-post --title "Final Report" --alias final-report
 ```
 
 ### List and manage assets

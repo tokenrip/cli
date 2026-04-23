@@ -13,6 +13,8 @@ export const formatAssetCreated: Formatter = (data) => {
 
 export const formatAssetPatched: Formatter = (data) => {
   const lines = [`Patched: ${data.id}`];
+  if (data.title) lines.push(`  Title:    ${data.title}`);
+  if (data.description) lines.push(`  Desc:     ${data.description}`);
   if (data.alias) lines.push(`  Alias:    ${data.alias}`);
   if (data.url) lines.push(`  URL:      ${data.url}`);
   if (data.metadata) lines.push(`  Metadata: ${JSON.stringify(data.metadata)}`);
