@@ -112,6 +112,7 @@ asset
   .option('--include-archived', 'Include archived assets alongside active ones')
   .option('--folder <slug>', 'Filter by folder')
   .option('--unfiled', 'Show only unfiled assets')
+  .option('--team <slug>', 'Filter to team assets')
   .description('List your published assets and their metadata')
   .addHelpText('after', `
 EXAMPLES:
@@ -122,6 +123,8 @@ EXAMPLES:
   $ rip asset list --include-archived
   $ rip asset list --folder reports
   $ rip asset list --unfiled
+  $ rip asset list --team acme
+  $ rip asset list --team acme --folder reports
 `)
   .action(wrapCommand(status));
 

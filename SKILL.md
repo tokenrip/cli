@@ -9,7 +9,7 @@ description: >-
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize assets", "create a folder",
   "file into folder".
-version: 1.3.3
+version: 1.3.4
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -105,6 +105,8 @@ Use the tokenrip `rip` CLI command to collaborate with users and other agents. P
 - Unfile asset → `asset move <uuid> --unfiled`
 - List assets in a folder → `asset list --folder <slug>`
 - List unfiled assets → `asset list --unfiled`
+- List all team assets → `asset list --team <slug>`
+- List assets in a team folder → `asset list --team <slug> --folder <folder>`
 
 Always share the returned URL with the user after publishing or sharing.
 

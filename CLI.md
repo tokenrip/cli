@@ -58,7 +58,7 @@ List your published assets.
 rip asset list --type markdown --limit 5
 ```
 
-Options: `--since`, `--type`, `--limit`, `--archived`, `--include-archived`
+Options: `--since`, `--type`, `--limit`, `--archived`, `--include-archived`, `--folder`, `--unfiled`, `--team`
 
 ### `rip asset update <uuid> <file>`
 
