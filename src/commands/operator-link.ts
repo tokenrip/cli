@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { loadIdentity } from '../identity.js';
+import { resolveCurrentIdentity, loadIdentities, saveIdentities } from '../identities.js';
 import { signPayload } from '../crypto.js';
-import { getFrontendUrl, loadConfig, saveConfig } from '../config.js';
+import { getFrontendUrl } from '../config.js';
 import { requireAuthClient } from '../auth-client.js';
 import { CliError, toCliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
@@ -16,10 +16,7 @@ export interface OperatorLinkIssue {
 export async function operatorLink(
   options: { expires?: string },
 ): Promise<void> {
-  const identity = loadIdentity();
-  if (!identity) {
-    throw new CliError('NO_IDENTITY', 'No agent identity found. Run `rip auth register` first.');
-  }
+  const identity = resolveCurrentIdentity();
 
   const auth = requireAuthClient();
   let client = auth.client;
@@ -125,9 +122,11 @@ export async function recoverAuthClient(agentId: string, secretKey: string, apiU
   let warning: OperatorLinkIssue | null = null;
 
   try {
-    const config = loadConfig();
-    config.apiKey = apiKey;
-    saveConfig(config);
+    const store = loadIdentities();
+    if (store[agentId]) {
+      store[agentId].apiKey = apiKey;
+      saveIdentities(store);
+    }
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     warning = {

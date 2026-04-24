@@ -19,7 +19,7 @@ import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
 import { patch } from './commands/patch.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
-import { wrapCommand, setForceHuman, setConfigHuman } from './output.js';
+import { wrapCommand, setForceHuman, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 import { checkForUpdate } from './update-check.js';
@@ -33,8 +33,14 @@ program
   .description('Tokenrip — The collaboration layer for agents and operators')
   .version(version)
   .option('--human', 'Use human-readable output instead of JSON')
-  .hook('preAction', () => {
+  .option('--agent <name>', 'Use a specific agent identity for this command')
+  .hook('preAction', async (thisCommand) => {
     if (program.opts().human) setForceHuman(true);
+    const opts = thisCommand.optsWithGlobals();
+    if (opts.agent) {
+      const { setAgentOverride } = await import('./identities.js');
+      setAgentOverride(opts.agent);
+    }
   });
 
 // ── asset commands ──────────────────────────────────────────────────
@@ -254,12 +260,14 @@ asset
   .argument('<uuid>', 'Asset public ID')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
   .option('--version <versionId>', 'Download a specific version')
+  .option('--format <format>', 'Export format for collections: csv or json (default: csv)')
   .description('Download asset content to a local file')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset download 550e8400-e29b-41d4-a716-446655440000
   $ rip asset download 550e8400-... --output ./report.pdf
   $ rip asset download 550e8400-... --version abc123
+  $ rip asset download 550e8400-... --format json
 `)
   .action(wrapCommand(assetDownload));
 
@@ -482,12 +490,19 @@ auth
   .command('update')
   .option('--alias <alias>', 'Set or change agent alias (use empty string to clear)')
   .option('--metadata <json>', 'Set agent metadata (JSON object, replaces existing)')
+  .option('--tag <tag>', 'Set a short label / role (max 80 chars, empty to clear)')
+  .option('--description <text>', 'Set agent description (max 2000 chars, empty to clear)')
+  .option('--website <url>', 'Set website URL (empty to clear)')
+  .option('--email <email>', 'Set contact email (empty to clear)')
+  .option('--public <bool>', 'Make profile publicly visible (true/false)')
   .description('Update agent profile')
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth update --alias "research-bot"
-  $ rip auth update --alias ""
-  $ rip auth update --metadata '{"team": "data", "version": "2.0"}'
+  $ rip auth update --tag "Writer" --public true
+  $ rip auth update --description "Collaborative research agent"
+  $ rip auth update --website "https://example.com" --email "contact@example.com"
+  $ rip auth update --public false
 `)
   .action(wrapCommand(async (options) => {
     const { authUpdate } = await import('./commands/auth.js');
@@ -511,6 +526,60 @@ EXAMPLES:
   .action(wrapCommand(async (options) => {
     const { link } = await import('./commands/link.js');
     await link(options);
+  }));
+
+// ── agent commands ──────────────────────────────────────────────────
+const agent = program.command('agent').description('Manage agent identities');
+
+agent
+  .command('create')
+  .description('Create and register a new agent identity')
+  .option('--alias <name>', 'Human-readable alias')
+  .action(wrapCommand(async (options) => {
+    const { agentCreate } = await import('./commands/agent.js');
+    await agentCreate(options);
+  }));
+
+agent
+  .command('list')
+  .description('List local agent identities')
+  .action(wrapCommand(async () => {
+    const { agentList } = await import('./commands/agent.js');
+    const { formatAgentList } = await import('./formatters.js');
+    outputSuccess({ agents: agentList() }, formatAgentList);
+  }));
+
+agent
+  .command('use <name>')
+  .description('Switch the current agent identity')
+  .action(wrapCommand(async (name: string) => {
+    const { agentUse } = await import('./commands/agent.js');
+    agentUse(name);
+  }));
+
+agent
+  .command('remove <name>')
+  .description('Remove an agent identity from this machine')
+  .action(wrapCommand(async (name: string) => {
+    const { agentRemove } = await import('./commands/agent.js');
+    agentRemove(name);
+  }));
+
+agent
+  .command('export <name>')
+  .description('Export an agent identity encrypted for another agent')
+  .requiredOption('--to <agentId>', 'Target agent ID to encrypt for')
+  .action(wrapCommand(async (name: string, options: { to: string }) => {
+    const { agentExport } = await import('./commands/agent.js');
+    await agentExport(name, options);
+  }));
+
+agent
+  .command('import <file>')
+  .description('Import an encrypted agent identity (use - for stdin)')
+  .action(wrapCommand(async (file: string) => {
+    const { agentImport } = await import('./commands/agent.js');
+    await agentImport(file);
   }));
 
 // ── inbox command ──────────────────────────────────────────────────
@@ -574,16 +643,16 @@ EXAMPLES:
 const tourCmd = program
   .command('tour')
   .description('Interactive tour of Tokenrip')
-  .option('--agent', 'Print a one-shot script for agents to follow')
+  .option('--for-agent', 'Print a one-shot script for agents to follow')
   .addHelpText('after', `
 EXAMPLES:
   $ rip tour              # start or resume the human tour
   $ rip tour next         # advance to the next step
   $ rip tour next <id>    # advance, passing an ID captured from the previous step
   $ rip tour restart      # wipe state and start over
-  $ rip tour --agent      # print a one-shot script an agent can follow
+  $ rip tour --for-agent  # print a one-shot script an agent can follow
 `)
-  .action(wrapCommand((options: { agent?: boolean }) => tour(options)));
+  .action(wrapCommand((options: { forAgent?: boolean }) => tour({ agent: options.forAgent })));
 
 tourCmd
   .command('next [id]')

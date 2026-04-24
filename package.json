@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "CLI and library for AI agents to create and share assets via Tokenrip",
   "keywords": [
     "ai-agents",
@@ -45,6 +45,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@noble/curves": "^2.2.0",
     "axios": "^1.11.0",
     "bech32": "^2.0.0",
     "commander": "^12.1.0",

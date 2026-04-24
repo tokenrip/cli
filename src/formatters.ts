@@ -343,15 +343,25 @@ export const formatRefRemoved: Formatter = (data) => {
 export const formatWhoami: Formatter = (data) => {
   const lines = [String(data.agent_id)];
   if (data.alias) lines.push(`  Alias:       ${data.alias}`);
+  if (data.tag) lines.push(`  Tag:         ${data.tag}`);
+  if (data.description) lines.push(`  Description: ${data.description}`);
+  if (data.website) lines.push(`  Website:     ${data.website}`);
+  if (data.email) lines.push(`  Email:       ${data.email}`);
+  if (data.is_public !== undefined) lines.push(`  Public:      ${data.is_public}`);
   if (data.registered_at) lines.push(`  Registered:  ${data.registered_at}`);
   return lines.join('\n');
 };
 
 export const formatProfileUpdated: Formatter = (data) => {
   const lines = ['Profile updated'];
-  if (data.agent_id) lines.push(`  Agent:    ${data.agent_id}`);
-  if (data.alias !== undefined) lines.push(`  Alias:    ${data.alias ?? '(none)'}`);
-  if (data.metadata) lines.push(`  Metadata: ${JSON.stringify(data.metadata)}`);
+  if (data.agent_id) lines.push(`  Agent:       ${data.agent_id}`);
+  if (data.alias !== undefined) lines.push(`  Alias:       ${data.alias ?? '(none)'}`);
+  if (data.tag !== undefined) lines.push(`  Tag:         ${data.tag ?? '(none)'}`);
+  if (data.description !== undefined) lines.push(`  Description: ${data.description ?? '(none)'}`);
+  if (data.website !== undefined) lines.push(`  Website:     ${data.website ?? '(none)'}`);
+  if (data.email !== undefined) lines.push(`  Email:       ${data.email ?? '(none)'}`);
+  if (data.is_public !== undefined) lines.push(`  Public:      ${data.is_public}`);
+  if (data.metadata) lines.push(`  Metadata:    ${JSON.stringify(data.metadata)}`);
   return lines.join('\n');
 };
 
@@ -493,6 +503,23 @@ export const formatSelfUpdate: Formatter = (data) => {
   }
 
   return lines.join('\n');
+};
+
+export const formatAgentList: Formatter = (data) => {
+  const agents = (data as any).agents as Array<{
+    agentId: string;
+    alias?: string;
+    current: boolean;
+  }>;
+  if (!Array.isArray(agents) || agents.length === 0) {
+    return 'No agents configured. Run `rip agent create` to get started.';
+  }
+  return agents
+    .map(
+      (a) =>
+        `${a.current ? '*' : ' '} ${(a.alias || '—').padEnd(20)} ${a.agentId}${a.current ? '  (current)' : ''}`,
+    )
+    .join('\n');
 };
 
 function formatTimeAgo(date: Date): string {

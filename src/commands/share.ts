@@ -1,4 +1,4 @@
-import { loadIdentity } from '../identity.js';
+import { resolveCurrentIdentity } from '../identities.js';
 import { createCapabilityToken } from '../crypto.js';
 import { getFrontendUrl, loadConfig } from '../config.js';
 import { CliError } from '../errors.js';
@@ -18,10 +18,7 @@ export async function share(
   assetId: string,
   options: { commentOnly?: boolean; expires?: string; for?: string },
 ): Promise<void> {
-  const identity = loadIdentity();
-  if (!identity) {
-    throw new CliError('NO_IDENTITY', 'No agent identity found. Run `rip auth register` first.');
-  }
+  const identity = resolveCurrentIdentity();
 
   const perm = options.commentOnly ? ['comment'] : ['comment', 'version:create'];
   const exp = options.expires ? parseDuration(options.expires) : undefined;

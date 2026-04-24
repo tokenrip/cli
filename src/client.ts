@@ -25,6 +25,15 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   client.interceptors.response.use(
     (response) => response,
     (error: AxiosError<{ ok: boolean; error?: string; message?: string }>) => {
+      if (error.response?.data) {
+        const raw: unknown = error.response.data;
+        if (raw instanceof ArrayBuffer || Buffer.isBuffer(raw)) {
+          try {
+            const text = new TextDecoder().decode(raw as ArrayBuffer);
+            error.response.data = JSON.parse(text);
+          } catch { /* not JSON, leave as-is */ }
+        }
+      }
       if (error.response?.status === 401) {
         throw new CliError(
           'UNAUTHORIZED',

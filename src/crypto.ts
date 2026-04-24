@@ -28,6 +28,11 @@ export function publicKeyToAgentId(publicKeyHex: string): string {
   return bech32.encode(AGENT_HRP, words, BECH32_LIMIT);
 }
 
+export function agentIdToPublicKey(agentId: string): string {
+  const { words } = bech32.decode(agentId, BECH32_LIMIT);
+  return Buffer.from(bech32.fromWords(words)).toString('hex');
+}
+
 export interface CapabilityTokenOptions {
   sub: string;
   iss: string;

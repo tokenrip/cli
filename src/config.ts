@@ -2,11 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+export function getConfigDir(): string {
+  return process.env.TOKENRIP_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'tokenrip');
+}
+
 export const CONFIG_DIR = process.env.TOKENRIP_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'tokenrip');
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export interface TokenripConfig {
   configVersion?: number;
+  currentAgent?: string;
   apiKey?: string;
   apiUrl?: string;
   frontendUrl?: string;
@@ -21,7 +26,7 @@ function defaultConfig(): TokenripConfig {
 
 export function loadConfig(): TokenripConfig {
   try {
-    const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
+    const raw = fs.readFileSync(path.join(getConfigDir(), 'config.json'), 'utf-8');
     return JSON.parse(raw) as TokenripConfig;
   } catch {
     return defaultConfig();
@@ -29,8 +34,9 @@ export function loadConfig(): TokenripConfig {
 }
 
 export function saveConfig(config: TokenripConfig): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+  const dir = getConfigDir();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
 }
 
 export function getApiUrl(config: TokenripConfig): string {

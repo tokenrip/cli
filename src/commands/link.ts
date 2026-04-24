@@ -3,7 +3,8 @@ import { createHttpClient } from '../client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAuthKey } from '../formatters.js';
-import { loadIdentity, saveIdentity } from '../identity.js';
+import { addIdentity, loadIdentities } from '../identities.js';
+import { loadIdentity } from '../identity.js';
 
 export async function link(options: { alias: string; password: string; force?: boolean }): Promise<void> {
   const existing = loadIdentity();
@@ -25,14 +26,18 @@ export async function link(options: { alias: string; password: string; force?: b
 
   const { agent_id, public_key, secret_key, api_key } = data.data;
 
-  saveIdentity({
+  addIdentity({
     agentId: agent_id,
     publicKey: public_key,
     secretKey: secret_key,
+    apiKey: api_key,
   });
 
-  config.apiKey = api_key;
-  saveConfig(config);
+  const store = loadIdentities();
+  if (Object.keys(store).length === 1 || !config.currentAgent) {
+    config.currentAgent = agent_id;
+    saveConfig(config);
+  }
 
   outputSuccess(
     {

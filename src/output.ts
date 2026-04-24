@@ -56,8 +56,12 @@ export function wrapCommand<T extends (...args: any[]) => Promise<void>>(fn: T):
 }
 
 const ERROR_HINTS: Record<string, string> = {
-  NO_API_KEY: 'Run `rip auth register` to set up your agent.',
-  UNAUTHORIZED: 'Your API key has expired or been revoked. Run `rip auth register` to recover it.',
+  NO_API_KEY: 'Run `rip agent create` to set up your agent.',
+  UNAUTHORIZED: 'Your API key has expired or been revoked. Run `rip agent create` to recover it.',
+  NO_IDENTITY: 'Run `rip agent create` to set up your agent.',
+  IDENTITY_NOT_FOUND: 'Run `rip agent list` to see available agents.',
+  AMBIGUOUS_IDENTITY: 'Use `rip agent use <name>` to select an agent, or pass `--agent <name>`.',
+  LAST_IDENTITY: 'Create another agent first with `rip agent create`.',
   NETWORK_ERROR: 'Check your connection. Run `rip config show` to verify the API URL.',
   TIMEOUT: 'The server did not respond in time. Try again or check your connection.',
   FILE_NOT_FOUND: 'Check the file path and try again.',
