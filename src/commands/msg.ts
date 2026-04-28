@@ -15,6 +15,7 @@ export async function msgSend(
     type?: string;
     data?: string;
     inReplyTo?: string;
+    versionId?: string;
   },
 ): Promise<void> {
   const targets = [options.to, options.thread, options.asset].filter(Boolean);
@@ -31,6 +32,7 @@ export async function msgSend(
   if (options.intent) payload.intent = options.intent;
   if (options.type) payload.type = options.type;
   if (options.data) payload.data = parseJsonObjectOption(options.data, '--data');
+  if (options.versionId) payload.on_version_id = options.versionId;
 
   let endpoint: string;
   if (options.to) {

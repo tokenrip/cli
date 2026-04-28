@@ -1,11 +1,13 @@
 import { optionalAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { formatVersionList, formatVersionMetadata } from '../formatters.js';
+import { parseAssetId } from '../parse-asset-id.js';
 
 export async function assetVersions(
-  uuid: string,
+  input: string,
   options: { version?: string },
 ): Promise<void> {
+  const uuid = parseAssetId(input);
   const { client } = optionalAuthClient();
 
   if (options.version) {

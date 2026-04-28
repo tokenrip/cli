@@ -76,7 +76,7 @@ export const formatVersionCreated: Formatter = (data) => {
   const lines = [`Version ${data.version || '?'} published`];
   if (data.id) lines.push(`  Version ID: ${data.id}`);
   if (data.assetId) lines.push(`  Asset ID:   ${data.assetId}`);
-  if (data.label) lines.push(`  Label:      ${data.label}`);
+  if (data.description) lines.push(`  Description: ${data.description}`);
   return lines.join('\n');
 };
 
@@ -140,10 +140,10 @@ export const formatThreadList: Formatter = (data) => {
   const lines = [`${total} thread(s):\n`];
   for (const t of threads) {
     const state = t.state === 'closed' ? '[closed]' : '[open]  ';
-    const participants = `${t.participant_count} participant${t.participant_count !== 1 ? 's' : ''}`;
+    const collaborators = `${t.collaborator_count} collaborator${t.collaborator_count !== 1 ? 's' : ''}`;
     const preview = t.last_message_preview ? `"${t.last_message_preview}"` : '(no messages)';
     const ago = t.updated_at ? formatTimeAgo(new Date(t.updated_at)) : '';
-    lines.push(`  ${state}  ${t.thread_id}  ${participants.padEnd(16)}  ${preview}  ${ago}`);
+    lines.push(`  ${state}  ${t.thread_id}  ${collaborators.padEnd(16)}  ${preview}  ${ago}`);
   }
 
   return lines.join('\n');
@@ -233,9 +233,9 @@ export const formatThreadCreated: Formatter = (data) => {
   const lines = ['Thread created'];
   if (data.id) lines.push(`  ID:           ${data.id}`);
   if (data.url) lines.push(`  URL:          ${data.url}`);
-  const participants = data.participants as unknown as Array<{ agent_id?: string }>;
-  if (Array.isArray(participants)) {
-    lines.push(`  Participants: ${participants.length}`);
+  const collaborators = data.collaborators as unknown as Array<{ agent_id?: string }>;
+  if (Array.isArray(collaborators)) {
+    lines.push(`  Collaborators: ${collaborators.length}`);
   }
   const refs = data.refs as unknown as Array<{ type: string; target_id: string }>;
   if (Array.isArray(refs) && refs.length > 0) {
@@ -260,6 +260,22 @@ export const formatAssetMetadata: Formatter = (data) => {
   if (data.description) lines.push(`  Description: ${data.description}`);
   if (data.versionCount !== undefined) lines.push(`  Versions:    ${data.versionCount}`);
   if (data.creatorContext) lines.push(`  Context:     ${data.creatorContext}`);
+  if (data.isPublic !== undefined) lines.push(`  Public:      ${data.isPublic ? 'yes' : 'no'}`);
+
+  const folder = data.folder as { slug: string; teamSlug?: string } | null | undefined;
+  if (folder) {
+    const folderLabel = folder.teamSlug ? `${folder.slug} (team: ${folder.teamSlug})` : folder.slug;
+    lines.push(`  Folder:      ${folderLabel}`);
+  }
+
+  const teams = data.teams as string[] | undefined;
+  if (Array.isArray(teams) && teams.length > 0) {
+    lines.push(`  Teams:       ${teams.join(', ')}`);
+    lines.push(`  Modifiable:  all team members`);
+  } else {
+    lines.push(`  Modifiable:  owner only`);
+  }
+
   if (data.createdAt) lines.push(`  Created:     ${data.createdAt}`);
   return lines.join('\n');
 };
@@ -271,7 +287,7 @@ export const formatVersionList: Formatter = (data) => {
   }
   const lines = [`${versions.length} version(s):\n`];
   for (const v of versions) {
-    const label = v.label ? ` "${v.label}"` : '';
+    const label = v.description ? ` "${v.description}"` : '';
     const size = v.sizeBytes ? ` ${formatBytes(v.sizeBytes as number)}` : '';
     lines.push(`  v${v.version}  ${v.id}${label}${size}  ${v.createdAt}`);
   }
@@ -281,7 +297,7 @@ export const formatVersionList: Formatter = (data) => {
 export const formatVersionMetadata: Formatter = (data) => {
   const lines = [`Version ${data.version}`];
   if (data.id) lines.push(`  ID:       ${data.id}`);
-  if (data.label) lines.push(`  Label:    ${data.label}`);
+  if (data.description) lines.push(`  Description: ${data.description}`);
   if (data.mimeType) lines.push(`  MIME:     ${data.mimeType}`);
   if (data.sizeBytes) lines.push(`  Size:     ${formatBytes(data.sizeBytes as number)}`);
   if (data.createdAt) lines.push(`  Created:  ${data.createdAt}`);
@@ -291,10 +307,10 @@ export const formatVersionMetadata: Formatter = (data) => {
 export const formatThreadDetails: Formatter = (data) => {
   const lines = [`Thread ${data.id}`];
   if (data.created_by) lines.push(`  Created by:    ${data.created_by}`);
-  const participants = data.participants as unknown as Array<{ agent_id?: string; user_id?: string; role?: string }>;
-  if (Array.isArray(participants)) {
-    lines.push(`  Participants:  ${participants.length}`);
-    for (const p of participants) {
+  const collaborators = data.collaborators as unknown as Array<{ agent_id?: string; user_id?: string; role?: string }>;
+  if (Array.isArray(collaborators)) {
+    lines.push(`  Collaborators:  ${collaborators.length}`);
+    for (const p of collaborators) {
       const id = p.agent_id || p.user_id || 'anonymous';
       const role = p.role ? ` (${p.role})` : '';
       lines.push(`    - ${id}${role}`);
@@ -310,6 +326,23 @@ export const formatThreadDetails: Formatter = (data) => {
   if (data.resolution) lines.push(`  Resolution:    ${JSON.stringify(data.resolution)}`);
   if (data.created_at) lines.push(`  Created:       ${data.created_at}`);
   if (data.updated_at) lines.push(`  Updated:       ${data.updated_at}`);
+
+  const messages = data.messages as unknown as Array<{
+    sequence?: number;
+    body?: string;
+    intent?: string;
+    sender?: { agent_id?: string; user_id?: string };
+    created_at?: string;
+  }>;
+  if (Array.isArray(messages) && messages.length > 0) {
+    lines.push(`  Messages:      ${messages.length}`);
+    for (const m of messages) {
+      const sender = m.sender?.agent_id || m.sender?.user_id || 'anonymous';
+      const intent = m.intent ? `[${m.intent}] ` : '';
+      lines.push(`    #${m.sequence} ${sender}: ${intent}${m.body}`);
+    }
+  }
+
   return lines.join('\n');
 };
 
@@ -319,8 +352,8 @@ export const formatThreadClosed: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatParticipantAdded: Formatter = (data) => {
-  const lines = ['Participant added'];
+export const formatCollaboratorAdded: Formatter = (data) => {
+  const lines = ['Collaborator added'];
   if (data.thread_id) lines.push(`  Thread:  ${data.thread_id}`);
   if (data.agent_id) lines.push(`  Agent:   ${data.agent_id}`);
   return lines.join('\n');
@@ -409,10 +442,10 @@ export const formatSearchResults: Formatter = (data) => {
     if (r.type === 'thread') {
       const state = r.thread?.state === 'closed' ? '[closed]' : '[open]  ';
       const intent = r.thread?.last_intent ? `  last: ${r.thread.last_intent}` : '';
-      const participants = r.thread?.participant_count != null
-        ? `${r.thread.participant_count} participant${r.thread.participant_count !== 1 ? 's' : ''}`
+      const collaborators = r.thread?.collaborator_count != null
+        ? `${r.thread.collaborator_count} collaborator${r.thread.collaborator_count !== 1 ? 's' : ''}`
         : '';
-      lines.push(`  thread  ${state}  ${r.id}  ${participants.padEnd(16)}${intent}  ${ago}`);
+      lines.push(`  thread  ${state}  ${r.id}  ${collaborators.padEnd(16)}${intent}  ${ago}`);
       if (title !== '(untitled)') lines.push(`          ${title}`);
     } else {
       const assetType = (r.asset?.asset_type ?? '').padEnd(10);

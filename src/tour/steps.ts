@@ -107,7 +107,7 @@ export const STEPS: StepDefinition[] = [
         '',
         'Try this:',
         '',
-        `    rip --human thread create --participants tokenrip --asset ${state.assetId} \\`,
+        `    rip --human thread create --collaborators tokenrip --asset ${state.assetId} \\`,
         '        --title "Tour kickoff" --tour-welcome',
         '',
         "You'll see the thread ID and URL in the output.",

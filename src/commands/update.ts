@@ -13,7 +13,7 @@ type ContentType = (typeof VALID_TYPES)[number];
 export async function update(
   uuid: string,
   filePath: string,
-  options: { type?: string; label?: string; context?: string; dryRun?: boolean },
+  options: { type?: string; description?: string; context?: string; dryRun?: boolean },
 ): Promise<void> {
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
@@ -35,7 +35,7 @@ export async function update(
     // Content publish mode
     const content = fs.readFileSync(absPath, 'utf-8');
     const body: Record<string, unknown> = { type: options.type, content };
-    if (options.label) body.label = options.label;
+    if (options.description) body.description = options.description;
     if (options.context) body.creatorContext = options.context;
 
     const { data } = await client.post(`/v0/assets/${uuid}/versions`, body);
@@ -44,7 +44,7 @@ export async function update(
     // File upload mode
     const form = new FormData();
     form.append('file', fs.createReadStream(absPath));
-    if (options.label) form.append('label', options.label);
+    if (options.description) form.append('description', options.description);
     if (options.context) form.append('creatorContext', options.context);
 
     const { data } = await client.post(`/v0/assets/${uuid}/versions`, form, {

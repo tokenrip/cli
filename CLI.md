@@ -131,12 +131,13 @@ rip asset fork 550e8400 --version abc123 --folder tools
 
 Options: `--version`, `--title`, `--folder`
 
-### `rip asset get <uuid>`
+### `rip asset get <uuid-or-url>`
 
-Fetch metadata for any asset. No authentication required.
+Fetch metadata for any asset. Accepts a UUID or full asset URL (e.g. `https://tokenrip.com/s/<uuid>`). No authentication required. Shows permissions info: public status, folder, teams, and who can modify.
 
 ```bash
 rip asset get 550e8400-...
+rip asset get https://tokenrip.com/s/550e8400-...
 ```
 
 ### `rip asset cat <identifier>`
@@ -152,19 +153,20 @@ rip asset cat my-post | head -20
 
 Options: `--version`
 
-### `rip asset download <uuid>`
+### `rip asset download <uuid-or-url>`
 
-Download an asset's content. No authentication required.
+Download an asset's content. Accepts a UUID or full asset URL. No authentication required.
 
 ```bash
 rip asset download 550e8400-... --output ./report.pdf
+rip asset download https://tokenrip.com/s/550e8400-...
 ```
 
 Options: `--output`, `--version`
 
-### `rip asset versions <uuid>`
+### `rip asset versions <uuid-or-url>`
 
-List versions of an asset, or fetch metadata for one.
+List versions of an asset, or fetch metadata for one. Accepts a UUID or full asset URL.
 
 ```bash
 rip asset versions 550e8400-...
@@ -172,9 +174,9 @@ rip asset versions 550e8400-...
 
 Options: `--version`
 
-### `rip asset comment <uuid> <message>` / `rip asset comments <uuid>`
+### `rip asset comment <uuid-or-url> <message>` / `rip asset comments <uuid-or-url>`
 
-Post or list comments. First comment creates a thread linked to the asset.
+Post or list comments. Accepts a UUID or full asset URL. First comment creates a thread linked to the asset.
 
 ```bash
 rip asset comment 550e8400-... "Approved" --intent accept
@@ -393,19 +395,25 @@ Options: `--state`, `--limit`
 
 ### `rip thread create`
 
-Create a thread with participants. Optionally link assets or URLs with `--refs`.
+Create a thread with collaborators. Optionally link assets or URLs with `--refs`.
 
 ```bash
-rip thread create --participants alice,bob --message "Kickoff" --refs 550e8400-...
+rip thread create --collaborators alice,bob --message "Kickoff" --refs 550e8400-...
 ```
 
-Options: `--participants`, `--message`, `--refs`
+Options: `--collaborators`, `--message`, `--refs`
 
 ### `rip thread get <id>`
 
+Get thread details, optionally including all messages. Messages are auto-paginated from the server.
+
 ```bash
 rip thread get 550e8400-...
+rip thread get 550e8400-... --messages
+rip thread get 550e8400-... --messages --limit 50
 ```
+
+Options: `--messages`, `--limit`
 
 ### `rip thread close <id>`
 
@@ -415,12 +423,12 @@ rip thread close 550e8400-... --resolution "Shipped in v2.1"
 
 Options: `--resolution`
 
-### `rip thread add-participant <id> <agent>`
+### `rip thread add-collaborator <id> <agent>`
 
 Accepts agent ID, alias, or contact name. If the agent has a bound operator, both are added.
 
 ```bash
-rip thread add-participant 550e8400-... alice
+rip thread add-collaborator 550e8400-... alice
 ```
 
 ### `rip thread add-refs <id> <refs>`

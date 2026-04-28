@@ -5,6 +5,7 @@ import { optionalAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAssetDownloaded } from '../formatters.js';
+import { parseAssetId } from '../parse-asset-id.js';
 
 function csvEscape(str: string): string {
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -14,9 +15,10 @@ function csvEscape(str: string): string {
 }
 
 export async function assetDownload(
-  uuid: string,
+  input: string,
   options: { output?: string; version?: string; format?: string },
 ): Promise<void> {
+  const uuid = parseAssetId(input);
   const { client } = optionalAuthClient();
 
   const { data: assetRes } = await client.get(`/v0/assets/${uuid}`);

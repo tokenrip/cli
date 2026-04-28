@@ -1,9 +1,11 @@
 import { optionalAuthClient } from '../auth-client.js';
+import { parseAssetId } from '../parse-asset-id.js';
 
 export async function assetCat(
-  identifier: string,
+  input: string,
   options: { version?: string },
 ): Promise<void> {
+  const identifier = parseAssetId(input);
   const { client } = optionalAuthClient();
 
   const endpoint = options.version

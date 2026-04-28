@@ -1,14 +1,46 @@
+import { AxiosInstance } from 'axios';
 import { requireAuthClient } from '../auth-client.js';
 import { loadIdentity } from '../identity.js';
 import { createCapabilityToken } from '../crypto.js';
 import { getFrontendUrl, loadConfig } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatThreadCreated, formatThreadList, formatShareLink, formatThreadDetails, formatThreadClosed, formatParticipantAdded, formatRefsAdded, formatRefRemoved } from '../formatters.js';
+import { formatThreadCreated, formatThreadList, formatShareLink, formatThreadDetails, formatThreadClosed, formatCollaboratorAdded, formatRefsAdded, formatRefRemoved } from '../formatters.js';
 import { resolveRecipient, resolveRecipients } from '../contacts.js';
 import { resolveTeam } from '../teams.js';
 import { parseDuration } from './share.js';
 import { parseRefList } from '../refs.js';
+
+const PAGE_SIZE = 200;
+
+async function fetchAllMessages(
+  client: AxiosInstance,
+  threadId: string,
+  maxMessages?: number,
+): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = [];
+  let sinceSequence = 0;
+
+  while (true) {
+    const remaining = maxMessages !== undefined ? maxMessages - all.length : PAGE_SIZE;
+    const limit = Math.min(remaining, PAGE_SIZE);
+    if (limit <= 0) break;
+
+    const params: Record<string, string> = {
+      since_sequence: String(sinceSequence),
+      limit: String(limit),
+    };
+    const { data } = await client.get(`/v0/threads/${threadId}/messages`, { params });
+    const page = data.data as Record<string, unknown>[];
+    if (page.length === 0) break;
+
+    all.push(...page);
+    sinceSequence = page[page.length - 1].sequence as number;
+    if (page.length < limit) break;
+  }
+
+  return all;
+}
 
 export async function threadList(options: {
   state?: string;
@@ -25,7 +57,7 @@ export async function threadList(options: {
 }
 
 export async function threadCreate(options: {
-  participants?: string;
+  collaborators?: string;
   message?: string;
   refs?: string;
   asset?: string;
@@ -38,9 +70,9 @@ export async function threadCreate(options: {
   const payload: Record<string, unknown> = {};
   const metadata: Record<string, unknown> = {};
 
-  if (options.participants) {
-    payload.participants = resolveRecipients(
-      options.participants.split(',').map((p) => p.trim()),
+  if (options.collaborators) {
+    payload.collaborators = resolveRecipients(
+      options.collaborators.split(',').map((p) => p.trim()),
     );
   }
 
@@ -92,10 +124,20 @@ export async function threadShare(
   outputSuccess({ url, token, threadId, perm, exp: exp ?? null, aud: aud ?? null }, formatShareLink);
 }
 
-export async function threadGet(threadId: string): Promise<void> {
+export async function threadGet(
+  threadId: string,
+  options: { messages?: boolean; limit?: string },
+): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(`/v0/threads/${threadId}`);
-  outputSuccess(data.data, formatThreadDetails);
+  const thread = data.data;
+
+  if (options.messages) {
+    const limit = options.limit ? parseInt(options.limit, 10) : undefined;
+    thread.messages = await fetchAllMessages(client, threadId, limit);
+  }
+
+  outputSuccess(thread, formatThreadDetails);
 }
 
 export async function threadClose(
@@ -111,14 +153,14 @@ export async function threadClose(
   outputSuccess(data.data, formatThreadClosed);
 }
 
-export async function threadAddParticipant(
+export async function threadAddCollaborator(
   threadId: string,
   agent: string,
 ): Promise<void> {
   const { client } = requireAuthClient();
   const agentId = resolveRecipient(agent);
-  const { data } = await client.post(`/v0/threads/${threadId}/participants`, { agent_id: agentId });
-  outputSuccess(data.data, formatParticipantAdded);
+  const { data } = await client.post(`/v0/threads/${threadId}/collaborators`, { agent_id: agentId });
+  outputSuccess(data.data, formatCollaboratorAdded);
 }
 
 export async function threadAddRefs(
@@ -138,4 +180,10 @@ export async function threadRemoveRef(
   const { client } = requireAuthClient();
   await client.delete(`/v0/threads/${threadId}/refs/${refId}`);
   outputSuccess({ thread_id: threadId, ref_id: refId }, formatRefRemoved);
+}
+
+export async function threadDelete(threadId: string): Promise<void> {
+  const { client } = requireAuthClient();
+  await client.delete(`/v0/threads/${threadId}`);
+  outputSuccess({ id: threadId, deleted: true }, (data) => `Deleted thread: ${data.id}`);
 }

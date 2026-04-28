@@ -136,12 +136,14 @@ EXAMPLES:
 
 asset
   .command('delete')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<identifier>', 'Asset UUID, alias, or full URL (https://tokenrip.com/s/...)')
   .option('--dry-run', 'Show what would be deleted without deleting')
   .description('Permanently delete an asset and its shareable link')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset delete 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset delete my-alias
+  $ rip asset delete https://tokenrip.com/s/my-alias
 
 CAUTION:
   This permanently removes the asset and its shareable link.
@@ -151,11 +153,13 @@ CAUTION:
 
 asset
   .command('archive')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<identifier>', 'Asset UUID, alias, or full URL (https://tokenrip.com/s/...)')
   .description('Archive an asset (hidden from listings but still accessible by ID)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset archive 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset archive my-alias
+  $ rip asset archive https://tokenrip.com/s/my-alias
 
   Archived assets are hidden from listings and searches by default,
   but remain accessible by ID and can be unarchived at any time.
@@ -164,11 +168,12 @@ EXAMPLES:
 
 asset
   .command('unarchive')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<identifier>', 'Asset UUID, alias, or full URL (https://tokenrip.com/s/...)')
   .description('Unarchive an asset, restoring it to published state')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset unarchive 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset unarchive my-alias
 `)
   .action(wrapCommand(unarchiveAsset));
 
@@ -192,14 +197,14 @@ asset
   .argument('<uuid>', 'Asset public ID')
   .argument('<file>', 'File containing the new version content')
   .option('--type <type>', 'Content type (markdown, html, chart, code, text, json, csv) — omit for binary file upload')
-  .option('--label <text>', 'Human-readable label for this version')
+  .option('--description <text>', 'Version description')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--dry-run', 'Validate without publishing')
   .description('Publish a new version of an existing asset')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset update 550e8400-... report-v2.md --type markdown
-  $ rip asset update 550e8400-... chart.png --label "with axes fixed"
+  $ rip asset update 550e8400-... chart.png --description "with axes fixed"
 `)
   .action(wrapCommand(update));
 
@@ -247,17 +252,18 @@ Shows total asset count and storage bytes broken down by type.
 
 asset
   .command('get')
-  .argument('<uuid>', 'Asset public ID')
-  .description('View details about any asset')
+  .argument('<uuid>', 'Asset UUID or full URL')
+  .description('View details and permissions for any asset')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset get 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset get https://tokenrip.com/s/550e8400-e29b-41d4-a716-446655440000
 `)
   .action(wrapCommand(assetGet));
 
 asset
   .command('download')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<uuid>', 'Asset UUID or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
   .option('--version <versionId>', 'Download a specific version')
   .option('--format <format>', 'Export format for collections: csv or json (default: csv)')
@@ -273,7 +279,7 @@ EXAMPLES:
 
 asset
   .command('cat')
-  .argument('<identifier>', 'Asset public ID or alias')
+  .argument('<identifier>', 'Asset UUID, alias, or full URL')
   .option('--version <versionId>', 'Output a specific version')
   .description('Print asset content to stdout')
   .addHelpText('after', `
@@ -287,7 +293,7 @@ EXAMPLES:
 
 asset
   .command('versions')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<uuid>', 'Asset UUID or full URL')
   .option('--version <versionId>', 'Get metadata for a specific version')
   .description('List versions of an asset')
   .addHelpText('after', `
@@ -299,10 +305,11 @@ EXAMPLES:
 
 asset
   .command('comment')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<uuid>', 'Asset UUID or full URL')
   .argument('<message>', 'Comment text')
   .option('--intent <intent>', 'Message intent: propose, accept, reject, inform, request')
   .option('--type <type>', 'Message type')
+  .option('--version-id <uuid>', 'Asset version this comment refers to')
   .description('Post a comment on an asset')
   .addHelpText('after', `
 EXAMPLES:
@@ -313,7 +320,7 @@ EXAMPLES:
 
 asset
   .command('comments')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<uuid>', 'Asset UUID or full URL')
   .option('--since <sequence>', 'Show messages after this sequence number')
   .option('--limit <n>', 'Max messages to return')
   .description('List comments on an asset')
@@ -686,6 +693,7 @@ msg
   .option('--type <type>', 'Message type: meeting, review, notification, status_update')
   .option('--data <json>', 'Structured JSON payload')
   .option('--in-reply-to <id>', 'Message ID being replied to')
+  .option('--version-id <uuid>', 'Asset version this message refers to')
   .description('Send a message to an agent, thread, or asset')
   .addHelpText('after', `
 EXAMPLES:
@@ -738,7 +746,7 @@ EXAMPLES:
 
 thread
   .command('create')
-  .option('--participants <agents>', 'Comma-separated agent IDs, contact names, or aliases')
+  .option('--collaborators <agents>', 'Comma-separated agent IDs, contact names, or aliases')
   .option('--message <text>', 'Initial message body')
   .option('--refs <refs>', 'Comma-separated asset IDs or URLs to link')
   .option('--asset <uuid>', 'Convenience: link a single asset to the thread')
@@ -748,10 +756,10 @@ thread
   .description('Create a new thread')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip thread create --participants alice,bob
-  $ rip thread create --participants alice --message "Kickoff"
-  $ rip thread create --participants alice --refs 550e8400-...,https://figma.com/file/xyz
-  $ rip thread create --participants alice --asset 550e8400-... --title "Review"
+  $ rip thread create --collaborators alice,bob
+  $ rip thread create --collaborators alice --message "Kickoff"
+  $ rip thread create --collaborators alice --refs 550e8400-...,https://figma.com/file/xyz
+  $ rip thread create --collaborators alice --asset 550e8400-... --title "Review"
 `)
   .action(wrapCommand(async (options) => {
     const { threadCreate } = await import('./commands/thread.js');
@@ -761,14 +769,18 @@ EXAMPLES:
 thread
   .command('get')
   .argument('<id>', 'Thread ID')
-  .description('View thread details and participants')
+  .option('--messages', 'Include thread messages')
+  .option('--limit <n>', 'Max messages to fetch (requires --messages)')
+  .description('View thread details and collaborators')
   .addHelpText('after', `
 EXAMPLES:
   $ rip thread get 550e8400-e29b-41d4-a716-446655440000
+  $ rip thread get 550e8400-... --messages
+  $ rip thread get 550e8400-... --messages --limit 50
 `)
-  .action(wrapCommand(async (id) => {
+  .action(wrapCommand(async (id, options) => {
     const { threadGet } = await import('./commands/thread.js');
-    await threadGet(id);
+    await threadGet(id, options);
   }));
 
 thread
@@ -787,18 +799,18 @@ EXAMPLES:
   }));
 
 thread
-  .command('add-participant')
+  .command('add-collaborator')
   .argument('<id>', 'Thread ID')
   .argument('<agent>', 'Agent ID, alias, or contact name')
-  .description('Add a participant to a thread')
+  .description('Add a collaborator to a thread')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip thread add-participant 550e8400-... rip1x9a2f...
-  $ rip thread add-participant 550e8400-... alice
+  $ rip thread add-collaborator 550e8400-... rip1x9a2f...
+  $ rip thread add-collaborator 550e8400-... alice
 `)
   .action(wrapCommand(async (id, agent) => {
-    const { threadAddParticipant } = await import('./commands/thread.js');
-    await threadAddParticipant(id, agent);
+    const { threadAddCollaborator } = await import('./commands/thread.js');
+    await threadAddCollaborator(id, agent);
   }));
 
 thread
@@ -845,6 +857,19 @@ EXAMPLES:
   .action(wrapCommand(async (uuid, options) => {
     const { threadShare } = await import('./commands/thread.js');
     await threadShare(uuid, options);
+  }));
+
+thread
+  .command('delete')
+  .argument('<id>', 'Thread ID to permanently delete (admin only)')
+  .description('Hard-delete a thread and all its messages (admin only)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip thread delete 727fb4f2-29a5-4afc-840e-f606a783fade
+`)
+  .action(wrapCommand(async (id) => {
+    const { threadDelete } = await import('./commands/thread.js');
+    await threadDelete(id);
   }));
 
 // ── contacts commands ────────────────────────────────────────────────

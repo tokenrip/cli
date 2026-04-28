@@ -1,14 +1,17 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
+import { parseAssetId } from '../parse-asset-id.js';
 
-export async function archiveAsset(uuid: string): Promise<void> {
+export async function archiveAsset(identifier: string): Promise<void> {
+  const id = parseAssetId(identifier);
   const { client } = requireAuthClient();
-  await client.post(`/v0/assets/${uuid}/archive`);
-  outputSuccess({ id: uuid, state: 'archived' });
+  await client.post(`/v0/assets/${id}/archive`);
+  outputSuccess({ id, state: 'archived' });
 }
 
-export async function unarchiveAsset(uuid: string): Promise<void> {
+export async function unarchiveAsset(identifier: string): Promise<void> {
+  const id = parseAssetId(identifier);
   const { client } = requireAuthClient();
-  await client.post(`/v0/assets/${uuid}/unarchive`);
-  outputSuccess({ id: uuid, state: 'published' });
+  await client.post(`/v0/assets/${id}/unarchive`);
+  outputSuccess({ id, state: 'published' });
 }

@@ -97,20 +97,23 @@ rip asset list --archived              # show only archived assets
 rip asset list --include-archived      # include archived alongside active
 ```
 
-### `rip asset archive <uuid>`
+### `rip asset archive <identifier>`
 
-Archive an asset (hidden from listings, still accessible by ID).
+Archive an asset (hidden from listings, still accessible by ID). Accepts UUID, alias, or full URL.
 
 ```bash
 rip asset archive 550e8400-...
+rip asset archive my-alias
+rip asset archive https://tokenrip.com/s/my-alias
 ```
 
-### `rip asset unarchive <uuid>`
+### `rip asset unarchive <identifier>`
 
-Restore an archived asset to published state.
+Restore an archived asset to published state. Accepts UUID, alias, or full URL.
 
 ```bash
 rip asset unarchive 550e8400-...
+rip asset unarchive my-alias
 ```
 
 ### `rip asset fork <identifier>`
@@ -122,12 +125,14 @@ rip asset fork 550e8400-...
 rip asset fork my-alias --title "My Version" --folder tools
 ```
 
-### `rip asset delete <uuid>`
+### `rip asset delete <identifier>`
 
-Delete an asset permanently.
+Delete an asset permanently. Accepts UUID, alias, or full URL.
 
 ```bash
 rip asset delete 550e8400-...
+rip asset delete my-alias
+rip asset delete https://tokenrip.com/s/my-alias
 ```
 
 ### Share an asset
@@ -146,18 +151,18 @@ rip asset share 550e8400-... --comment-only --for rip1x9a2f...
 ### Fetch, download, and inspect
 
 ```bash
-rip asset get <uuid>                              # metadata (public)
-rip asset download <uuid>                         # download content to file
-rip asset download <uuid> --output ./report.pdf   # custom output path
-rip asset download <uuid> --version <versionId>   # specific version
-rip asset versions <uuid>                         # list all versions
+rip asset get <uuid-or-url>                       # metadata + permissions (public)
+rip asset download <uuid-or-url>                  # download content to file
+rip asset download <uuid-or-url> --output ./report.pdf # custom output path
+rip asset download <uuid-or-url> --version <versionId> # specific version
+rip asset versions <uuid-or-url>                  # list all versions
 ```
 
 ### Comments
 
 ```bash
-rip asset comment <uuid> "Looks good"            # post a comment
-rip asset comments <uuid>                         # list comments
+rip asset comment <uuid-or-url> "Looks good"     # post a comment
+rip asset comments <uuid-or-url>                  # list comments
 ```
 
 ### List and manage
@@ -253,12 +258,15 @@ rip inbox --clear                  # advance cursor after viewing
 ```bash
 rip thread list                     # all threads
 rip thread list --state open        # only open threads
-rip thread create --participants alice,bob --message "Kickoff"
-rip thread get <id>
+rip thread create --collaborators alice,bob --message "Kickoff"
+rip thread get <id>                                    # metadata + collaborators
+rip thread get <id> --messages                         # include all messages
+rip thread get <id> --messages --limit 50              # include up to 50 messages
 rip thread close <id>
 rip thread close <id> --resolution "Shipped in v2.1"
-rip thread add-participant <id> alice
+rip thread add-collaborator <id> alice
 rip thread share <id> --expires 7d
+rip thread delete <id>              # hard-delete thread + all messages (admin only)
 ```
 
 ## Team Commands
