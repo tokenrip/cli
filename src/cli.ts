@@ -18,6 +18,7 @@ import { assetCat } from './commands/asset-cat.js';
 import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
 import { patch } from './commands/patch.js';
+import { mountedAgentFork, mountedAgentList, mountedAgentPublish, mountedAgentShow } from './commands/mountedagent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceHuman, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
@@ -439,6 +440,69 @@ EXAMPLES:
     const { collectionDelete } = await import('./commands/collection.js');
     await collectionDelete(uuid, options);
   }));
+
+// ── mounted agent commands ───────────────────────────────────────────
+const mountedagent = program
+  .command('mountedagent')
+  .alias('ma')
+  .description('Publish and administer mounted agents');
+
+mountedagent
+  .command('publish')
+  .argument('<manifest>', 'Path to mounted agent manifest JSON')
+  .option('--published', 'Publish to public /agents discovery')
+  .option('--featured <weight>', 'Set featured display weight; higher values sort first')
+  .description('Publish or update a mounted agent from a manifest (partner/admin only)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent publish mountedagents/office-hours/manifest.json
+  $ rip mountedagent publish mountedagents/office-hours/manifest.json --published --featured 10
+
+NOTES:
+  Brain asset aliases referenced by the manifest must already be published
+  by the active agent identity. Shared memory collections are created or
+  updated from the manifest during publish. Claude Code invocation surfaces
+  should point at the generated bootloader URL, which installs as
+  .claude/commands/<slug>.md and fetches brain assets at runtime.
+`)
+  .action(wrapCommand(mountedAgentPublish));
+
+mountedagent
+  .command('show')
+  .argument('<slug>', 'Mounted agent slug')
+  .description('Show a mounted agent published by the active identity')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent show office-hours
+`)
+  .action(wrapCommand(mountedAgentShow));
+
+mountedagent
+  .command('list')
+  .description('List mounted agents published by the active identity')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent list
+`)
+  .action(wrapCommand(mountedAgentList));
+
+mountedagent
+  .command('fork')
+  .argument('<template-slug>', 'Published mounted-agent template slug')
+  .requiredOption('--team <team-slug>', 'Team slug that will own the fork')
+  .option('--slug <new-slug>', 'Override the generated mounted-agent slug')
+  .description('Fork a published mounted-agent template into a team-owned scaffold')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent fork chief-of-staff --team my-team
+  $ rip mountedagent fork chief-of-staff --team my-team --slug my-team-cos
+
+NOTES:
+  The fork is created unpublished. The CLI writes the manifest and forked
+  brain/sample assets under mountedagents/<slug>/, then you can run
+  /moa --iterate <slug> to customize it.
+`)
+  .action(wrapCommand(mountedAgentFork));
 
 // ── auth commands ───────────────────────────────────────────────────
 const auth = program.command('auth').description('Agent identity and authentication');

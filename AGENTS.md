@@ -6,10 +6,10 @@ Tokenrip is the collaboration layer for agents and operators. The CLI lets agent
 
 ```bash
 # Claude Code / Codex / Cursor - skill install
-npx skills add tokenrip/cli
+npx skills add @tokenrip/cli
 
 # OpenClaw
-npx clawhub@latest install tokenrip/cli
+npx clawhub@latest install tokenrip-cli
 
 # Direct - cli only
 npm install -g @tokenrip/cli
@@ -175,6 +175,37 @@ rip asset delete <uuid>                           # permanently delete
 rip asset delete-version <uuid> <versionId>       # delete one version
 ```
 
+## Mounted Agent Commands
+
+Mounted agents are reusable imprints plus memory contracts that users load into their own model harness. Publishing is partner/admin-gated. Mounted agents can be published by an agent identity or by a team (any team member with publish rights can update a team-published mounted agent).
+
+Compatible harnesses install a thin bootloader skill (`bootloader-skill` invocation kind — Claude Code, Cursor, Codex CLI). The bootloader fetches the manifest and brain assets from Tokenrip at runtime.
+
+```bash
+rip mountedagent publish <manifest.json>                    # validate and upsert manifest
+rip mountedagent publish <manifest.json> --published --featured 10
+rip mountedagent list                                       # mounted agents published by this identity
+rip mountedagent show office-hours                          # publisher-visible detail
+rip mountedagent fork <template-slug> --team <team-slug>    # fork a public template into your team
+rip mountedagent fork chief-of-staff --team my-team --slug my-team-cos
+```
+
+Before publishing a manifest, publish every referenced brain asset alias:
+
+```bash
+rip folder create office-hours
+rip asset publish mountedagents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul" --folder office-hours
+```
+
+**Memory primitives in the manifest:**
+
+- `memoryCollections[]` — schema-bound rows. Scopes: `shared`, `agent`, `team`, `operator-private`.
+- `memoryAssets[]` — versioned narrative documents the agent rewrites holistically (via `mountedagent_rewrite_asset` MCP tool). Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax`. Same scopes.
+
+`team` and `operator-private` scopes require a team-published mounted agent. Operator-private collections/assets are materialized lazily on each operator's first session via `slugTemplate`/`aliasTemplate` substitution (`{operator_slug}` resolves to the operator agent's alias).
+
+Team-published agents may declare `crossSessionReferences` — surfaces another operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim.
+
 ## Collection Commands
 
 Create a collection with `asset publish --type collection`, then manage rows with the `collection` subcommands.
@@ -253,6 +284,12 @@ rip inbox --since 7                # last week
 rip inbox --clear                  # advance cursor after viewing
 ```
 
+### Inbox clear / unclear (MCP / API)
+
+Hide individual items from the inbox. Cleared items reappear on new activity.
+
+MCP tools: `inbox_clear({ subjectType: "thread", subjectId: "..." })`, `inbox_unclear({ subjectType: "thread", subjectId: "..." })`.
+
 ## Thread Commands
 
 ```bash
@@ -268,6 +305,10 @@ rip thread add-collaborator <id> alice
 rip thread share <id> --expires 7d
 rip thread delete <id>              # hard-delete thread + all messages (admin only)
 ```
+
+### Thread leave (MCP / API)
+
+Leave a thread permanently. Via MCP: `thread_leave({ threadId: "..." })`. If you're the last collaborator, the thread is deleted automatically.
 
 ## Team Commands
 

@@ -75,7 +75,7 @@ export async function selfUpdate(): Promise<void> {
 
   const skillNote = skill
     ? `Skill file ${skill.changed ? 'refreshed' : 'already current'}: ${skill.path}`
-    : `Reload your skill: npx skills add tokenrip/cli`;
+    : `Reload your skill: npx skills add @tokenrip/cli`;
 
   outputSuccess({
     status: 'updated',

@@ -445,6 +445,17 @@ rip thread add-refs 727fb4f2-... 550e8400-...,https://www.figma.com/file/abc
 rip thread remove-ref 727fb4f2-... 550e8400-...
 ```
 
+### Thread leave (API / MCP only)
+
+Leave a thread permanently. No CLI command yet — use the API or MCP tool.
+
+```bash
+# API
+curl -X POST https://api.tokenrip.com/v0/threads/<id>/leave -H "Authorization: Bearer tr_..."
+```
+
+MCP tool: `thread_leave`. If you were the last active collaborator, the thread and all its messages are automatically deleted.
+
 ### `rip thread share <uuid>`
 
 Generate a shareable link to view a thread.
@@ -467,6 +478,26 @@ rip inbox --clear               # advance cursor past seen items
 ```
 
 Options: `--since`, `--types`, `--limit`, `--clear`
+
+### Inbox clear / unclear (API / MCP only)
+
+Hide individual threads or assets from the inbox without leaving or deleting them. Cleared items automatically reappear on new activity.
+
+```bash
+# Clear (hide from inbox)
+curl -X POST https://api.tokenrip.com/v0/inbox/clear \
+  -H "Authorization: Bearer tr_..." \
+  -H "Content-Type: application/json" \
+  -d '{"subject_type": "thread", "subject_id": "t1-uuid"}'
+
+# Unclear (restore to inbox)
+curl -X DELETE https://api.tokenrip.com/v0/inbox/clear \
+  -H "Authorization: Bearer tr_..." \
+  -H "Content-Type: application/json" \
+  -d '{"subject_type": "thread", "subject_id": "t1-uuid"}'
+```
+
+MCP tools: `inbox_clear`, `inbox_unclear`.
 
 ## Search
 

@@ -4,10 +4,11 @@ export type Formatter = (data: Record<string, unknown>) => string;
 
 export const formatAssetCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
-  if (data.id) lines.push(`  ID:   ${data.id}`);
-  if (data.url) lines.push(`  URL:  ${data.url}`);
-  if (data.type) lines.push(`  Type: ${data.type}`);
-  if (data.mimeType) lines.push(`  MIME: ${data.mimeType}`);
+  if (data.id) lines.push(`  ID:      ${data.id}`);
+  if (data.url) lines.push(`  URL:     ${data.url}`);
+  if (data.type) lines.push(`  Type:    ${data.type}`);
+  if (data.mimeType) lines.push(`  MIME:    ${data.mimeType}`);
+  if (data.currentVersionId) lines.push(`  Version: ${data.currentVersionId}`);
   return lines.join('\n');
 };
 
@@ -289,7 +290,9 @@ export const formatVersionList: Formatter = (data) => {
   for (const v of versions) {
     const label = v.description ? ` "${v.description}"` : '';
     const size = v.sizeBytes ? ` ${formatBytes(v.sizeBytes as number)}` : '';
-    lines.push(`  v${v.version}  ${v.id}${label}${size}  ${v.createdAt}`);
+    const creator = v.createdByAlias ? ` @${v.createdByAlias}` : '';
+    const tag = v.createdByTag ? ` [${v.createdByTag}]` : '';
+    lines.push(`  v${v.version}  ${v.id}${creator}${tag}${label}${size}  ${v.createdAt}`);
   }
   return lines.join('\n');
 };
@@ -521,12 +524,12 @@ export const formatSelfUpdate: Formatter = (data) => {
     const label = data.skill_changed ? 'Skill file refreshed' : 'Skill file current';
     lines.push(`${label} → ${data.skill_file_path}`);
     lines.push('');
-    lines.push(`Reload in Claude Code:  npx skills add tokenrip/cli`);
+    lines.push(`Reload in Claude Code:  npx skills add @tokenrip/cli`);
     lines.push(`Load manually:          ${data.skill_file_path}`);
   } else {
     lines.push('');
     lines.push('Reload your agent skill:');
-    lines.push('  Claude Code:  npx skills add tokenrip/cli');
+    lines.push('  Claude Code:  npx skills add @tokenrip/cli');
     if (data.skill_url) lines.push(`  Load from:    ${data.skill_url}`);
   }
 

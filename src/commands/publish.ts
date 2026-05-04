@@ -6,7 +6,7 @@ import { outputSuccess } from '../output.js';
 import { formatAssetCreated } from '../formatters.js';
 import { parseJsonOption, parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
-import { resolveTeams } from '../teams.js';
+import { resolveTeam, resolveTeams } from '../teams.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'collection', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
@@ -81,14 +81,18 @@ export async function publish(
     if (options.parent) body.parentAssetId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+    if (options.team) {
+      const teamSlugs = options.team.split(',').map((t) => t.trim());
+      body.teams = resolveTeams(teamSlugs);
+      body.team = resolveTeam(teamSlugs[0]);
+    }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { data } = await client.post('/v0/assets', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
     outputSuccess(
-      { id: data.data.id, url, title: data.data.title, type: data.data.type },
+      { id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId },
       formatAssetCreated,
     );
     return;
@@ -120,14 +124,18 @@ export async function publish(
     if (options.parent) body.parentAssetId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+    if (options.team) {
+      const teamSlugs = options.team.split(',').map((t) => t.trim());
+      body.teams = resolveTeams(teamSlugs);
+      body.team = resolveTeam(teamSlugs[0]);
+    }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/assets', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type }, formatAssetCreated);
+    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatAssetCreated);
     return;
   }
 
@@ -157,13 +165,17 @@ export async function publish(
     if (options.parent) body.parentAssetId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+    if (options.team) {
+      const teamSlugs = options.team.split(',').map((t) => t.trim());
+      body.teams = resolveTeams(teamSlugs);
+      body.team = resolveTeam(teamSlugs[0]);
+    }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { data } = await client.post('/v0/assets', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type }, formatAssetCreated);
+    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatAssetCreated);
     return;
   }
 
@@ -192,7 +204,11 @@ export async function publish(
   if (options.parent) body.parentAssetId = options.parent;
   if (options.context) body.creatorContext = options.context;
   if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-  if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+  if (options.team) {
+    const teamSlugs = options.team.split(',').map((t) => t.trim());
+    body.teams = resolveTeams(teamSlugs);
+    body.team = resolveTeam(teamSlugs[0]);
+  }
   if (options.folder) body.folder = options.folder;
   if (parsedMetadata) body.metadata = parsedMetadata;
 
@@ -204,5 +220,6 @@ export async function publish(
     url,
     title: data.data.title,
     type: data.data.type,
+    currentVersionId: data.data.currentVersionId,
   }, formatAssetCreated);
 }

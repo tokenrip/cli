@@ -11,9 +11,17 @@ export interface AuthContext {
 }
 
 export function requireAuthClient(): AuthContext {
-  const identity = resolveCurrentIdentity();
   const config = loadConfig();
-  const apiKey = process.env.TOKENRIP_API_KEY || identity.apiKey;
+  const envApiKey = process.env.TOKENRIP_API_KEY;
+
+  if (envApiKey) {
+    const apiUrl = getApiUrl(config);
+    const client = createHttpClient({ baseUrl: apiUrl, apiKey: envApiKey });
+    return { client, config, apiUrl };
+  }
+
+  const identity = resolveCurrentIdentity();
+  const apiKey = identity.apiKey;
   if (!apiKey) {
     throw new CliError(
       'NO_API_KEY',
