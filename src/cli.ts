@@ -20,7 +20,7 @@ import { assetComment, assetComments } from './commands/asset-comments.js';
 import { patch } from './commands/patch.js';
 import { mountedAgentFork, mountedAgentList, mountedAgentPublish, mountedAgentShow } from './commands/mountedagent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
-import { wrapCommand, setForceHuman, setConfigHuman, outputSuccess } from './output.js';
+import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 import { checkForUpdate } from './update-check.js';
@@ -33,10 +33,10 @@ program
   .name('rip')
   .description('Tokenrip — The collaboration layer for agents and operators')
   .version(version)
-  .option('--human', 'Use human-readable output instead of JSON')
+  .option('--json', 'Use JSON output instead of human-readable')
   .option('--agent <name>', 'Use a specific agent identity for this command')
   .hook('preAction', async (thisCommand) => {
-    if (program.opts().human) setForceHuman(true);
+    if (program.opts().json) setForceJson(true);
     const opts = thisCommand.optsWithGlobals();
     if (opts.agent) {
       const { setAgentOverride } = await import('./identities.js');
@@ -180,7 +180,7 @@ EXAMPLES:
 
 asset
   .command('fork')
-  .argument('<identifier>', 'Asset public ID or alias to fork')
+  .argument('<identifier>', 'Asset public ID, alias, or scoped alias (~owner/alias) to fork')
   .option('--version <versionId>', 'Fork a specific version (defaults to latest)')
   .option('--title <title>', 'Title for the forked asset (defaults to original)')
   .option('--folder <folder>', 'Folder slug to file the fork into')
@@ -189,6 +189,7 @@ asset
 EXAMPLES:
   $ rip asset fork 550e8400-e29b-41d4-a716-446655440000
   $ rip asset fork my-skill --title "My Custom Skill"
+  $ rip asset fork '~alice/dashboard' --title "My Dashboard"
   $ rip asset fork 550e8400 --version abc123 --folder tools
 `)
   .action(wrapCommand(forkAsset));
@@ -253,18 +254,20 @@ Shows total asset count and storage bytes broken down by type.
 
 asset
   .command('get')
-  .argument('<uuid>', 'Asset UUID or full URL')
+  .argument('<identifier>', 'Asset UUID, alias, scoped alias (~owner/alias), or full URL')
   .description('View details and permissions for any asset')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset get 550e8400-e29b-41d4-a716-446655440000
+  $ rip asset get my-alias
+  $ rip asset get '~alice/dashboard'
   $ rip asset get https://tokenrip.com/s/550e8400-e29b-41d4-a716-446655440000
 `)
   .action(wrapCommand(assetGet));
 
 asset
   .command('download')
-  .argument('<uuid>', 'Asset UUID or full URL')
+  .argument('<identifier>', 'Asset UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
   .option('--version <versionId>', 'Download a specific version')
   .option('--format <format>', 'Export format for collections: csv or json (default: csv)')
@@ -280,13 +283,14 @@ EXAMPLES:
 
 asset
   .command('cat')
-  .argument('<identifier>', 'Asset UUID, alias, or full URL')
+  .argument('<identifier>', 'Asset UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--version <versionId>', 'Output a specific version')
   .description('Print asset content to stdout')
   .addHelpText('after', `
 EXAMPLES:
   $ rip asset cat 550e8400-e29b-41d4-a716-446655440000
   $ rip asset cat my-post
+  $ rip asset cat '~alice/dashboard'
   $ rip asset cat my-post --version abc123
   $ rip asset cat my-post | head -20
 `)
@@ -452,11 +456,13 @@ mountedagent
   .argument('<manifest>', 'Path to mounted agent manifest JSON')
   .option('--published', 'Publish to public /agents discovery')
   .option('--featured <weight>', 'Set featured display weight; higher values sort first')
+  .option('--team <slug>', 'Publish as a team-owned mounted agent (required for team/operator-private scope manifests)')
   .description('Publish or update a mounted agent from a manifest (partner/admin only)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip mountedagent publish mountedagents/office-hours/manifest.json
   $ rip mountedagent publish mountedagents/office-hours/manifest.json --published --featured 10
+  $ rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
 
 NOTES:
   Brain asset aliases referenced by the manifest must already be published
@@ -464,6 +470,7 @@ NOTES:
   updated from the manifest during publish. Claude Code invocation surfaces
   should point at the generated bootloader URL, which installs as
   .claude/commands/<slug>.md and fetches brain assets at runtime.
+  Team-scoped and operator-private manifests require --team.
 `)
   .action(wrapCommand(mountedAgentPublish));
 
@@ -685,7 +692,7 @@ EXAMPLES:
 program
   .command('search')
   .argument('<query>', 'Search text')
-  .description('Search across threads and assets')
+  .description('Full-text search across threads and assets')
   .option('--type <type>', 'Filter: thread or asset')
   .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
@@ -1075,20 +1082,20 @@ EXAMPLES:
 config
   .command('set-output')
   .argument('<format>', 'Output format: json or human')
-  .description('Set the default output format (json is the default)')
+  .description('Set the default output format (human-readable is the default)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip config set-output human   # human-readable output by default
-  $ rip config set-output json    # reset to JSON default
+  $ rip config set-output json    # JSON output by default
+  $ rip config set-output human   # reset to human-readable default
 
-  Override per-command with: rip --human <command>
-  Override via env var with: TOKENRIP_OUTPUT=human rip <command>
+  Override per-command with: rip --json <command>
+  Override via env var with: TOKENRIP_OUTPUT=json rip <command>
 
   Priority (highest to lowest):
-    1. --human flag
+    1. --json flag
     2. TOKENRIP_OUTPUT env var
     3. rip config set-output (this command)
-    4. json (built-in default)
+    4. human-readable (built-in default)
 `)
   .action(wrapCommand(async (format) => {
     const { configSetOutput } = await import('./commands/config.js');

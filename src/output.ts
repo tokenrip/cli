@@ -1,11 +1,11 @@
 import { CliError, toCliError } from './errors.js';
 import type { Formatter } from './formatters.js';
 
-let forceHuman = false;
+let forceJson = false;
 let configHuman = false;
 
-export function setForceHuman(value: boolean): void {
-  forceHuman = value;
+export function setForceJson(value: boolean): void {
+  forceJson = value;
 }
 
 export function setConfigHuman(value: boolean): void {
@@ -13,11 +13,11 @@ export function setConfigHuman(value: boolean): void {
 }
 
 function isJsonMode(): boolean {
-  if (forceHuman) return false;
-  if (process.env.TOKENRIP_OUTPUT === 'human') return false;
+  if (forceJson) return true;
   if (process.env.TOKENRIP_OUTPUT === 'json') return true;
+  if (process.env.TOKENRIP_OUTPUT === 'human') return false;
   if (configHuman) return false;
-  return true;
+  return false;
 }
 
 export function outputSuccess(data: Record<string, unknown>, formatter?: Formatter): void {

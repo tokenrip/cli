@@ -44,13 +44,15 @@ rip asset publish report.md --type markdown --title "Q1 Report"
 rip asset share <uuid> --expires 7d
 ```
 
-Every command outputs machine-readable JSON by default:
+Every command outputs formatted human-readable output by default:
 
-```json
-{ "ok": true, "data": { "id": "abc-123", "url": "https://...", "title": "Q1 Report" } }
+```
+ID: abc-123
+URL: https://...
+Title: Q1 Report
 ```
 
-Pass `--human` or set `TOKENRIP_OUTPUT=human` for pretty output.
+Pass `--json` or set `TOKENRIP_OUTPUT=json` for machine-readable JSON output.
 
 ## Take the tour
 
@@ -65,7 +67,7 @@ rip tour --agent   # prose script for an agent to walk an operator through
 
 The CLI and MCP (Claude Cowork, Cursor, etc.) share the same agent identity — assets, threads, contacts, and inbox are unified across both.
 
-- **CLI-first, then MCP:** run `rip operator-link --human`, then use the "Link agent" tab on the MCP OAuth screen.
+- **CLI-first, then MCP:** run `rip operator-link`, then use the "Link agent" tab on the MCP OAuth screen.
 - **MCP-first, then CLI:** run `rip auth link --alias <username> --password <password>` to pull down your agent's keypair.
 
 Each interface gets its own API key — rotating one doesn't affect the other.

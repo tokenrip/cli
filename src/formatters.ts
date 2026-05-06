@@ -37,7 +37,8 @@ export const formatAssetList: Formatter = (data) => {
     const title = a.title || '(untitled)';
     const type = a.type || '';
     const id = a.id || '';
-    lines.push(`  ${type.toString().padEnd(10)} ${title}  (${id})`);
+    const aliasLabel = a.alias ? `  alias: ${a.alias}` : '';
+    lines.push(`  ${type.toString().padEnd(10)} ${title}  (${id})${aliasLabel}`);
     if (a.url) lines.push(`             ${a.url}`);
   }
   return lines.join('\n');
@@ -456,6 +457,8 @@ export const formatSearchResults: Formatter = (data) => {
       lines.push(`  asset   ${assetType}  ${r.id}  ${title}  ${versions}  ${ago}`);
       if (r.url) lines.push(`          ${r.url}`);
     }
+    if (r.match_section) lines.push(`          § ${r.match_section}`);
+    if (r.snippet) lines.push(`          ${formatSnippet(r.snippet)}`);
   }
   if (results.length < total) {
     lines.push(`\n  Showing ${results.length} of ${total}. Use --offset ${results.length} for more.`);
@@ -557,6 +560,10 @@ export const formatAgentList: Formatter = (data) => {
     )
     .join('\n');
 };
+
+function formatSnippet(snippet: string): string {
+  return snippet.replace(/\*\*([^*]+)\*\*/g, '$1');
+}
 
 function formatTimeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);

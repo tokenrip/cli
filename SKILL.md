@@ -9,7 +9,7 @@ description: >-
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize assets", "create a folder",
   "file into folder", "publish a mounted agent", "administer a mounted agent".
-version: 1.3.9
+version: 1.3.11
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -218,7 +218,7 @@ rip asset upload report.pdf --title "Q1 Analysis" --context "research-agent/summ
 ### Publish structured content
 
 ```
-rip asset publish [file] --type <type> [--content <string>] [--title <title>] [--metadata <json>] [--parent <uuid>] [--context <text>] [--refs <urls>] [--dry-run]
+rip asset publish [file] --type <type> [--content <string>] [--title <title>] [--alias <alias>] [--metadata <json>] [--parent <uuid>] [--context <text>] [--refs <urls>] [--dry-run]
 ```
 
 Valid types: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `collection`
@@ -286,10 +286,14 @@ rip asset share 550e8400-... --comment-only --for rip1x9a2f...
 
 ### Fetch and download assets
 
+Commands that accept `<id-or-alias>` support scoped aliases: `~agent/alias` (agent-scoped) and `_team/alias` (team-scoped). Bare aliases resolve own assets first, then team assets.
+
 ```bash
 rip asset get <uuid-or-url>                           # get asset metadata (public)
+rip asset get ~alice/dashboard                        # scoped alias lookup
 rip asset cat <id-or-alias>                           # print content to stdout (public)
 rip asset cat <id-or-alias> --version <versionId>     # specific version to stdout
+rip asset cat _acme/report                            # team-scoped alias
 rip asset download <uuid-or-url>                      # download content to file (public)
 rip asset download <uuid-or-url> --output ./report.pdf # custom output path
 rip asset download <uuid-or-url> --version <versionId> # specific version
@@ -309,7 +313,7 @@ rip asset comments <uuid-or-url>                      # list comments
 rip asset patch <id-or-alias> [--title <title>] [--description <text>] [--metadata <json>] [--alias <alias>]
 ```
 
-Update title, description, metadata, or alias without creating a new version. At least one option required.
+Update title, description, metadata, or alias without creating a new version. At least one option required. The `--alias` flag sets a per-owner unique alias (two agents can use the same alias independently).
 
 ```bash
 rip asset patch my-post --title "Better Title"
@@ -443,7 +447,9 @@ rip inbox --clear                 # advance cursor after viewing
 
 ## Search
 
-Search across threads and assets by text, state, type, and other filters.
+Full-text search across threads and assets. Searches inside asset content (markdown, HTML, code, text) and thread message bodies. Results are ranked by relevance and include snippets showing where the match occurred.
+
+Supports web-search syntax: `"exact phrase"`, `term1 OR term2`, `-excluded`.
 
 ```bash
 rip search "quarterly report"
@@ -616,19 +622,19 @@ After updating the CLI, refresh your skill file:
 
 ## Output Format
 
-All commands output JSON to stdout.
+All commands output human-readable text to stdout by default. Use `--json` for machine-readable JSON output.
 
-**Success:**
+**JSON success** (`rip --json <command>`):
 ```json
 { "ok": true, "data": { "id": "uuid", "url": "https://...", "title": "...", "type": "...", "currentVersionId": "uuid" } }
 ```
 
-**Error (exit code 1):**
+**JSON error** (exit code 1):
 ```json
 { "ok": false, "error": "ERROR_CODE", "message": "Human-readable description" }
 ```
 
-Always parse `data.url` from a successful response and present it to the user.
+Always parse `data.url` from a successful JSON response and present it to the user.
 
 ## Provenance Options
 

@@ -6,7 +6,7 @@ import { outputSuccess } from '../output.js';
 
 export async function mountedAgentPublish(
   manifestPath: string,
-  options: { published?: boolean; featured?: string },
+  options: { published?: boolean; featured?: string; team?: string },
 ): Promise<void> {
   const manifest = readManifest(manifestPath);
   const body: Record<string, unknown> = { manifest };
@@ -18,6 +18,7 @@ export async function mountedAgentPublish(
     }
     body.isFeatured = parsed;
   }
+  if (options.team) body.publisherTeamId = options.team;
 
   const { client } = requireAuthClient();
   const { data } = await client.post('/v0/mountedagents', body);
