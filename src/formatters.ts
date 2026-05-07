@@ -573,6 +573,53 @@ function formatTimeAgo(date: Date): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+// ── Mounted-agents v2 ────────────────────────────────────────────────
+
+export const formatMount: Formatter = (data) => {
+  const lines = [`Mount: ${data.name || '(default)'}`];
+  if (data.id) lines.push(`  ID:           ${data.id}`);
+  if (data.imprintSlug) lines.push(`  Imprint:      ${data.imprintSlug}`);
+  if (data.ownerAgentId) lines.push(`  Owner agent:  ${data.ownerAgentId}`);
+  if (data.teamId) lines.push(`  Team:         ${data.teamId}`);
+  if (data.createdByAgentId) lines.push(`  Created by:   ${data.createdByAgentId}`);
+  if (data.createdAt) lines.push(`  Created:      ${data.createdAt}`);
+  return lines.join('\n');
+};
+
+export const formatMountList: Formatter = (data) => {
+  const mounts = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(mounts) || mounts.length === 0) return 'No mounts.';
+  const lines = [`${mounts.length} mount(s):\n`];
+  for (const m of mounts) {
+    const label = m.name || '(default)';
+    const scope = m.teamId ? `team:${m.teamId}` : 'personal';
+    lines.push(`  ${String(label).padEnd(24)} ${scope}`);
+    if (m.id) lines.push(`    id:      ${m.id}`);
+    if (m.imprintSlug) lines.push(`    imprint: ${m.imprintSlug}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatUnmounted: Formatter = (data) => {
+  return `Unmounted: ${data.id}`;
+};
+
+export const formatPublisher: Formatter = (data) => {
+  const lines = [`Publisher: ${data.displayName || '(unnamed)'}`];
+  if (data.id) lines.push(`  ID:           ${data.id}`);
+  if (data.status) lines.push(`  Status:       ${data.status}`);
+  if (typeof data.isApproved === 'boolean') lines.push(`  Approved:     ${data.isApproved ? 'yes' : 'no'}`);
+  if (data.contactEmail) lines.push(`  Contact:      ${data.contactEmail}`);
+  if (data.websiteUrl) lines.push(`  Website:      ${data.websiteUrl}`);
+  if (data.agentId) lines.push(`  Owner agent:  ${data.agentId}`);
+  if (data.teamId) lines.push(`  Owner team:   ${data.teamId}`);
+  if (data.bio) lines.push(`  Bio:          ${data.bio}`);
+  if (data.rejectionReason) lines.push(`  Reject why:   ${data.rejectionReason}`);
+  // Friendly "no publisher yet" shape from the CLI:
+  if (data.status === 'none' && data.message) lines.push(`  ${data.message}`);
+  return lines.join('\n');
+};
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];

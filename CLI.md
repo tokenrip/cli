@@ -15,6 +15,8 @@
 - [Contacts commands](#contacts-commands)
 - [Team commands](#team-commands)
 - [Folder commands](#folder-commands)
+- [Agent commands (mounted agents)](#agent-commands-mounted-agents)
+- [Publisher commands](#publisher-commands)
 - [Operator commands](#operator-commands)
 - [Config commands](#config-commands)
 - [Provenance tracking](#provenance-tracking)
@@ -700,6 +702,84 @@ rip asset list --folder research-notes
 rip asset list --unfiled
 ```
 
+## Agent commands (mounted agents)
+
+Manage Tokenrip agent imprints — reusable instructions + memory schemas that load into your own model harness. The `rip ma` alias is also available.
+
+### `rip mountedagent publish <manifest>`
+
+Publish or update an imprint from a manifest. Tier 1 (personal/team use) is open to anyone. Tier 2 (public listing on `/agents`) requires `--publish` and an approved Publisher.
+
+```bash
+rip mountedagent publish mountedagents/office-hours/manifest.json
+rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
+rip mountedagent publish mountedagents/office-hours/manifest.json --publish --featured 10
+```
+
+Options: `--publish` (Tier 2), `--published` (deprecated alias), `--featured <n>`, `--team <slug>`.
+
+### `rip mountedagent fork <template-slug>`
+
+Fork a published imprint. Personal by default; pass `--team` for a team fork.
+
+```bash
+rip mountedagent fork chief-of-staff                    # personal (default)
+rip mountedagent fork chief-of-staff --team acme        # team fork
+rip mountedagent fork chief-of-staff --team acme --slug acme-cos
+```
+
+Options: `--team <slug>`, `--slug <new-slug>`.
+
+### `rip mountedagent list` / `show <slug>`
+
+List or inspect imprints owned by the active identity.
+
+### `rip mountedagent mount <slug>`
+
+Create an explicit mount of an imprint. Personal by default; `--team` makes it collaborative; `--name` is required for a *second* mount of the same imprint by the same owner.
+
+```bash
+rip mountedagent mount chief-of-staff
+rip mountedagent mount chief-of-staff --team acme --name engineering
+```
+
+Options: `--team <slug>`, `--name <label>`.
+
+### `rip mountedagent mounts`
+
+List all mounts the caller can access (personal mounts they own + team mounts in current teams).
+
+### `rip mountedagent mount-rename <mount-id> <new-name>`
+
+Rename a mount. Personal: only the owner. Team: any current member.
+
+### `rip mountedagent unmount <mount-id>`
+
+Destroy a mount and its mount-owned memory (cascade). Irreversible. Historical sessions and artifacts remain for audit.
+
+## Publisher commands
+
+A Publisher is the public-facing brand for listed (Tier 2) imprints. Tokenrip approves Publishers; once approved, the owner can self-serve `--publish` on any of their imprints.
+
+### `rip publisher apply`
+
+Submit a Publisher application.
+
+```bash
+rip publisher apply \
+  --display-name "Alice Co" \
+  --email alice@example.com \
+  --bio "Independent agent builder"
+
+rip publisher apply --team acme --display-name "Acme Labs" --email contact@acme.example
+```
+
+Required: `--display-name`, `--email`. Optional: `--bio`, `--website`, `--team`.
+
+### `rip publisher show`
+
+Show your Publisher application and current status (pending / approved / rejected).
+
 ## Operator commands
 
 ### `rip operator-link`
@@ -856,3 +936,12 @@ All commands output human-readable text to stdout by default. Use `--json` or se
 | `AUTH_FAILED` | Could not create API key |
 | `CONTACT_NOT_FOUND` | Contact name not in address book |
 | `INVALID_AGENT_ID` | Agent ID doesn't start with `rip1` |
+| `PUBLISHER_REQUIRED` | Tier 2 publish (`--publish`) without an approved Publisher |
+| `PUBLISHER_NOT_FOUND` | Expected Publisher row doesn't exist |
+| `PUBLISHER_LOCKED` | Cannot edit an approved Publisher's application fields |
+| `PUBLISHER_ALREADY_EXISTS` | Caller (or team) already has a Publisher |
+| `MOUNT_NAME_TAKEN` | Mount name conflict for this owner/imprint |
+| `IMPRINT_NOT_LOADABLE` | Caller is not allowed to load this imprint |
+| `INVALID_LOAD_PARAMS` | `mountedagent_load` got both/neither of `slug` / `mountId` |
+| `ARTIFACT_NOT_PERMITTED` | Imprint forbids artifacts; harness submitted one |
+| `ADMIN_REQUIRED` | Approve / reject / revoke is platform-admin gated |

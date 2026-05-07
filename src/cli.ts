@@ -18,7 +18,7 @@ import { assetCat } from './commands/asset-cat.js';
 import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
 import { patch } from './commands/patch.js';
-import { mountedAgentFork, mountedAgentList, mountedAgentPublish, mountedAgentShow } from './commands/mountedagent.js';
+import { mountedAgentFork, mountedAgentList, mountedAgentMount, mountedAgentMountRename, mountedAgentMounts, mountedAgentPublish, mountedAgentShow, mountedAgentUnmount } from './commands/mountedagent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
@@ -454,14 +454,15 @@ const mountedagent = program
 mountedagent
   .command('publish')
   .argument('<manifest>', 'Path to mounted agent manifest JSON')
-  .option('--published', 'Publish to public /agents discovery')
+  .option('--publish', 'Tier 2 — request public listing (requires an approved Publisher)')
+  .option('--published', '[deprecated] alias for --publish; mapped automatically with a warning')
   .option('--featured <weight>', 'Set featured display weight; higher values sort first')
-  .option('--team <slug>', 'Publish as a team-owned mounted agent (required for team/operator-private scope manifests)')
-  .description('Publish or update a mounted agent from a manifest (partner/admin only)')
+  .option('--team <slug>', 'Publish as a team-owned mounted agent (maps to teamSlug in v2)')
+  .description('Publish or update a mounted agent imprint from a manifest')
   .addHelpText('after', `
 EXAMPLES:
   $ rip mountedagent publish mountedagents/office-hours/manifest.json
-  $ rip mountedagent publish mountedagents/office-hours/manifest.json --published --featured 10
+  $ rip mountedagent publish mountedagents/office-hours/manifest.json --publish --featured 10
   $ rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
 
 NOTES:
@@ -470,7 +471,10 @@ NOTES:
   updated from the manifest during publish. Claude Code invocation surfaces
   should point at the generated bootloader URL, which installs as
   .claude/commands/<slug>.md and fetches brain assets at runtime.
-  Team-scoped and operator-private manifests require --team.
+
+  --publish requests Tier 2 (public /agents listing) and requires an
+  approved Publisher (see: rip publisher apply). --published is the
+  legacy v1 flag and is mapped to --publish for backward compatibility.
 `)
   .action(wrapCommand(mountedAgentPublish));
 
@@ -496,20 +500,102 @@ EXAMPLES:
 mountedagent
   .command('fork')
   .argument('<template-slug>', 'Published mounted-agent template slug')
-  .requiredOption('--team <team-slug>', 'Team slug that will own the fork')
+  .option('--team <team-slug>', 'Team slug that will own the fork (omit for a personal fork)')
   .option('--slug <new-slug>', 'Override the generated mounted-agent slug')
-  .description('Fork a published mounted-agent template into a team-owned scaffold')
+  .description('Fork a published mounted-agent template into a personal or team-owned scaffold')
   .addHelpText('after', `
 EXAMPLES:
+  $ rip mountedagent fork chief-of-staff
   $ rip mountedagent fork chief-of-staff --team my-team
   $ rip mountedagent fork chief-of-staff --team my-team --slug my-team-cos
 
 NOTES:
-  The fork is created unpublished. The CLI writes the manifest and forked
-  brain/sample assets under mountedagents/<slug>/, then you can run
-  /moa --iterate <slug> to customize it.
+  Personal forks are now the default — omit --team to fork into a personal
+  imprint owned by the calling agent. The fork is created unpublished. The
+  CLI writes the manifest and forked brain/sample assets under
+  mountedagents/<slug>/, then you can run /moa --iterate <slug> to customize.
 `)
   .action(wrapCommand(mountedAgentFork));
+
+mountedagent
+  .command('mount')
+  .argument('<slug>', 'Agent imprint slug')
+  .option('--team <slug>', 'Bind the mount to a team (collaborative)')
+  .option('--name <label>', 'Friendly mount name (required for a second mount of the same imprint)')
+  .description('Create a deployment of an agent imprint (personal by default; --team makes it collaborative)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent mount chief-of-staff
+  $ rip mountedagent mount chief-of-staff --team acme --name engineering
+`)
+  .action(wrapCommand(mountedAgentMount));
+
+mountedagent
+  .command('mounts')
+  .description("List the caller's mounts (personal + accessible team mounts)")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent mounts
+`)
+  .action(wrapCommand(mountedAgentMounts));
+
+mountedagent
+  .command('mount-rename')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .argument('<new-name>', 'New friendly label')
+  .description('Rename a mount')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent mount-rename <mount-id> engineering
+`)
+  .action(wrapCommand(mountedAgentMountRename));
+
+mountedagent
+  .command('unmount')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .description('Destroy a mount and its mount-owned memory (irreversible)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent unmount <mount-id>
+
+NOTES:
+  Cascades all mount-owned memory (team-layer + per-operator private rows)
+  through assetService.destroyAsset, then ends any open sessions, then
+  deletes the mount row. Operate on personal mounts you own; team mounts
+  can only be destroyed by the team member who created them.
+`)
+  .action(wrapCommand(mountedAgentUnmount));
+
+// ── publisher commands ──────────────────────────────────────────────
+const publisher = program
+  .command('publisher')
+  .description('Apply for and manage your Publisher (Tier 2 publishing identity)');
+
+publisher
+  .command('apply')
+  .description('Submit a Publisher application for review by the Tokenrip team (flag-based; interactive prompts coming soon)')
+  .requiredOption('--display-name <name>', 'Public-facing display name')
+  .requiredOption('--email <email>', 'Contact email')
+  .option('--bio <text>', 'Short markdown bio')
+  .option('--website <url>', 'Optional website')
+  .option('--team <slug>', 'Apply on behalf of a team (caller must be a current team member)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip publisher apply --display-name "Alice Co" --email alice@example.com --bio "Independent agent builder"
+  $ rip publisher apply --team acme --display-name "Acme Labs" --email contact@acme.example
+`)
+  .action(wrapCommand(async (options) => {
+    const { publisherApply } = await import('./commands/publisher.js');
+    await publisherApply(options);
+  }));
+
+publisher
+  .command('show')
+  .description('Show your Publisher application + status (or report none)')
+  .action(wrapCommand(async () => {
+    const { publisherShow } = await import('./commands/publisher.js');
+    await publisherShow();
+  }));
 
 // ── auth commands ───────────────────────────────────────────────────
 const auth = program.command('auth').description('Agent identity and authentication');

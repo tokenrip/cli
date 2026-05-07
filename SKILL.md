@@ -9,7 +9,7 @@ description: >-
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize assets", "create a folder",
   "file into folder", "publish a mounted agent", "administer a mounted agent".
-version: 1.3.11
+version: 1.3.12
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -110,13 +110,27 @@ Use the tokenrip `rip` CLI command to collaborate with users and other agents. P
 - List all team assets → `asset list --team <slug>`
 - List assets in a team folder → `asset list --team <slug> --folder <folder>`
 
-**Mounted Agents** — when publishing or administering reusable imprints that run in a user's own model harness:
+**Agents (Mounted Agents)** — when publishing, mounting, or administering reusable agent imprints that run in your own model harness:
 
-- Publish a manifest → `mountedagent publish <manifest.json>`
-- Make it public → `mountedagent publish <manifest.json> --published`
-- Feature it → `mountedagent publish <manifest.json> --published --featured 10`
-- List publisher-owned mounted agents → `mountedagent list`
+- Publish a manifest (Tier 1, personal use) → `mountedagent publish <manifest.json>`
+- Publish for a team → `mountedagent publish <manifest.json> --team <slug>`
+- Request public listing (Tier 2; requires approved Publisher) → `mountedagent publish <manifest.json> --publish`
+- Feature weight → `mountedagent publish <manifest.json> --publish --featured 10`
+- Fork a template (personal default) → `mountedagent fork <template-slug>`
+- Fork a template into a team → `mountedagent fork <template-slug> --team <slug>`
+- Mount an imprint explicitly → `mountedagent mount <slug> [--team <slug>] [--name <label>]`
+- List your mounts → `mountedagent mounts`
+- Rename a mount → `mountedagent mount-rename <mount-id> <new-name>`
+- Destroy a mount + its mount-owned memory → `mountedagent unmount <mount-id>`
+- List imprints owned by you → `mountedagent list`
 - Inspect one → `mountedagent show <slug>`
+
+**Publisher** — required for Tier 2 (listing imprints on `/agents`):
+
+- Apply for a Publisher → `publisher apply --display-name "..." --email "..."` (add `--team <slug>` for team Publisher)
+- Show your Publisher + status → `publisher show`
+
+Tokenrip approves Publishers out of band. Once approved, you can self-serve `--publish` on any imprint you own.
 
 Always share the returned URL with the user after publishing or sharing.
 
@@ -470,23 +484,44 @@ Options:
 - `--archived` — search only archived assets
 - `--include-archived` — include archived assets in results
 
-## Mounted Agent Commands
+## Agent Commands (Mounted Agents)
 
-Mounted agents are Tokenrip-hosted imprints plus memory contracts that compatible model harnesses can load and run. Tokenrip stores the brain assets, memory collections, memory assets, sessions, and artifacts; the user's model pays for and performs inference.
+Agent imprints are Tokenrip-hosted instructions + memory schemas that compatible model harnesses load and run. Tokenrip stores the brain assets, memory, sessions, and artifacts; the user's model performs inference.
 
-Publishing is partner/admin-gated. Mounted agents can be published by an agent identity (`publisher_agent_id`) or by a team (`publisher_team_id`) — exactly one. For team-published agents, any team member with publish rights can update the manifest. The active CLI identity must own every brain asset alias referenced by the manifest (or the publisher team must own it via team-folder share).
+Publishing is **not** admin-gated. Two tiers:
 
-Compatible harnesses install a thin bootloader skill (`bootloader-skill` invocation kind — Claude Code, Cursor, Codex CLI, or any harness with file-write + shell). The bootloader fetches the manifest and brain assets from Tokenrip at runtime; do not paste full brain content into local commands.
+- **Tier 1** (personal or team use, anyone): `rip mountedagent publish <manifest.json>` — optional `--team <slug>` makes the imprint team-owned.
+- **Tier 2** (public listing on `/agents`): `--publish` flag. Requires an approved Publisher for the imprint owner. Apply with `rip publisher apply`. The legacy `--published` flag is mapped to `--publish` with a deprecation warning.
+
+A *mount* is one deployment of an imprint by an owner. Personal mounts are owned by one operator; team mounts are collaborative. Mounts are usually lazy-created on first load — only create explicit mounts when you need a second mount of the same imprint or want a friendly name.
+
+Compatible harnesses install a thin bootloader skill (`bootloader-skill` invocation kind — Claude Code, Cursor, Codex CLI, or any harness with file-write + shell). The bootloader fetches the manifest and brain assets from Tokenrip at runtime.
 
 ```bash
+# Publish (Tier 1 — personal use, no admin gate)
 rip mountedagent publish mountedagents/office-hours/manifest.json
-rip mountedagent publish mountedagents/office-hours/manifest.json --published --featured 10
+
+# Publish for a team (any team member can edit)
+rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
+
+# Public listing (Tier 2 — requires approved Publisher)
+rip mountedagent publish mountedagents/office-hours/manifest.json --publish --featured 10
+
+# Inspect / list
 rip mountedagent list
 rip mountedagent show office-hours
 
-# Fork a published team-template (e.g. chief-of-staff) into your team's workspace
-rip mountedagent fork chief-of-staff --team my-team
-rip mountedagent fork chief-of-staff --team my-team --slug my-team-cos
+# Fork — personal by default, --team makes the fork team-owned
+rip mountedagent fork chief-of-staff
+rip mountedagent fork chief-of-staff --team acme
+rip mountedagent fork chief-of-staff --team acme --slug acme-cos
+
+# Mount lifecycle
+rip mountedagent mount chief-of-staff                              # create explicit personal mount
+rip mountedagent mount chief-of-staff --team acme --name engineering
+rip mountedagent mounts                                            # list caller's mounts
+rip mountedagent mount-rename <mount-id> marketing
+rip mountedagent unmount <mount-id>                                # destroys mount + mount-owned memory
 ```
 
 Typical publish order:
@@ -496,26 +531,49 @@ rip folder create office-hours
 rip asset publish mountedagents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul" --folder office-hours
 rip asset publish mountedagents/office-hours/brain/office-hours-flow.md --type markdown --alias office-hours-flow --title "Office Hours Flow" --folder office-hours
 rip asset publish mountedagents/office-hours/brain/office-hours-frameworks.md --type markdown --alias office-hours-frameworks --title "Office Hours Frameworks" --folder office-hours
-rip mountedagent publish mountedagents/office-hours/manifest.json --published
+rip mountedagent publish mountedagents/office-hours/manifest.json --publish
 rip asset move office-hours-pitch-patterns --folder office-hours
 ```
 
+### The four memory layers
+
+Loading a session compiles four layers from the mount and the active caller:
+
+- **Brain** — imprint-owner-owned brain assets. Always active.
+- **Shared memory** — manifest entries with `scope: shared`, owned by the imprint owner. Always active.
+- **Team memory** — manifest entries with `scope: team`, owned by the *mount*, partitioned by `mount_id`. Active only on team mounts.
+- **Private memory** — manifest entries with `scope: operator-private` (or the deprecated `scope: agent` synonym, coerced at parse). Owned by the mount + operator. Always active.
+
+Two team mounts of the same imprint by the same team have *separate* team-memory partitions — that's how "Engineering Content" and "Marketing Content" stay clean.
+
 ### Memory primitives
 
-A mounted agent declares two memory primitives in its manifest:
+- **`memoryCollections[]`** — schema-bound rows. Use for queryable, filterable, structured records (commitments, observed patterns, decisions). Scopes: `shared`, `team`, `operator-private`.
+- **`memoryAssets[]`** — versioned narrative documents the agent rewrites holistically (`mountedagent_rewrite_asset` MCP tool). Use for evolving understanding (operator profile, team context). Same scopes. Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax` per session.
 
-- **`memoryCollections[]`** — schema-bound rows. Use for queryable, filterable, structured records (commitments, observed patterns, decisions). Scopes: `shared`, `agent`, `team`, `operator-private`.
-- **`memoryAssets[]`** — versioned narrative documents the agent rewrites holistically (`mountedagent_rewrite_asset` MCP tool). Use for evolving understanding (operator profile, team context). Scopes: `shared`, `agent`, `team`, `operator-private`. Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax` per session.
+Team and operator-private materialization happens at *first mount load*, not at publish time. Concrete aliases include mount components so two mounts of the same imprint by the same operator do not collide.
 
-`team` and `operator-private` scopes require a team-published mounted agent. Operator-private collections and assets are materialized lazily on each operator's first session via templated names (`slugTemplate: "{operator_slug}_<suffix>"`, `aliasTemplate: "{operator_slug}_<suffix>"`).
+### `teamContext` signaling
+
+Optional manifest field — honest signaling, not enforcement:
+
+- `ignored` — manifest declares no team-scope memory. Solo and team deployments behave identically.
+- `supported` — manifest declares team-scope memory. Both deployments work; team layer activates only with a team.
+- `recommended` — same as `supported`, plus discovery hints "best deployed with a team."
 
 ### Cross-session references
 
-Team-published agents may declare `crossSessionReferences` to surface another operator's flagged or recent items in the active operator's session. Backend filters by an `eligibleFlag` column (declared on operator-private collections) and a `recentWindowDays` window (default 14, bounded [1, 90]). Brain is responsible for paraphrasing, not quoting verbatim.
+Activate only on team mounts. The brain receives flagged or recent items from *other current team members'* operator-private memory, paraphrased (never quoted verbatim). Solo / personal mounts get `crossSessionReferences: { active: false, reasonInactive: "no-team" }`.
 
-### Forking a team template
+### Publisher commands
 
-`rip mountedagent fork <template-slug> --team <team-slug>` calls `POST /v0/mountedagents/fork`, copies the template's brain and sample assets into a team-owned folder (using existing `forkAsset` storage-key reuse — zero-cost initial fork), creates fresh team-scoped collections/memory assets from the template schema, rewrites manifest aliases, and writes the local scaffold under `mountedagents/<new-slug>/`. The fork is created `is_published: false`. Customize via `/moa --iterate <new-slug>` (the Moa builder agent), then publish.
+```bash
+rip publisher apply --display-name "Alice Co" --email alice@example.com --bio "Independent agent builder"
+rip publisher apply --team acme --display-name "Acme Labs" --email contact@acme.example
+rip publisher show
+```
+
+Cardinality: at most one Publisher per agent and one per team. Approval is out-of-band by Tokenrip staff. Once approved, `rip mountedagent publish ... --publish` is unblocked for any imprint you own.
 
 ## Thread Commands
 
@@ -661,3 +719,12 @@ Use these flags on asset commands to build lineage and traceability:
 | `CONTACT_NOT_FOUND` | Contact name not in address book | Run `rip contacts list` to see contacts |
 | `TEAM_NOT_FOUND` | Team slug not in local cache | Run `rip team list` to sync |
 | `INVALID_AGENT_ID` | Bad agent ID format | Agent IDs start with `rip1` |
+| `PUBLISHER_REQUIRED` | Tier 2 publish (`--publish`) attempted without an approved Publisher | Run `rip publisher apply`; await Tokenrip approval |
+| `PUBLISHER_NOT_FOUND` | Expected Publisher row doesn't exist | Verify with `rip publisher show` |
+| `PUBLISHER_LOCKED` | Cannot edit an approved Publisher's application | Contact Tokenrip for changes |
+| `PUBLISHER_ALREADY_EXISTS` | Caller (or team) already has a Publisher | One Publisher per agent / team |
+| `MOUNT_NAME_TAKEN` | A mount with that name already exists for this owner/imprint | Pick a different `--name` |
+| `IMPRINT_NOT_LOADABLE` | Caller may not load this imprint (unpublished + not owner / not team member) | Verify ownership / membership |
+| `INVALID_LOAD_PARAMS` | `mountedagent_load` got both/neither of `slug` / `mountId`, or `mountId` + `team` together | Pass exactly one of `slug` / `mountId` |
+| `ARTIFACT_NOT_PERMITTED` | Imprint has `session.produceArtifact: false` but harness submitted an artifact | Drop the artifact submission |
+| `ADMIN_REQUIRED` | Approve / reject / revoke endpoints are platform-admin gated | Not a self-serve action |

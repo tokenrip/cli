@@ -2,15 +2,26 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
+import { formatMount, formatMountList, formatUnmounted } from '../formatters.js';
 import { outputSuccess } from '../output.js';
 
 export async function mountedAgentPublish(
   manifestPath: string,
-  options: { published?: boolean; featured?: string; team?: string },
+  options: { publish?: boolean; published?: boolean; featured?: string; team?: string },
 ): Promise<void> {
   const manifest = readManifest(manifestPath);
   const body: Record<string, unknown> = { manifest };
-  if (options.published) body.isPublished = true;
+
+  // Legacy --published → --publish with deprecation warning (TTY-gated, stderr).
+  let wantsPublish = options.publish ?? false;
+  if (options.published) {
+    if (process.stderr.isTTY) {
+      console.warn('warning: --published is deprecated; use --publish for v2 (Tier 2 public listing). Mapping for now.');
+    }
+    wantsPublish = true;
+  }
+  if (wantsPublish) body.publish = true;
+
   if (options.featured !== undefined) {
     const parsed = Number.parseInt(options.featured, 10);
     if (!Number.isFinite(parsed)) {
@@ -18,7 +29,7 @@ export async function mountedAgentPublish(
     }
     body.isFeatured = parsed;
   }
-  if (options.team) body.publisherTeamId = options.team;
+  if (options.team) body.teamSlug = options.team;
 
   const { client } = requireAuthClient();
   const { data } = await client.post('/v0/mountedagents', body);
@@ -41,16 +52,12 @@ export async function mountedAgentFork(
   templateSlug: string,
   options: { team?: string; slug?: string; outputDir?: string },
 ): Promise<void> {
-  if (!options.team) {
-    throw new CliError('TEAM_REQUIRED', '--team is required for mounted agent forks');
-  }
-
   const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/mountedagents/fork', {
-    templateSlug,
-    teamSlug: options.team,
-    ...(options.slug ? { newSlug: options.slug } : {}),
-  });
+  const body: Record<string, unknown> = { templateSlug };
+  if (options.team) body.teamSlug = options.team;
+  if (options.slug) body.newSlug = options.slug;
+
+  const { data } = await client.post('/v0/mountedagents/fork', body);
   const fork = data.data as {
     slug: string;
     manifest: unknown;
@@ -74,6 +81,36 @@ export async function mountedAgentFork(
     path: path.relative(root, scaffoldRoot),
     nextStep: `/moa --iterate ${fork.slug}`,
   });
+}
+
+export async function mountedAgentMount(
+  imprintSlug: string,
+  options: { team?: string; name?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const body: Record<string, unknown> = { imprintSlug };
+  if (options.team) body.teamSlug = options.team;
+  if (options.name) body.name = options.name;
+  const { data } = await client.post('/v0/mounts', body);
+  outputSuccess(data.data, formatMount);
+}
+
+export async function mountedAgentMounts(): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.get('/v0/mounts');
+  outputSuccess(data.data, formatMountList);
+}
+
+export async function mountedAgentMountRename(mountId: string, newName: string): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.patch(`/v0/mounts/${encodeURIComponent(mountId)}`, { name: newName });
+  outputSuccess(data.data, formatMount);
+}
+
+export async function mountedAgentUnmount(mountId: string): Promise<void> {
+  const { client } = requireAuthClient();
+  await client.delete(`/v0/mounts/${encodeURIComponent(mountId)}`);
+  outputSuccess({ id: mountId, unmounted: true }, formatUnmounted);
 }
 
 function readManifest(path: string): unknown {
