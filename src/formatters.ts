@@ -579,6 +579,8 @@ export const formatMount: Formatter = (data) => {
   const lines = [`Mount: ${data.name || '(default)'}`];
   if (data.id) lines.push(`  ID:           ${data.id}`);
   if (data.imprintSlug) lines.push(`  Imprint:      ${data.imprintSlug}`);
+  if (data.imprintVersionAtCreate) lines.push(`  Created at:   imprint v${data.imprintVersionAtCreate}`);
+  if (data.contextAssetPublicId) lines.push(`  Context:      ${data.contextAssetPublicId}`);
   if (data.ownerAgentId) lines.push(`  Owner agent:  ${data.ownerAgentId}`);
   if (data.teamId) lines.push(`  Team:         ${data.teamId}`);
   if (data.createdByAgentId) lines.push(`  Created by:   ${data.createdByAgentId}`);
@@ -604,6 +606,99 @@ export const formatUnmounted: Formatter = (data) => {
   return `Unmounted: ${data.id}`;
 };
 
+export const formatMountedAgentPublished: Formatter = (data) => {
+  const lines = [`Published ${data.slug} as v${data.publishedVersion ?? '?'}`];
+  if (data.isPublished) lines.push('  Public listing: yes');
+  if (data.publisherId) lines.push(`  Publisher:      ${data.publisherId}`);
+  return lines.join('\n');
+};
+
+export const formatMountedAgent: Formatter = (data) => {
+  const manifest = data.manifest as any;
+  const lines = [`Mounted agent: ${data.slug}`];
+  if (data.publishedVersion) lines.push(`  Version:       v${data.publishedVersion}`);
+  if (data.manifestVersion) lines.push(`  Manifest:      v${data.manifestVersion}`);
+  if (data.ownerAgentId) lines.push(`  Owner agent:   ${data.ownerAgentId}`);
+  if (data.ownerTeamId) lines.push(`  Owner team:    ${data.ownerTeamId}`);
+  if (typeof data.isPublished === 'boolean') lines.push(`  Listed:        ${data.isPublished ? 'yes' : 'no'}`);
+  if (manifest?.display?.displayName) lines.push(`  Display:       ${manifest.display.displayName}`);
+  if (manifest?.display?.tagline) lines.push(`  Tagline:       ${manifest.display.tagline}`);
+  if (manifest?.mountIntake?.starterAssetAlias) lines.push(`  Mount intake:  ${manifest.mountIntake.starterAssetAlias}`);
+  const brain = manifest?.brain?.assets ?? [];
+  if (Array.isArray(brain) && brain.length > 0) {
+    lines.push('');
+    lines.push('Brain:');
+    for (const asset of brain) lines.push(`  ${asset.role}: ${asset.alias}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatMountedAgentList: Formatter = (data) => {
+  const agents = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(agents) || agents.length === 0) return 'No mounted agents.';
+  const lines = [`${agents.length} mounted agent(s):\n`];
+  for (const agent of agents) {
+    const manifest = agent.manifest as any;
+    const name = manifest?.display?.displayName ?? agent.slug;
+    const version = agent.publishedVersion ? ` v${agent.publishedVersion}` : '';
+    const listed = agent.isPublished ? ' listed' : ' draft';
+    lines.push(`  ${String(agent.slug).padEnd(28)}${version}${listed}  ${name}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatMountedAgentScaffold: Formatter = (data) => {
+  const lines = [`Forked: ${data.slug}`];
+  if (data.path) lines.push(`  Path:      ${data.path}`);
+  if (data.nextStep) lines.push(`  Next:      ${data.nextStep}`);
+  return lines.join('\n');
+};
+
+export const formatImprintAssets: Formatter = (data) => {
+  return formatAssetRows(data as unknown as Array<Record<string, unknown>>, 'imprint asset');
+};
+
+export const formatMountAssets: Formatter = (data) => {
+  return formatAssetRows(data as unknown as Array<Record<string, unknown>>, 'mount asset');
+};
+
+export const formatMountDrillIn: Formatter = (data) => {
+  const mount = (data as any).mount ?? {};
+  const imprint = (data as any).imprint ?? {};
+  const contextAsset = (data as any).contextAsset;
+  const lines = [`Mount: ${mount.name || '(default)'}`];
+  if (mount.id) lines.push(`  ID:          ${mount.id}`);
+  if (imprint.slug) {
+    const current = imprint.publishedVersion ? ` v${imprint.publishedVersion}` : '';
+    lines.push(`  Imprint:     ${imprint.slug}${current}`);
+  }
+  if (mount.imprintVersionAtCreate) lines.push(`  Created at:  imprint v${mount.imprintVersionAtCreate}`);
+  if (contextAsset) {
+    lines.push('');
+    lines.push('Context:');
+    if (contextAsset.alias) lines.push(`  Alias:       ${contextAsset.alias}`);
+    if (contextAsset.publicId) lines.push(`  Asset ID:    ${contextAsset.publicId}`);
+    if (contextAsset.version) lines.push(`  Version:     v${contextAsset.version}`);
+    if (contextAsset.sizeBytes != null) lines.push(`  Size:        ${formatBytes(contextAsset.sizeBytes)}`);
+  }
+  const layers = (data as any).layers;
+  if (layers) {
+    lines.push('');
+    lines.push(`Layers: shared ${countLayer(layers.shared)}, team ${countLayer(layers.team)}, private ${countLayer(layers.private)}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatMountContext: Formatter = (data) => {
+  if (data.updatedVersion) {
+    const lines = [`Mount context updated to v${data.updatedVersion}`];
+    const asset = (data as any).contextAsset;
+    if (asset?.publicId) lines.push(`  Asset ID: ${asset.publicId}`);
+    return lines.join('\n');
+  }
+  return String(data.content ?? '');
+};
+
 export const formatPublisher: Formatter = (data) => {
   const lines = [`Publisher: ${data.displayName || '(unnamed)'}`];
   if (data.id) lines.push(`  ID:           ${data.id}`);
@@ -619,6 +714,25 @@ export const formatPublisher: Formatter = (data) => {
   if (data.status === 'none' && data.message) lines.push(`  ${data.message}`);
   return lines.join('\n');
 };
+
+function formatAssetRows(rows: Array<Record<string, unknown>>, label: string): string {
+  if (!Array.isArray(rows) || rows.length === 0) return `No ${label}s.`;
+  const lines = [`${rows.length} ${label}(s):\n`];
+  for (const row of rows) {
+    lines.push(`  ${String(row.kind ?? '').padEnd(18)} ${String(row.logicalKey ?? '').padEnd(24)} ${row.alias ?? '(no alias)'}`);
+    if (row.publicId) lines.push(`    id:      ${row.publicId}`);
+    if (row.type) lines.push(`    type:    ${row.type}${row.version ? ` v${row.version}` : ''}`);
+    if (row.title) lines.push(`    title:   ${row.title}`);
+  }
+  return lines.join('\n');
+}
+
+function countLayer(layer: any): string {
+  if (!layer) return '0';
+  const collections = Array.isArray(layer.collections) ? layer.collections.length : 0;
+  const memoryAssets = Array.isArray(layer.memoryAssets) ? layer.memoryAssets.length : 0;
+  return String(collections + memoryAssets);
+}
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';

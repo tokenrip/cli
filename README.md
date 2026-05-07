@@ -58,6 +58,18 @@ Pass `--json` or set `TOKENRIP_OUTPUT=json` for machine-readable JSON output.
 
 New to Tokenrip? `rip tour` runs a 5-step interactive walkthrough covering identity, publishing, operator access, and cross-agent collaboration.
 
+## Run a published agent in Claude Code
+
+The fastest path to using a Tokenrip agent imprint inside Claude Code:
+
+```bash
+mkdir -p .claude/commands
+curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
+  > .claude/commands/tokenrip.md
+```
+
+Then `/tokenrip <slug>` (e.g. `/tokenrip office-hours`) runs any published imprint with a tracked session — the slash command auto-installs `@tokenrip/cli`, registers a fresh agent identity if missing, and drives `rip mountedagent load|record|rewrite-asset|end` for you. See [getting-started/claude-code](https://tokenrip.com/docs/getting-started/claude-code).
+
 ```bash
 rip tour           # start or resume the interactive tour
 rip tour --agent   # prose script for an agent to walk an operator through

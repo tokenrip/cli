@@ -706,15 +706,22 @@ rip asset list --unfiled
 
 Manage Tokenrip agent imprints — reusable instructions + memory schemas that load into your own model harness. The `rip ma` alias is also available.
 
+All `rip mountedagent *` commands default to human-readable output, except the four session-lifecycle commands (`load`, `record`, `rewrite-asset`, `end`) which always emit JSON for programmatic consumption. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest.
+
 ### `rip mountedagent publish <manifest>`
 
 Publish or update an imprint from a manifest. Tier 1 (personal/team use) is open to anyone. Tier 2 (public listing on `/agents`) requires `--publish` and an approved Publisher.
 
 ```bash
 rip mountedagent publish mountedagents/office-hours/manifest.json
+# → Published office-hours as v3
 rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
 rip mountedagent publish mountedagents/office-hours/manifest.json --publish --featured 10
 ```
+
+Output prints `Published <slug> as v<N>` on success. `publishedVersion` auto-increments on every publish; mounts capture `imprintVersionAtCreate` so the dashboard can flag drift.
+
+**Templating:** add `mountIntake.starterAssetAlias` to the manifest to declare a per-mount context document. The starter asset is cloned into every new mount's context. The brain sees `<mount-context alias="…" version="…">…</mount-context>` in its system prompt.
 
 Options: `--publish` (Tier 2), `--published` (deprecated alias), `--featured <n>`, `--team <slug>`.
 
@@ -732,22 +739,47 @@ Options: `--team <slug>`, `--slug <new-slug>`.
 
 ### `rip mountedagent list` / `show <slug>`
 
-List or inspect imprints owned by the active identity.
+List or inspect imprints owned by the active identity. `show` reports the brain alias list, manifest version, `publishedVersion`, `mountIntake` if present, and shared-memory schema.
+
+### `rip mountedagent assets <slug>`
+
+List every asset referenced by an owned imprint — brain assets, shared collections, shared memory assets, the `mountIntake` starter (if any), and sample sessions. Pipeable into `rip asset update` to edit them.
 
 ### `rip mountedagent mount <slug>`
 
-Create an explicit mount of an imprint. Personal by default; `--team` makes it collaborative; `--name` is required for a *second* mount of the same imprint by the same owner.
+Create an explicit mount of an imprint. Personal by default; `--team` makes it collaborative; `--name` is required for a *second* mount of the same imprint by the same owner. Pass `--context-from <file>` to seed the per-mount context document; otherwise the imprint's `mountIntake` starter is cloned (or empty when no `mountIntake` is declared).
 
 ```bash
 rip mountedagent mount chief-of-staff
 rip mountedagent mount chief-of-staff --team acme --name engineering
+rip mountedagent mount blog-writing --name flowers --context-from ./flowers.md
 ```
 
-Options: `--team <slug>`, `--name <label>`.
+Options: `--team <slug>`, `--name <label>`, `--context-from <file>`.
 
 ### `rip mountedagent mounts`
 
 List all mounts the caller can access (personal mounts they own + team mounts in current teams).
+
+### `rip mountedagent show-mount <mount-id>`
+
+Drill into a mount: imprint slug + version, mount name, context asset (alias, version, size), and materialized memory layers (shared / team / private).
+
+### `rip mountedagent mount-assets <mount-id>`
+
+List every asset the mount touches — context asset, all materialized rows, and inherited shared memory.
+
+### `rip mountedagent mount-context <mount-id>`
+
+Print the mount context document. With `--edit`, opens `$EDITOR` and republishes the asset on save. With `--from-file <path>`, replaces the content from a file.
+
+```bash
+rip mountedagent mount-context <mount-id>                  # print
+rip mountedagent mount-context <mount-id> --edit           # interactive
+rip mountedagent mount-context <mount-id> --from-file ctx.md
+```
+
+Options: `--edit`, `--from-file <path>` (mutually exclusive).
 
 ### `rip mountedagent mount-rename <mount-id> <new-name>`
 
@@ -755,7 +787,101 @@ Rename a mount. Personal: only the owner. Team: any current member.
 
 ### `rip mountedagent unmount <mount-id>`
 
-Destroy a mount and its mount-owned memory (cascade). Irreversible. Historical sessions and artifacts remain for audit.
+Destroy a mount and its mount-owned memory + context asset (cascade). Irreversible. Historical sessions and artifacts remain for audit.
+
+### Session lifecycle (`rip mountedagent load|record|rewrite-asset|end`)
+
+Drive a tracked session against a published imprint without an MCP harness. These four commands exist primarily for the generic Claude Code bootloader (`/tokenrip <slug>`) but are also useful for scripts that want a tracked session.
+
+Unlike the rest of `rip mountedagent *`, these always emit JSON — they're designed to be piped into `jq`.
+
+#### `rip mountedagent load <slug>`
+
+Start a session. Lazy-creates the caller's default mount if missing.
+
+```bash
+rip --json mountedagent load office-hours
+rip --json mountedagent load chief-of-staff --team acme
+```
+
+Options:
+
+- `--team <slug>` — bind to a team mount. The caller must be a current member.
+
+Returns `{ sessionToken, expiresAt, compiledAt, mount, manifest, mountContext?, brain[], layers, crossSessionReferences }`. Mirror of MCP `mountedagent_load`.
+
+#### `rip mountedagent record <session-token>`
+
+Record a memory row to the session's collection.
+
+```bash
+rip --json mountedagent record <token> \
+  --collection patterns \
+  --row '{"pattern":"...","recommendation":"..."}'
+
+rip --json mountedagent record <token> --row-file ./row.json
+```
+
+Options:
+
+- `--collection <slug>` — logical collection slug from `manifest.memoryCollections[].slug`. Defaults to the manifest's default collection.
+- `--row '<json>'` — inline JSON object payload.
+- `--row-file <file>` — read the JSON payload from a file. Mutually exclusive with `--row`.
+
+Mirror of MCP `mountedagent_record`.
+
+#### `rip mountedagent rewrite-asset <session-token> <logical-alias>`
+
+Rewrite a memory asset; publishes a new version on the concrete asset. `<logical-alias>` is one of `manifest.memoryAssets[].logicalAlias`.
+
+```bash
+rip --json mountedagent rewrite-asset <token> alice-cos-profile \
+  --content-from /tmp/new-profile.md
+
+rip --json mountedagent rewrite-asset <token> alice-cos-profile \
+  --content '# Profile\n\n...'
+```
+
+Options:
+
+- `--content-from <file>` — read the new content from a file.
+- `--content '<inline>'` — pass the content inline. Mutually exclusive with `--content-from`.
+
+Mirror of MCP `mountedagent_rewrite_asset`.
+
+#### `rip mountedagent end <session-token>`
+
+End a session and optionally publish a markdown wrap-up artifact. Idempotent on repeat calls — re-running with the same token returns the prior artifact.
+
+```bash
+rip --json mountedagent end <token> --summary "Captured one pattern."
+
+rip --json mountedagent end <token> \
+  --summary "..." \
+  --artifact-from /tmp/wrap-up.md \
+  --artifact-title "Office Hours wrap-up"
+```
+
+Options:
+
+- `--summary <text>` — one-paragraph wrap-up.
+- `--artifact-from <file>` — markdown file for the artifact. Requires `--artifact-title`.
+- `--artifact-title <title>` — display title for the artifact.
+- `--artifact-public` — make the artifact publicly accessible (default: private).
+
+Imprints with `session.produceArtifact: false` reject artifact submissions with `ARTIFACT_NOT_PERMITTED`. Mirror of MCP `mountedagent_session_end`.
+
+#### Generic Claude Code bootloader
+
+Install once, run any published imprint with `/tokenrip <slug>`:
+
+```bash
+mkdir -p .claude/commands
+curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
+  > .claude/commands/tokenrip.md
+```
+
+Then in Claude Code: `/tokenrip <slug>`. The slash command auto-installs the rip CLI, runs `rip auth register` if no identity exists, calls the four session-lifecycle commands above, and treats the returned brain content as the active instructions.
 
 ## Publisher commands
 

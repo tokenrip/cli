@@ -8,8 +8,9 @@ description: >-
   "send a message to an agent", "create a shareable link", "tokenrip",
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize assets", "create a folder",
-  "file into folder", "publish a mounted agent", "administer a mounted agent".
-version: 1.3.12
+  "file into folder", "publish a mounted agent", "administer a mounted agent",
+  "run a Tokenrip agent", "load a mounted-agent session", "install /tokenrip".
+version: 1.3.13
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -118,12 +119,37 @@ Use the tokenrip `rip` CLI command to collaborate with users and other agents. P
 - Feature weight → `mountedagent publish <manifest.json> --publish --featured 10`
 - Fork a template (personal default) → `mountedagent fork <template-slug>`
 - Fork a template into a team → `mountedagent fork <template-slug> --team <slug>`
-- Mount an imprint explicitly → `mountedagent mount <slug> [--team <slug>] [--name <label>]`
+- Mount an imprint explicitly → `mountedagent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>]`
 - List your mounts → `mountedagent mounts`
+- Drill into a mount → `mountedagent show-mount <mount-id>`
+- Print or edit a mount's context document → `mountedagent mount-context <mount-id> [--edit | --from-file <file>]`
+- List every asset a mount touches → `mountedagent mount-assets <mount-id>`
 - Rename a mount → `mountedagent mount-rename <mount-id> <new-name>`
 - Destroy a mount + its mount-owned memory → `mountedagent unmount <mount-id>`
 - List imprints owned by you → `mountedagent list`
 - Inspect one → `mountedagent show <slug>`
+- List every asset an imprint references → `mountedagent assets <slug>`
+
+**Session lifecycle** — drive a tracked session against a published imprint without an MCP harness (used by the generic `/tokenrip` Claude Code bootloader):
+
+- Start a session → `rip --json mountedagent load <slug> [--team <slug>]` (returns session token + compiled brain envelope)
+- Record a memory row → `rip --json mountedagent record <session-token> [--collection <slug>] --row '<json>'` (or `--row-file <path>`)
+- Rewrite a memory asset → `rip --json mountedagent rewrite-asset <session-token> <logical-alias> --content-from <file>` (or `--content '<inline>'`)
+- End a session → `rip --json mountedagent end <session-token> --summary "..."` (add `--artifact-from <file> --artifact-title "<title>"` to publish a wrap-up artifact)
+
+Session lifecycle commands always emit JSON — they're designed for programmatic consumption (the generic bootloader pipes them through `jq`). Mirror of the MCP tools `mountedagent_load`, `mountedagent_record`, `mountedagent_rewrite_asset`, `mountedagent_session_end`.
+
+All other `mountedagent` commands default to human-readable output. Pipe-friendly JSON: pass `--json` (or set `TOKENRIP_OUTPUT=json`).
+
+**Generic Claude Code bootloader** — install once, run any published imprint with `/tokenrip <slug>`:
+
+```bash
+mkdir -p .claude/commands
+curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
+  > .claude/commands/tokenrip.md
+```
+
+Then in Claude Code: `/tokenrip <slug>`. The slash command auto-installs the rip CLI, registers an agent identity if missing, calls `mountedagent load <slug>`, and drives the session through the four session-lifecycle commands above. Backed by the system asset `tokenrip-bootloader-skill` (owned by the platform agent).
 
 **Publisher** — required for Tier 2 (listing imprints on `/agents`):
 
@@ -519,10 +545,55 @@ rip mountedagent fork chief-of-staff --team acme --slug acme-cos
 # Mount lifecycle
 rip mountedagent mount chief-of-staff                              # create explicit personal mount
 rip mountedagent mount chief-of-staff --team acme --name engineering
+rip mountedagent mount blog-writing --name flowers --context-from ./flowers-context.md
 rip mountedagent mounts                                            # list caller's mounts
+rip mountedagent show-mount <mount-id>                             # drill-in: imprint version, context asset, layers
+rip mountedagent mount-context <mount-id>                          # print mount context document
+rip mountedagent mount-context <mount-id> --edit                   # open in $EDITOR, republish on save
+rip mountedagent mount-context <mount-id> --from-file ./ctx.md     # replace from a file
+rip mountedagent mount-assets <mount-id>                           # every asset the mount touches
 rip mountedagent mount-rename <mount-id> marketing
-rip mountedagent unmount <mount-id>                                # destroys mount + mount-owned memory
+rip mountedagent unmount <mount-id>                                # destroys mount + mount-owned memory + context asset
+
+# Imprint inspection
+rip mountedagent assets <slug>                                     # every asset an imprint references
 ```
+
+**Output formatting:** all `rip mountedagent *` commands default to human-readable. Pass `--json` for the existing JSON shape (or set `TOKENRIP_OUTPUT=json`).
+
+**Imprint versioning:** `rip mountedagent publish` prints `Published <slug> as v<N>`. `publishedVersion` auto-increments on every publish. Mounts capture `imprintVersionAtCreate` so the dashboard can flag drift ("imprint has updated since this mount was created").
+
+### Templating: per-mount context
+
+Some imprints are template-shaped — same job, different focus per mount. A `blog-writing` imprint mounted once for "flowers" and once for "engineering" wants different theme, voice, and audience inputs. v2 supports this with **mount context** — a per-mount markdown asset the operator fills in once and the brain reads on every load (rendered as `<mount-context alias="…" version="…">…</mount-context>` in the system prompt).
+
+To declare a template imprint, add `mountIntake.starterAssetAlias` to the manifest:
+
+```json
+{
+  "slug": "blog-writing",
+  "mountIntake": {
+    "starterAssetAlias": "blog-writing-context-starter"
+  }
+}
+```
+
+The starter asset is owned by the imprint owner (or shared to the imprint team). It serves two roles in the same artifact: the **scaffold** cloned into every new mount's context document, and the **intake guide** Moa reads when running mount-creation flow. Section headings become the questions; HTML-style comments become the prompts:
+
+```markdown
+# Blog Context
+
+## Theme
+<!-- What is this blog about? One sentence. -->
+
+## Voice
+<!-- 3–5 adjectives that describe how posts should sound. -->
+
+## Audience
+<!-- Who reads this? -->
+```
+
+When a mount is created, the platform clones this starter into a per-mount asset and links it. Operators fine-tune via the dashboard or `rip mountedagent mount-context <id> --edit`. The brain receives an empty `<mount-context is-empty="true"/>` block when the operator hasn't filled it in yet — design brains that degrade gracefully on empty.
 
 Typical publish order:
 

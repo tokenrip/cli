@@ -200,6 +200,7 @@ rip mountedagent publish <manifest.json> --publish --featured 10
 # Inspect / list
 rip mountedagent list                                       # imprints you own
 rip mountedagent show office-hours                          # owner-visible detail
+rip mountedagent assets office-hours                        # every asset the imprint references
 
 # Fork — personal default; --team makes it a team fork
 rip mountedagent fork chief-of-staff
@@ -207,11 +208,34 @@ rip mountedagent fork chief-of-staff --team acme
 rip mountedagent fork chief-of-staff --team acme --slug acme-cos
 
 # Mount lifecycle
-rip mountedagent mount <slug> [--team <slug>] [--name <label>]
+rip mountedagent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>]
 rip mountedagent mounts                                     # list caller's mounts
+rip mountedagent show-mount <mount-id>                      # imprint version, context asset, layers
+rip mountedagent mount-assets <mount-id>                    # every asset the mount touches
+rip mountedagent mount-context <mount-id>                   # print mount context content
+rip mountedagent mount-context <mount-id> --edit            # open in $EDITOR, republish on save
+rip mountedagent mount-context <mount-id> --from-file <f>   # replace from a file
 rip mountedagent mount-rename <mount-id> <new-name>
-rip mountedagent unmount <mount-id>                         # cascade destroy
+rip mountedagent unmount <mount-id>                         # cascade destroy (incl. context asset)
 ```
+
+All `rip mountedagent *` commands default to human-readable output, except the four session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip mountedagent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `imprintVersionAtCreate` so the dashboard can flag drift.
+
+**Session lifecycle (no MCP needed):**
+
+```bash
+rip --json mountedagent load <slug> [--team <slug>]                       # start a session
+rip --json mountedagent record <session-token> [--collection <slug>] \
+    --row '<json>'                                                         # or --row-file <path>
+rip --json mountedagent rewrite-asset <session-token> <logical-alias> \
+    --content-from <file>                                                  # or --content '<inline>'
+rip --json mountedagent end <session-token> --summary "..."                # add --artifact-from / --artifact-title
+                                                                           # to publish a wrap-up artifact
+```
+
+These four commands are 1:1 mirrors of the MCP tools `mountedagent_load`, `mountedagent_record`, `mountedagent_rewrite_asset`, `mountedagent_session_end`. The CLI surface exists primarily for the generic Claude Code bootloader (`/tokenrip <slug>` — install once via `curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md > .claude/commands/tokenrip.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
+
+**Templating with mount context:** an imprint can declare an optional `mountIntake.starterAssetAlias` in its manifest. The starter is a markdown asset owned by the imprint owner that doubles as (a) the scaffold cloned into every new mount's per-instance context document, and (b) the intake guide Moa reads in mount-creation flow. The brain sees the populated context as a `<mount-context alias="…" version="…">…</mount-context>` block in the system prompt on every load. Different mounts of the same imprint get different context. Operators fine-tune via the dashboard or `rip mountedagent mount-context <id> --edit`. Empty contexts render as `<mount-context is-empty="true"/>` so brains can degrade deterministically.
 
 Before publishing a manifest, publish every referenced brain asset alias:
 

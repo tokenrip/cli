@@ -18,7 +18,8 @@ import { assetCat } from './commands/asset-cat.js';
 import { assetVersions } from './commands/asset-versions.js';
 import { assetComment, assetComments } from './commands/asset-comments.js';
 import { patch } from './commands/patch.js';
-import { mountedAgentFork, mountedAgentList, mountedAgentMount, mountedAgentMountRename, mountedAgentMounts, mountedAgentPublish, mountedAgentShow, mountedAgentUnmount } from './commands/mountedagent.js';
+import { mountedAgentAssets, mountedAgentDelete, mountedAgentEnd, mountedAgentFork, mountedAgentList, mountedAgentLoad, mountedAgentMount, mountedAgentMountAssets, mountedAgentMountContext, mountedAgentMountRename, mountedAgentMounts, mountedAgentPublish, mountedAgentPublishToggle, mountedAgentRecord, mountedAgentRewriteAsset, mountedAgentSetDisplay, mountedAgentSetFeatured, mountedAgentShow, mountedAgentShowMount, mountedAgentUnmount, mountedAgentUnpublish } from './commands/mountedagent.js';
+import { adminMountedAgentList, adminMountedAgentSessions, adminMountedAgentSetFeatured, adminMountedAgentShow, adminMountedAgentUnpublish } from './commands/admin-mountedagent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
@@ -489,6 +490,16 @@ EXAMPLES:
   .action(wrapCommand(mountedAgentShow));
 
 mountedagent
+  .command('assets')
+  .argument('<slug>', 'Mounted agent slug')
+  .description('List every asset referenced by an owned mounted-agent imprint')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mountedagent assets office-hours
+`)
+  .action(wrapCommand(mountedAgentAssets));
+
+mountedagent
   .command('list')
   .description('List mounted agents published by the active identity')
   .addHelpText('after', `
@@ -522,11 +533,13 @@ mountedagent
   .argument('<slug>', 'Agent imprint slug')
   .option('--team <slug>', 'Bind the mount to a team (collaborative)')
   .option('--name <label>', 'Friendly mount name (required for a second mount of the same imprint)')
+  .option('--context-from <file>', 'Seed the mount context asset from a markdown file')
   .description('Create a deployment of an agent imprint (personal by default; --team makes it collaborative)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip mountedagent mount chief-of-staff
   $ rip mountedagent mount chief-of-staff --team acme --name engineering
+  $ rip mountedagent mount blog-writing --name flowers --context-from ./flowers-context.md
 `)
   .action(wrapCommand(mountedAgentMount));
 
@@ -551,6 +564,26 @@ EXAMPLES:
   .action(wrapCommand(mountedAgentMountRename));
 
 mountedagent
+  .command('show-mount')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .description('Show mount context, imprint version, and materialized layers')
+  .action(wrapCommand(mountedAgentShowMount));
+
+mountedagent
+  .command('mount-assets')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .description('List context, materialized, and inherited assets for a mount')
+  .action(wrapCommand(mountedAgentMountAssets));
+
+mountedagent
+  .command('mount-context')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .option('--from-file <file>', 'Replace mount context content from a markdown file')
+  .option('--edit', 'Open $EDITOR and publish the edited context as a new asset version')
+  .description('Print or update the mount context asset')
+  .action(wrapCommand(mountedAgentMountContext));
+
+mountedagent
   .command('unmount')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
   .description('Destroy a mount and its mount-owned memory (irreversible)')
@@ -565,6 +598,156 @@ NOTES:
   can only be destroyed by the team member who created them.
 `)
   .action(wrapCommand(mountedAgentUnmount));
+
+// ── session lifecycle (used by the generic /tokenrip bootloader) ─────
+//
+// These four commands wrap `MASessionService` so the bootloader skill can
+// drive a tracked session from Claude Code without any MCP setup.
+// Pair them with `--json` (or set TOKENRIP_OUTPUT=json) — output is
+// structured for programmatic consumption.
+
+mountedagent
+  .command('load')
+  .argument('<slug>', 'Imprint slug to load')
+  .option('--team <slug>', 'Bind to a team mount (caller must be a current team member)')
+  .description('Start a session against a published imprint (lazy-creates the caller’s default mount)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --json mountedagent load office-hours
+  $ rip --json mountedagent load chief-of-staff --team acme
+
+NOTES:
+  Returns the session token, the compiled brain envelope, the layer map,
+  and (when present) the mount-context block. Persist the session token —
+  every record / rewrite-asset / end call needs it.
+`)
+  .action(wrapCommand(mountedAgentLoad));
+
+mountedagent
+  .command('record')
+  .argument('<session-token>', 'Token returned by `mountedagent load`')
+  .option('--collection <slug>', 'Logical collection slug (defaults to the manifest default)')
+  .option('--row <json>', 'Inline JSON object payload')
+  .option('--row-file <file>', 'Read the JSON payload from a file')
+  .description('Record a memory row to the session’s collection')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --json mountedagent record <token> --collection patterns \\
+      --row '{"pattern":"...","recommendation":"..."}'
+`)
+  .action(wrapCommand(mountedAgentRecord));
+
+mountedagent
+  .command('rewrite-asset')
+  .argument('<session-token>', 'Token returned by `mountedagent load`')
+  .argument('<logical-alias>', 'Memory-asset logical alias from manifest.memoryAssets[].logicalAlias')
+  .option('--content <string>', 'Inline content (UTF-8) for the asset rewrite')
+  .option('--content-from <file>', 'Read the new content from a file')
+  .description('Rewrite a memory asset; publishes a new version on the concrete asset')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --json mountedagent rewrite-asset <token> <alias> \\
+      --content-from /tmp/new-context.md
+`)
+  .action(wrapCommand(mountedAgentRewriteAsset));
+
+mountedagent
+  .command('end')
+  .argument('<session-token>', 'Token returned by `mountedagent load`')
+  .option('--summary <text>', 'One-paragraph wrap-up summary')
+  .option('--artifact-from <file>', 'Optional artifact content (markdown). Requires --artifact-title')
+  .option('--artifact-title <title>', 'Artifact title (only meaningful with --artifact-from)')
+  .option('--artifact-public', 'Mark the artifact public (default: private)', false)
+  .description('End a session and optionally publish a markdown artifact')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --json mountedagent end <token> --summary "Done."
+  $ rip --json mountedagent end <token> --summary "..." \\
+      --artifact-from /tmp/wrap-up.md --artifact-title "Office Hours wrap-up"
+
+NOTES:
+  Idempotent on repeat calls — re-running with the same token returns the
+  prior artifact, if any. Imprints with session.produceArtifact: false
+  return ARTIFACT_NOT_PERMITTED when --artifact-from is supplied.
+`)
+  .action(wrapCommand(mountedAgentEnd));
+
+mountedagent
+  .command('unpublish')
+  .argument('<slug>', 'Imprint slug')
+  .description('Set is_published = false on an owned imprint')
+  .action(wrapCommand(mountedAgentUnpublish));
+
+mountedagent
+  .command('publish-toggle')
+  .argument('<slug>', 'Imprint slug')
+  .description('Flip is_published on an owned imprint')
+  .action(wrapCommand(mountedAgentPublishToggle));
+
+mountedagent
+  .command('set-featured')
+  .argument('<slug>', 'Imprint slug')
+  .argument('<weight>', 'Integer weight (higher sorts first) or "clear" to remove')
+  .description('Set or clear the featured-weight on an owned imprint')
+  .action(wrapCommand(mountedAgentSetFeatured));
+
+mountedagent
+  .command('set-display')
+  .argument('<slug>', 'Imprint slug')
+  .option('--display-name <name>', 'Display name')
+  .option('--tagline <text>', 'Tagline')
+  .option('--description <text>', 'Description')
+  .option(
+    '--capability <text>',
+    'Capability (repeatable)',
+    (v: string, prev: string[] = []) => prev.concat(v),
+    [] as string[],
+  )
+  .description('Update display block fields without re-publishing the manifest')
+  .action(wrapCommand(mountedAgentSetDisplay));
+
+mountedagent
+  .command('delete')
+  .argument('<slug>', 'Imprint slug')
+  .option('--force', 'Skip typed-slug confirmation', false)
+  .description('Destroy an imprint and cascade its mounts and memory (irreversible)')
+  .action(wrapCommand(mountedAgentDelete));
+
+// ── admin commands ──────────────────────────────────────────────────
+const adminCmd = program.command('admin').description('Admin-only commands');
+const adminMountedAgentCmd = adminCmd
+  .command('mountedagent')
+  .description('Admin imprint management');
+
+adminMountedAgentCmd
+  .command('list')
+  .description('List all imprints across all owners (admin)')
+  .action(wrapCommand(adminMountedAgentList));
+
+adminMountedAgentCmd
+  .command('show')
+  .argument('<slug>', 'Imprint slug')
+  .description('Show any imprint by slug (admin)')
+  .action(wrapCommand(adminMountedAgentShow));
+
+adminMountedAgentCmd
+  .command('unpublish')
+  .argument('<slug>', 'Imprint slug')
+  .description('Force-unpublish an imprint regardless of owner (admin)')
+  .action(wrapCommand(adminMountedAgentUnpublish));
+
+adminMountedAgentCmd
+  .command('set-featured')
+  .argument('<slug>', 'Imprint slug')
+  .argument('<weight>', 'Integer weight or "clear" to remove')
+  .description('Set or clear featured weight on any imprint (admin)')
+  .action(wrapCommand(adminMountedAgentSetFeatured));
+
+adminMountedAgentCmd
+  .command('sessions')
+  .argument('<slug>', 'Imprint slug')
+  .description('List recent sessions for an imprint (admin)')
+  .action(wrapCommand(adminMountedAgentSessions));
 
 // ── publisher commands ──────────────────────────────────────────────
 const publisher = program
