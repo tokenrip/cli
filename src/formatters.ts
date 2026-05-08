@@ -2,7 +2,7 @@ import { loadTeams } from './teams.js';
 
 export type Formatter = (data: Record<string, unknown>) => string;
 
-export const formatAssetCreated: Formatter = (data) => {
+export const formatArtifactCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
   if (data.id) lines.push(`  ID:      ${data.id}`);
   if (data.url) lines.push(`  URL:     ${data.url}`);
@@ -12,7 +12,7 @@ export const formatAssetCreated: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatAssetPatched: Formatter = (data) => {
+export const formatArtifactPatched: Formatter = (data) => {
   const lines = [`Patched: ${data.id}`];
   if (data.title) lines.push(`  Title:    ${data.title}`);
   if (data.description) lines.push(`  Desc:     ${data.description}`);
@@ -23,17 +23,17 @@ export const formatAssetPatched: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatAssetDeleted: Formatter = (data) => {
+export const formatArtifactDeleted: Formatter = (data) => {
   return `Deleted: ${data.id}`;
 };
 
-export const formatAssetList: Formatter = (data) => {
-  const assets = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(assets) || assets.length === 0) {
-    return 'No assets found.';
+export const formatArtifactList: Formatter = (data) => {
+  const artifacts = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(artifacts) || artifacts.length === 0) {
+    return 'No artifacts found.';
   }
-  const lines = [`${assets.length} asset(s):\n`];
-  for (const a of assets) {
+  const lines = [`${artifacts.length} artifact(s):\n`];
+  for (const a of artifacts) {
     const title = a.title || '(untitled)';
     const type = a.type || '';
     const id = a.id || '';
@@ -46,7 +46,7 @@ export const formatAssetList: Formatter = (data) => {
 
 export const formatStats: Formatter = (data) => {
   const lines: string[] = [];
-  if (data.assetCount !== undefined) lines.push(`Total assets: ${data.assetCount}`);
+  if (data.artifactCount !== undefined) lines.push(`Total artifacts: ${data.artifactCount}`);
   if (data.totalBytes !== undefined) lines.push(`Total size:   ${formatBytes(data.totalBytes as number)}`);
 
   const countsByType = data.countsByType as Record<string, number> | undefined;
@@ -68,7 +68,7 @@ export const formatStats: Formatter = (data) => {
       const name = (t.type || 'unknown') as string;
       const count = t.count ?? 0;
       const bytes = t.totalBytes ?? 0;
-      lines.push(`  ${name.padEnd(10)} ${String(count).padStart(4)} assets  ${formatBytes(bytes as number)}`);
+      lines.push(`  ${name.padEnd(10)} ${String(count).padStart(4)} artifacts  ${formatBytes(bytes as number)}`);
     }
   }
   return lines.join('\n');
@@ -77,13 +77,13 @@ export const formatStats: Formatter = (data) => {
 export const formatVersionCreated: Formatter = (data) => {
   const lines = [`Version ${data.version || '?'} published`];
   if (data.id) lines.push(`  Version ID: ${data.id}`);
-  if (data.assetId) lines.push(`  Asset ID:   ${data.assetId}`);
+  if (data.artifactId) lines.push(`  Artifact ID:   ${data.artifactId}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
   return lines.join('\n');
 };
 
 export const formatVersionDeleted: Formatter = (data) => {
-  return `Deleted version ${data.versionId} from asset ${data.assetId}`;
+  return `Deleted version ${data.versionId} from artifact ${data.artifactId}`;
 };
 
 export const formatConfigSaved: Formatter = (data) => {
@@ -101,7 +101,7 @@ export const formatAuthKey: Formatter = (data) => {
 export const formatInbox: Formatter = (data) => {
   const lines: string[] = [];
   const threads = (data as any).threads ?? [];
-  const assets = (data as any).assets ?? [];
+  const artifacts = (data as any).artifacts ?? [];
 
   if (threads.length > 0) {
     lines.push(`THREADS (${threads.length})`);
@@ -118,16 +118,16 @@ export const formatInbox: Formatter = (data) => {
 
   lines.push('');
 
-  if (assets.length > 0) {
-    lines.push(`ASSETS (${assets.length})`);
-    for (const a of assets) {
+  if (artifacts.length > 0) {
+    lines.push(`ARTIFACTS (${artifacts.length})`);
+    for (const a of artifacts) {
       const title = a.title ?? '(untitled)';
       const versions = `+${a.new_version_count} ver${a.new_version_count > 1 ? 's' : ''}`;
       const ago = formatTimeAgo(new Date(a.updated_at));
-      lines.push(`  ${title.padEnd(20)}  v${a.latest_version}  ${versions}  ${ago}  (${a.asset_id})`);
+      lines.push(`  ${title.padEnd(20)}  v${a.latest_version}  ${versions}  ${ago}  (${a.artifact_id})`);
     }
   } else {
-    lines.push('ASSETS (none)');
+    lines.push('ARTIFACTS (none)');
   }
 
   return lines.join('\n');
@@ -246,14 +246,14 @@ export const formatThreadCreated: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatAssetDownloaded: Formatter = (data) => {
+export const formatArtifactDownloaded: Formatter = (data) => {
   const lines = [`Downloaded: ${data.file}`];
   if (data.sizeBytes) lines.push(`  Size: ${formatBytes(data.sizeBytes as number)}`);
   if (data.mimeType) lines.push(`  MIME: ${data.mimeType}`);
   return lines.join('\n');
 };
 
-export const formatAssetMetadata: Formatter = (data) => {
+export const formatArtifactMetadata: Formatter = (data) => {
   const lines = [data.title || '(untitled)'];
   if (data.id) lines.push(`  ID:          ${data.id}`);
   if (data.url) lines.push(`  URL:         ${data.url}`);
@@ -452,9 +452,9 @@ export const formatSearchResults: Formatter = (data) => {
       lines.push(`  thread  ${state}  ${r.id}  ${collaborators.padEnd(16)}${intent}  ${ago}`);
       if (title !== '(untitled)') lines.push(`          ${title}`);
     } else {
-      const assetType = (r.asset?.asset_type ?? '').padEnd(10);
-      const versions = r.asset?.version_count ? `v${r.asset.version_count}` : '';
-      lines.push(`  asset   ${assetType}  ${r.id}  ${title}  ${versions}  ${ago}`);
+      const artifactType = (r.artifact?.artifact_type ?? '').padEnd(10);
+      const versions = r.artifact?.version_count ? `v${r.artifact.version_count}` : '';
+      lines.push(`  artifact   ${artifactType}  ${r.id}  ${title}  ${versions}  ${ago}`);
       if (r.url) lines.push(`          ${r.url}`);
     }
     if (r.match_section) lines.push(`          § ${r.match_section}`);
@@ -580,7 +580,7 @@ export const formatMount: Formatter = (data) => {
   if (data.id) lines.push(`  ID:           ${data.id}`);
   if (data.imprintSlug) lines.push(`  Imprint:      ${data.imprintSlug}`);
   if (data.imprintVersionAtCreate) lines.push(`  Created at:   imprint v${data.imprintVersionAtCreate}`);
-  if (data.contextAssetPublicId) lines.push(`  Context:      ${data.contextAssetPublicId}`);
+  if (data.contextArtifactPublicId) lines.push(`  Context:      ${data.contextArtifactPublicId}`);
   if (data.ownerAgentId) lines.push(`  Owner agent:  ${data.ownerAgentId}`);
   if (data.teamId) lines.push(`  Team:         ${data.teamId}`);
   if (data.createdByAgentId) lines.push(`  Created by:   ${data.createdByAgentId}`);
@@ -623,12 +623,12 @@ export const formatMountedAgent: Formatter = (data) => {
   if (typeof data.isPublished === 'boolean') lines.push(`  Listed:        ${data.isPublished ? 'yes' : 'no'}`);
   if (manifest?.display?.displayName) lines.push(`  Display:       ${manifest.display.displayName}`);
   if (manifest?.display?.tagline) lines.push(`  Tagline:       ${manifest.display.tagline}`);
-  if (manifest?.mountIntake?.starterAssetAlias) lines.push(`  Mount intake:  ${manifest.mountIntake.starterAssetAlias}`);
-  const brain = manifest?.brain?.assets ?? [];
+  if (manifest?.mountIntake?.starterArtifactAlias) lines.push(`  Mount intake:  ${manifest.mountIntake.starterArtifactAlias}`);
+  const brain = manifest?.brain?.artifacts ?? [];
   if (Array.isArray(brain) && brain.length > 0) {
     lines.push('');
     lines.push('Brain:');
-    for (const asset of brain) lines.push(`  ${asset.role}: ${asset.alias}`);
+    for (const artifact of brain) lines.push(`  ${artifact.role}: ${artifact.alias}`);
   }
   return lines.join('\n');
 };
@@ -654,18 +654,18 @@ export const formatMountedAgentScaffold: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatImprintAssets: Formatter = (data) => {
-  return formatAssetRows(data as unknown as Array<Record<string, unknown>>, 'imprint asset');
+export const formatImprintArtifacts: Formatter = (data) => {
+  return formatArtifactRows(data as unknown as Array<Record<string, unknown>>, 'imprint artifact');
 };
 
-export const formatMountAssets: Formatter = (data) => {
-  return formatAssetRows(data as unknown as Array<Record<string, unknown>>, 'mount asset');
+export const formatMountArtifacts: Formatter = (data) => {
+  return formatArtifactRows(data as unknown as Array<Record<string, unknown>>, 'mount artifact');
 };
 
 export const formatMountDrillIn: Formatter = (data) => {
   const mount = (data as any).mount ?? {};
   const imprint = (data as any).imprint ?? {};
-  const contextAsset = (data as any).contextAsset;
+  const contextArtifact = (data as any).contextArtifact;
   const lines = [`Mount: ${mount.name || '(default)'}`];
   if (mount.id) lines.push(`  ID:          ${mount.id}`);
   if (imprint.slug) {
@@ -673,13 +673,13 @@ export const formatMountDrillIn: Formatter = (data) => {
     lines.push(`  Imprint:     ${imprint.slug}${current}`);
   }
   if (mount.imprintVersionAtCreate) lines.push(`  Created at:  imprint v${mount.imprintVersionAtCreate}`);
-  if (contextAsset) {
+  if (contextArtifact) {
     lines.push('');
     lines.push('Context:');
-    if (contextAsset.alias) lines.push(`  Alias:       ${contextAsset.alias}`);
-    if (contextAsset.publicId) lines.push(`  Asset ID:    ${contextAsset.publicId}`);
-    if (contextAsset.version) lines.push(`  Version:     v${contextAsset.version}`);
-    if (contextAsset.sizeBytes != null) lines.push(`  Size:        ${formatBytes(contextAsset.sizeBytes)}`);
+    if (contextArtifact.alias) lines.push(`  Alias:       ${contextArtifact.alias}`);
+    if (contextArtifact.publicId) lines.push(`  Artifact ID:    ${contextArtifact.publicId}`);
+    if (contextArtifact.version) lines.push(`  Version:     v${contextArtifact.version}`);
+    if (contextArtifact.sizeBytes != null) lines.push(`  Size:        ${formatBytes(contextArtifact.sizeBytes)}`);
   }
   const layers = (data as any).layers;
   if (layers) {
@@ -692,8 +692,8 @@ export const formatMountDrillIn: Formatter = (data) => {
 export const formatMountContext: Formatter = (data) => {
   if (data.updatedVersion) {
     const lines = [`Mount context updated to v${data.updatedVersion}`];
-    const asset = (data as any).contextAsset;
-    if (asset?.publicId) lines.push(`  Asset ID: ${asset.publicId}`);
+    const artifact = (data as any).contextArtifact;
+    if (artifact?.publicId) lines.push(`  Artifact ID: ${artifact.publicId}`);
     return lines.join('\n');
   }
   return String(data.content ?? '');
@@ -715,7 +715,7 @@ export const formatPublisher: Formatter = (data) => {
   return lines.join('\n');
 };
 
-function formatAssetRows(rows: Array<Record<string, unknown>>, label: string): string {
+function formatArtifactRows(rows: Array<Record<string, unknown>>, label: string): string {
   if (!Array.isArray(rows) || rows.length === 0) return `No ${label}s.`;
   const lines = [`${rows.length} ${label}(s):\n`];
   for (const row of rows) {
@@ -730,8 +730,8 @@ function formatAssetRows(rows: Array<Record<string, unknown>>, label: string): s
 function countLayer(layer: any): string {
   if (!layer) return '0';
   const collections = Array.isArray(layer.collections) ? layer.collections.length : 0;
-  const memoryAssets = Array.isArray(layer.memoryAssets) ? layer.memoryAssets.length : 0;
-  return String(collections + memoryAssets);
+  const memoryArtifacts = Array.isArray(layer.memoryArtifacts) ? layer.memoryArtifacts.length : 0;
+  return String(collections + memoryArtifacts);
 }
 
 function formatBytes(bytes: number): string {

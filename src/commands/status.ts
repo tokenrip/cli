@@ -1,6 +1,6 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { formatAssetList } from '../formatters.js';
+import { formatArtifactList } from '../formatters.js';
 
 export async function status(options: { since?: string; limit?: string; type?: string; archived?: boolean; includeArchived?: boolean; folder?: string; unfiled?: boolean; team?: string }): Promise<void> {
   const { client } = requireAuthClient();
@@ -15,7 +15,7 @@ export async function status(options: { since?: string; limit?: string; type?: s
   if (options.unfiled) params.unfiled = 'true';
   if (options.team) params.team = options.team;
 
-  const { data } = await client.get('/v0/assets/status', { params });
+  const { data } = await client.get('/v0/artifacts/status', { params });
 
-  outputSuccess(data.data, formatAssetList);
+  outputSuccess(data.data, formatArtifactList);
 }

@@ -12,7 +12,7 @@ export async function search(
     state?: string;
     intent?: string;
     ref?: string;
-    assetType?: string;
+    artifactType?: string;
     archived?: boolean;
     includeArchived?: boolean;
   },
@@ -26,7 +26,7 @@ export async function search(
   if (options.state) params.state = options.state;
   if (options.intent) params.intent = options.intent;
   if (options.ref) params.ref = options.ref;
-  if (options.assetType) params.asset_type = options.assetType;
+  if (options.artifactType) params.artifact_type = options.artifactType;
   if (options.archived) params.archived = 'true';
   if (options.includeArchived) params.include_archived = 'true';
 

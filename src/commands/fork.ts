@@ -1,8 +1,8 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { formatAssetCreated } from '../formatters.js';
+import { formatArtifactCreated } from '../formatters.js';
 
-export async function forkAsset(
+export async function forkArtifact(
   identifier: string,
   options: {
     version?: string;
@@ -16,6 +16,6 @@ export async function forkAsset(
   if (options.title) body.title = options.title;
   if (options.folder) body.folder = options.folder;
 
-  const res = await client.post(`/v0/assets/${identifier}/fork`, body);
-  outputSuccess(res.data.data, formatAssetCreated);
+  const res = await client.post(`/v0/artifacts/${identifier}/fork`, body);
+  outputSuccess(res.data.data, formatArtifactCreated);
 }

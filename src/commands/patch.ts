@@ -1,10 +1,10 @@
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatAssetPatched } from '../formatters.js';
+import { formatArtifactPatched } from '../formatters.js';
 import { parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
-import { parseAssetId } from '../parse-asset-id.js';
+import { parseArtifactId } from '../parse-artifact-id.js';
 
 export async function patch(
   identifier: string,
@@ -28,9 +28,9 @@ export async function patch(
     body.description = options.description;
   }
 
-  const id = parseAssetId(identifier);
+  const id = parseArtifactId(identifier);
   const { client, config } = requireAuthClient();
-  const { data } = await client.patch(`/v0/assets/${id}`, body);
+  const { data } = await client.patch(`/v0/artifacts/${id}`, body);
   const url = `${getFrontendUrl(config)}/s/${data.data.id}`;
-  outputSuccess({ ...data.data, url }, formatAssetPatched);
+  outputSuccess({ ...data.data, url }, formatArtifactPatched);
 }

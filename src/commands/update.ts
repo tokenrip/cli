@@ -25,7 +25,7 @@ export async function update(
   }
 
   if (options.dryRun) {
-    outputSuccess({ dryRun: true, action: 'would update', assetId: uuid, file: absPath }, formatVersionCreated);
+    outputSuccess({ dryRun: true, action: 'would update', artifactId: uuid, file: absPath }, formatVersionCreated);
     return;
   }
 
@@ -38,7 +38,7 @@ export async function update(
     if (options.description) body.description = options.description;
     if (options.context) body.creatorContext = options.context;
 
-    const { data } = await client.post(`/v0/assets/${uuid}/versions`, body);
+    const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
     outputSuccess(data.data, formatVersionCreated);
   } else {
     // File upload mode
@@ -47,7 +47,7 @@ export async function update(
     if (options.description) form.append('description', options.description);
     if (options.context) form.append('creatorContext', options.context);
 
-    const { data } = await client.post(`/v0/assets/${uuid}/versions`, form, {
+    const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, form, {
       headers: form.getHeaders(),
       maxContentLength: Infinity,
       maxBodyLength: Infinity,

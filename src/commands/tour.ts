@@ -14,7 +14,7 @@ export async function tour(options: { agent?: boolean }): Promise<void> {
   if (!state) {
     state = {
       step: 1,
-      assetId: null,
+      artifactId: null,
       threadId: null,
       startedAt: new Date().toISOString(),
     };
@@ -38,7 +38,7 @@ export async function tourNext(id: string | undefined): Promise<void> {
   }
 
   if (currentStep.expectsIdOnNext && !id) {
-    const label = currentStep.collectsAs === 'assetId' ? 'asset id' : 'thread id';
+    const label = currentStep.collectsAs === 'artifactId' ? 'artifact id' : 'thread id';
     throw new CliError(
       'MISSING_ID',
       `This step needs the ${label} from the previous command. Run: rip tour next <${label.replace(' ', '-')}>`,

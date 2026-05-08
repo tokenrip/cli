@@ -3,7 +3,7 @@ import path from 'node:path';
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatAssetCreated } from '../formatters.js';
+import { formatArtifactCreated } from '../formatters.js';
 import { parseJsonOption, parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
@@ -66,7 +66,7 @@ export async function publish(
           type: options.type,
           size: options.content!.length,
         },
-        formatAssetCreated,
+        formatArtifactCreated,
       );
       return;
     }
@@ -78,7 +78,7 @@ export async function publish(
       title: options.title,
     };
     if (options.alias) body.alias = options.alias;
-    if (options.parent) body.parentAssetId = options.parent;
+    if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
     if (options.team) {
@@ -89,11 +89,11 @@ export async function publish(
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
 
-    const { data } = await client.post('/v0/assets', body);
+    const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
     outputSuccess(
       { id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId },
-      formatAssetCreated,
+      formatArtifactCreated,
     );
     return;
   }
@@ -108,7 +108,7 @@ export async function publish(
     const title = options.title || path.basename(absPath, path.extname(absPath));
 
     if (options.dryRun) {
-      outputSuccess({ dryRun: true, action: 'would create collection from csv', title, rows: content.split('\n').length }, formatAssetCreated);
+      outputSuccess({ dryRun: true, action: 'would create collection from csv', title, rows: content.split('\n').length }, formatArtifactCreated);
       return;
     }
 
@@ -121,7 +121,7 @@ export async function publish(
     if (options.headers) body.headers = true;
     if (options.schema) body.schema = parseJsonOption(options.schema, '--schema');
     if (options.alias) body.alias = options.alias;
-    if (options.parent) body.parentAssetId = options.parent;
+    if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
     if (options.team) {
@@ -133,9 +133,9 @@ export async function publish(
     if (parsedMetadata) body.metadata = parsedMetadata;
 
     const { client, config } = requireAuthClient();
-    const { data } = await client.post('/v0/assets', body);
+    const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatAssetCreated);
+    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatArtifactCreated);
     return;
   }
 
@@ -155,14 +155,14 @@ export async function publish(
     const title = options.title || 'Untitled Collection';
 
     if (options.dryRun) {
-      outputSuccess({ dryRun: true, action: 'would create collection', title, schema }, formatAssetCreated);
+      outputSuccess({ dryRun: true, action: 'would create collection', title, schema }, formatArtifactCreated);
       return;
     }
 
     const { client, config } = requireAuthClient();
     const body: Record<string, unknown> = { type: 'collection', title, schema };
     if (options.alias) body.alias = options.alias;
-    if (options.parent) body.parentAssetId = options.parent;
+    if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
     if (options.team) {
@@ -173,9 +173,9 @@ export async function publish(
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
 
-    const { data } = await client.post('/v0/assets', body);
+    const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatAssetCreated);
+    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatArtifactCreated);
     return;
   }
 
@@ -188,7 +188,7 @@ export async function publish(
   const size = fs.statSync(absPath).size;
 
   if (options.dryRun) {
-    outputSuccess({ dryRun: true, action: 'would publish', file: absPath, title, type: options.type, size }, formatAssetCreated);
+    outputSuccess({ dryRun: true, action: 'would publish', file: absPath, title, type: options.type, size }, formatArtifactCreated);
     return;
   }
 
@@ -201,7 +201,7 @@ export async function publish(
     title,
   };
   if (options.alias) body.alias = options.alias;
-  if (options.parent) body.parentAssetId = options.parent;
+  if (options.parent) body.parentArtifactId = options.parent;
   if (options.context) body.creatorContext = options.context;
   if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
   if (options.team) {
@@ -212,7 +212,7 @@ export async function publish(
   if (options.folder) body.folder = options.folder;
   if (parsedMetadata) body.metadata = parsedMetadata;
 
-  const { data } = await client.post('/v0/assets', body);
+  const { data } = await client.post('/v0/artifacts', body);
 
   const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
   outputSuccess({
@@ -221,5 +221,5 @@ export async function publish(
     title: data.data.title,
     type: data.data.type,
     currentVersionId: data.data.currentVersionId,
-  }, formatAssetCreated);
+  }, formatArtifactCreated);
 }

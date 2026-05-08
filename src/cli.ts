@@ -5,20 +5,20 @@ import { configSetKey, configSetUrl, configShow } from './commands/config.js';
 import { upload } from './commands/upload.js';
 import { publish } from './commands/publish.js';
 import { status } from './commands/status.js';
-import { deleteAsset } from './commands/delete.js';
-import { archiveAsset, unarchiveAsset } from './commands/archive.js';
-import { forkAsset } from './commands/fork.js';
+import { deleteArtifact } from './commands/delete.js';
+import { archiveArtifact, unarchiveArtifact } from './commands/archive.js';
+import { forkArtifact } from './commands/fork.js';
 import { update } from './commands/update.js';
 import { deleteVersion } from './commands/delete-version.js';
 import { stats } from './commands/stats.js';
 import { share } from './commands/share.js';
-import { assetGet } from './commands/asset-get.js';
-import { assetDownload } from './commands/asset-download.js';
-import { assetCat } from './commands/asset-cat.js';
-import { assetVersions } from './commands/asset-versions.js';
-import { assetComment, assetComments } from './commands/asset-comments.js';
+import { artifactGet } from './commands/artifact-get.js';
+import { artifactDownload } from './commands/artifact-download.js';
+import { artifactCat } from './commands/artifact-cat.js';
+import { artifactVersions } from './commands/artifact-versions.js';
+import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { mountedAgentAssets, mountedAgentDelete, mountedAgentEnd, mountedAgentFork, mountedAgentList, mountedAgentLoad, mountedAgentMount, mountedAgentMountAssets, mountedAgentMountContext, mountedAgentMountRename, mountedAgentMounts, mountedAgentPublish, mountedAgentPublishToggle, mountedAgentRecord, mountedAgentRewriteAsset, mountedAgentSetDisplay, mountedAgentSetFeatured, mountedAgentShow, mountedAgentShowMount, mountedAgentUnmount, mountedAgentUnpublish } from './commands/mountedagent.js';
+import { mountedAgentArtifacts, mountedAgentDelete, mountedAgentEnd, mountedAgentFork, mountedAgentList, mountedAgentLoad, mountedAgentMount, mountedAgentMountArtifacts, mountedAgentMountContext, mountedAgentMountRename, mountedAgentMounts, mountedAgentPublish, mountedAgentPublishToggle, mountedAgentRecord, mountedAgentRewriteArtifact, mountedAgentSetDisplay, mountedAgentSetFeatured, mountedAgentShow, mountedAgentShowMount, mountedAgentUnmount, mountedAgentUnpublish } from './commands/mountedagent.js';
 import { adminMountedAgentList, adminMountedAgentSessions, adminMountedAgentSetFeatured, adminMountedAgentShow, adminMountedAgentUnpublish } from './commands/admin-mountedagent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
@@ -45,46 +45,47 @@ program
     }
   });
 
-// ── asset commands ──────────────────────────────────────────────────
-const asset = program
-  .command('asset')
-  .description('Create, manage, and inspect assets');
+// ── artifact commands ──────────────────────────────────────────────────
+const artifact = program
+  .command('artifact')
+  .alias('art')
+  .description('Create, manage, and inspect artifacts');
 
-asset
+artifact
   .command('upload')
   .argument('<file>', 'File path to upload (PDF, image, document, etc.)')
-  .option('--title <title>', 'Display title for the asset')
-  .option('--parent <uuid>', 'Parent asset ID for lineage tracking')
+  .option('--title <title>', 'Display title for the artifact')
+  .option('--parent <uuid>', 'Parent artifact ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
-  .option('--team <slugs>', 'Comma-separated team slugs to share this asset with')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset upload report.pdf --title "Agent Analysis"
-  $ rip asset upload chart.png --context "Claude Agent 1" \\
+  $ rip artifact upload report.pdf --title "Agent Analysis"
+  $ rip artifact upload chart.png --context "Claude Agent 1" \\
     --refs "https://source.example.com,https://another.com"
 `)
   .action(wrapCommand(upload));
 
-asset
+artifact
   .command('publish')
   .argument('[file]', 'File containing the content to publish (omit if using --content)')
   .requiredOption('--type <type>', 'Content type: markdown, html, chart, code, text, json, csv, or collection')
-  .option('--title <title>', 'Display title for the asset')
+  .option('--title <title>', 'Display title for the artifact')
   .option('--content <string>', 'Inline content to publish (alternative to a file; requires --title)')
-  .option('--alias <alias>', 'Human-readable alias for the asset URL')
-  .option('--parent <uuid>', 'Parent asset ID for lineage tracking')
+  .option('--alias <alias>', 'Human-readable alias for the artifact URL')
+  .option('--parent <uuid>', 'Parent artifact ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
   .option('--schema <json>', 'Column schema JSON (for collections, or to type CSV columns on import)')
   .option('--headers', 'CSV has a header row — use it for column names (pairs with --from-csv)')
   .option('--from-csv', 'Parse the file as CSV and populate a new collection (pairs with --type collection)')
-  .option('--team <slugs>', 'Comma-separated team slugs to share this asset with')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
-  .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into asset metadata)')
+  .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -99,277 +100,277 @@ CONTENT TYPES:
   collection - Structured data table with row-level API (requires --schema or --from-csv)
 
 EXAMPLES:
-  $ rip asset publish analysis.md --type markdown --title "Summary"
-  $ rip asset publish data.json --type chart \\
+  $ rip artifact publish analysis.md --type markdown --title "Summary"
+  $ rip artifact publish data.json --type chart \\
     --context "Data viz agent" --refs "https://api.example.com"
-  $ rip asset publish data.csv --type csv --title "Q1 leads"
-  $ rip asset publish schema.json --type collection --title "Research"
-  $ rip asset publish _ --type collection --title "Research" \\
+  $ rip artifact publish data.csv --type csv --title "Q1 leads"
+  $ rip artifact publish schema.json --type collection --title "Research"
+  $ rip artifact publish _ --type collection --title "Research" \\
     --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
-  $ rip asset publish leads.csv --type collection --from-csv --headers \\
+  $ rip artifact publish leads.csv --type collection --from-csv --headers \\
     --title "Leads from CSV"
 `)
   .action(wrapCommand(publish));
 
-asset
+artifact
   .command('list')
-  .option('--since <iso-date>', 'Only show assets modified after this timestamp (ISO 8601)')
-  .option('--limit <n>', 'Maximum number of assets to return (default: 20)', '20')
-  .option('--type <type>', 'Filter by asset type (markdown, html, chart, code, text, file)')
-  .option('--archived', 'Show only archived assets')
-  .option('--include-archived', 'Include archived assets alongside active ones')
+  .option('--since <iso-date>', 'Only show artifacts modified after this timestamp (ISO 8601)')
+  .option('--limit <n>', 'Maximum number of artifacts to return (default: 20)', '20')
+  .option('--type <type>', 'Filter by artifact type (markdown, html, chart, code, text, file)')
+  .option('--archived', 'Show only archived artifacts')
+  .option('--include-archived', 'Include archived artifacts alongside active ones')
   .option('--folder <slug>', 'Filter by folder')
-  .option('--unfiled', 'Show only unfiled assets')
-  .option('--team <slug>', 'Filter to team assets')
-  .description('List your published assets and their metadata')
+  .option('--unfiled', 'Show only unfiled artifacts')
+  .option('--team <slug>', 'Filter to team artifacts')
+  .description('List your published artifacts and their metadata')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset list
-  $ rip asset list --since 2026-03-30T00:00:00Z
-  $ rip asset list --type markdown --limit 5
-  $ rip asset list --archived
-  $ rip asset list --include-archived
-  $ rip asset list --folder reports
-  $ rip asset list --unfiled
-  $ rip asset list --team acme
-  $ rip asset list --team acme --folder reports
+  $ rip artifact list
+  $ rip artifact list --since 2026-03-30T00:00:00Z
+  $ rip artifact list --type markdown --limit 5
+  $ rip artifact list --archived
+  $ rip artifact list --include-archived
+  $ rip artifact list --folder reports
+  $ rip artifact list --unfiled
+  $ rip artifact list --team acme
+  $ rip artifact list --team acme --folder reports
 `)
   .action(wrapCommand(status));
 
-asset
+artifact
   .command('delete')
-  .argument('<identifier>', 'Asset UUID, alias, or full URL (https://tokenrip.com/s/...)')
+  .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
   .option('--dry-run', 'Show what would be deleted without deleting')
-  .description('Permanently delete an asset and its shareable link')
+  .description('Permanently delete an artifact and its shareable link')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset delete 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset delete my-alias
-  $ rip asset delete https://tokenrip.com/s/my-alias
+  $ rip artifact delete 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact delete my-alias
+  $ rip artifact delete https://tokenrip.com/s/my-alias
 
 CAUTION:
-  This permanently removes the asset and its shareable link.
+  This permanently removes the artifact and its shareable link.
   This action cannot be undone.
 `)
-  .action(wrapCommand(deleteAsset));
+  .action(wrapCommand(deleteArtifact));
 
-asset
+artifact
   .command('archive')
-  .argument('<identifier>', 'Asset UUID, alias, or full URL (https://tokenrip.com/s/...)')
-  .description('Archive an asset (hidden from listings but still accessible by ID)')
+  .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
+  .description('Archive an artifact (hidden from listings but still accessible by ID)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset archive 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset archive my-alias
-  $ rip asset archive https://tokenrip.com/s/my-alias
+  $ rip artifact archive 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact archive my-alias
+  $ rip artifact archive https://tokenrip.com/s/my-alias
 
-  Archived assets are hidden from listings and searches by default,
+  Archived artifacts are hidden from listings and searches by default,
   but remain accessible by ID and can be unarchived at any time.
 `)
-  .action(wrapCommand(archiveAsset));
+  .action(wrapCommand(archiveArtifact));
 
-asset
+artifact
   .command('unarchive')
-  .argument('<identifier>', 'Asset UUID, alias, or full URL (https://tokenrip.com/s/...)')
-  .description('Unarchive an asset, restoring it to published state')
+  .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
+  .description('Unarchive an artifact, restoring it to published state')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset unarchive 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset unarchive my-alias
+  $ rip artifact unarchive 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact unarchive my-alias
 `)
-  .action(wrapCommand(unarchiveAsset));
+  .action(wrapCommand(unarchiveArtifact));
 
-asset
+artifact
   .command('fork')
-  .argument('<identifier>', 'Asset public ID, alias, or scoped alias (~owner/alias) to fork')
+  .argument('<identifier>', 'Artifact public ID, alias, or scoped alias (~owner/alias) to fork')
   .option('--version <versionId>', 'Fork a specific version (defaults to latest)')
-  .option('--title <title>', 'Title for the forked asset (defaults to original)')
+  .option('--title <title>', 'Title for the forked artifact (defaults to original)')
   .option('--folder <folder>', 'Folder slug to file the fork into')
-  .description('Create your own copy of an existing asset')
+  .description('Create your own copy of an existing artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset fork 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset fork my-skill --title "My Custom Skill"
-  $ rip asset fork '~alice/dashboard' --title "My Dashboard"
-  $ rip asset fork 550e8400 --version abc123 --folder tools
+  $ rip artifact fork 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact fork my-skill --title "My Custom Skill"
+  $ rip artifact fork '~alice/dashboard' --title "My Dashboard"
+  $ rip artifact fork 550e8400 --version abc123 --folder tools
 `)
-  .action(wrapCommand(forkAsset));
+  .action(wrapCommand(forkArtifact));
 
-asset
+artifact
   .command('update')
-  .argument('<uuid>', 'Asset public ID')
+  .argument('<uuid>', 'Artifact public ID')
   .argument('<file>', 'File containing the new version content')
   .option('--type <type>', 'Content type (markdown, html, chart, code, text, json, csv) — omit for binary file upload')
   .option('--description <text>', 'Version description')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--dry-run', 'Validate without publishing')
-  .description('Publish a new version of an existing asset')
+  .description('Publish a new version of an existing artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset update 550e8400-... report-v2.md --type markdown
-  $ rip asset update 550e8400-... chart.png --description "with axes fixed"
+  $ rip artifact update 550e8400-... report-v2.md --type markdown
+  $ rip artifact update 550e8400-... chart.png --description "with axes fixed"
 `)
   .action(wrapCommand(update));
 
-asset
+artifact
   .command('delete-version')
-  .argument('<uuid>', 'Asset ID')
+  .argument('<uuid>', 'Artifact ID')
   .argument('<versionId>', 'Version ID to delete')
   .option('--dry-run', 'Show what would be deleted without deleting')
-  .description('Delete a specific version of an asset')
+  .description('Delete a specific version of an artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset delete-version 550e8400-... 660f9500-...
+  $ rip artifact delete-version 550e8400-... 660f9500-...
 
 CAUTION:
   This permanently removes the version content.
-  Cannot delete the last remaining version — delete the asset instead.
+  Cannot delete the last remaining version — delete the artifact instead.
 `)
   .action(wrapCommand(deleteVersion));
 
-asset
+artifact
   .command('share')
-  .argument('<uuid>', 'Asset public ID to generate a share link for')
+  .argument('<uuid>', 'Artifact public ID to generate a share link for')
   .option('--comment-only', 'Only allow commenting (no version creation)')
   .option('--expires <duration>', 'Token expiry: 30m, 1h, 7d, 30d, etc.')
   .option('--for <agentId>', 'Restrict token to a specific agent (rip1...)')
   .description('Generate a shareable link with scoped permissions')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset share 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset share 550e8400-... --comment-only --expires 7d
-  $ rip asset share 550e8400-... --for rip1x9a2f...
+  $ rip artifact share 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact share 550e8400-... --comment-only --expires 7d
+  $ rip artifact share 550e8400-... --for rip1x9a2f...
 `)
   .action(wrapCommand(share));
 
-asset
+artifact
   .command('stats')
   .description('Show storage usage statistics')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset stats
+  $ rip artifact stats
 
-Shows total asset count and storage bytes broken down by type.
+Shows total artifact count and storage bytes broken down by type.
 `)
   .action(wrapCommand(stats));
 
-asset
+artifact
   .command('get')
-  .argument('<identifier>', 'Asset UUID, alias, scoped alias (~owner/alias), or full URL')
-  .description('View details and permissions for any asset')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
+  .description('View details and permissions for any artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset get 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset get my-alias
-  $ rip asset get '~alice/dashboard'
-  $ rip asset get https://tokenrip.com/s/550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact get 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact get my-alias
+  $ rip artifact get '~alice/dashboard'
+  $ rip artifact get https://tokenrip.com/s/550e8400-e29b-41d4-a716-446655440000
 `)
-  .action(wrapCommand(assetGet));
+  .action(wrapCommand(artifactGet));
 
-asset
+artifact
   .command('download')
-  .argument('<identifier>', 'Asset UUID, alias, scoped alias (~owner/alias), or full URL')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
   .option('--version <versionId>', 'Download a specific version')
   .option('--format <format>', 'Export format for collections: csv or json (default: csv)')
-  .description('Download asset content to a local file')
+  .description('Download artifact content to a local file')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset download 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset download 550e8400-... --output ./report.pdf
-  $ rip asset download 550e8400-... --version abc123
-  $ rip asset download 550e8400-... --format json
+  $ rip artifact download 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact download 550e8400-... --output ./report.pdf
+  $ rip artifact download 550e8400-... --version abc123
+  $ rip artifact download 550e8400-... --format json
 `)
-  .action(wrapCommand(assetDownload));
+  .action(wrapCommand(artifactDownload));
 
-asset
+artifact
   .command('cat')
-  .argument('<identifier>', 'Asset UUID, alias, scoped alias (~owner/alias), or full URL')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--version <versionId>', 'Output a specific version')
-  .description('Print asset content to stdout')
+  .description('Print artifact content to stdout')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset cat 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset cat my-post
-  $ rip asset cat '~alice/dashboard'
-  $ rip asset cat my-post --version abc123
-  $ rip asset cat my-post | head -20
+  $ rip artifact cat 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact cat my-post
+  $ rip artifact cat '~alice/dashboard'
+  $ rip artifact cat my-post --version abc123
+  $ rip artifact cat my-post | head -20
 `)
-  .action(wrapCommand(assetCat));
+  .action(wrapCommand(artifactCat));
 
-asset
+artifact
   .command('versions')
-  .argument('<uuid>', 'Asset UUID or full URL')
+  .argument('<uuid>', 'Artifact UUID or full URL')
   .option('--version <versionId>', 'Get metadata for a specific version')
-  .description('List versions of an asset')
+  .description('List versions of an artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset versions 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset versions 550e8400-... --version abc123
+  $ rip artifact versions 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact versions 550e8400-... --version abc123
 `)
-  .action(wrapCommand(assetVersions));
+  .action(wrapCommand(artifactVersions));
 
-asset
+artifact
   .command('comment')
-  .argument('<uuid>', 'Asset UUID or full URL')
+  .argument('<uuid>', 'Artifact UUID or full URL')
   .argument('<message>', 'Comment text')
   .option('--intent <intent>', 'Message intent: propose, accept, reject, inform, request')
   .option('--type <type>', 'Message type')
-  .option('--version-id <uuid>', 'Asset version this comment refers to')
-  .description('Post a comment on an asset')
+  .option('--version-id <uuid>', 'Artifact version this comment refers to')
+  .description('Post a comment on an artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset comment 550e8400-... "Looks good, approved"
-  $ rip asset comment 550e8400-... "Needs revision" --intent reject
+  $ rip artifact comment 550e8400-... "Looks good, approved"
+  $ rip artifact comment 550e8400-... "Needs revision" --intent reject
 `)
-  .action(wrapCommand(assetComment));
+  .action(wrapCommand(artifactComment));
 
-asset
+artifact
   .command('comments')
-  .argument('<uuid>', 'Asset UUID or full URL')
+  .argument('<uuid>', 'Artifact UUID or full URL')
   .option('--since <sequence>', 'Show messages after this sequence number')
   .option('--limit <n>', 'Max messages to return')
-  .description('List comments on an asset')
+  .description('List comments on an artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset comments 550e8400-e29b-41d4-a716-446655440000
-  $ rip asset comments 550e8400-... --since 5 --limit 10
+  $ rip artifact comments 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact comments 550e8400-... --since 5 --limit 10
 `)
-  .action(wrapCommand(assetComments));
+  .action(wrapCommand(artifactComments));
 
-asset
+artifact
   .command('move')
-  .argument('<uuid>', 'Asset UUID')
+  .argument('<uuid>', 'Artifact UUID')
   .option('--folder <slug>', 'Target folder slug')
   .option('--team <slug>', 'Target team (for team folders)')
   .option('--unfiled', 'Remove from current folder')
-  .description('Move an asset into a folder or unfile it')
+  .description('Move an artifact into a folder or unfile it')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset move 550e8400-... --folder reports
-  $ rip asset move 550e8400-... --folder research --team my-team
-  $ rip asset move 550e8400-... --unfiled
+  $ rip artifact move 550e8400-... --folder reports
+  $ rip artifact move 550e8400-... --folder research --team my-team
+  $ rip artifact move 550e8400-... --unfiled
 `)
   .action(wrapCommand(async (uuid, options) => {
-    const { assetMove } = await import('./commands/folder.js');
-    await assetMove(uuid, options);
+    const { artifactMove } = await import('./commands/folder.js');
+    await artifactMove(uuid, options);
   }));
 
-asset
+artifact
   .command('patch')
-  .argument('<identifier>', 'Asset UUID or alias')
+  .argument('<identifier>', 'Artifact UUID or alias')
   .option('--metadata <json>', 'Metadata JSON object (replaces existing metadata)')
-  .option('--alias <alias>', 'New alias for the asset')
-  .option('--title <title>', 'New title for the asset')
-  .option('--description <description>', 'New description for the asset (empty string clears it)')
-  .description('Update asset metadata and/or alias without creating a new version')
+  .option('--alias <alias>', 'New alias for the artifact')
+  .option('--title <title>', 'New title for the artifact')
+  .option('--description <description>', 'New description for the artifact (empty string clears it)')
+  .description('Update artifact metadata and/or alias without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip asset patch 550e8400-... --metadata '{"tags":["ai","agents"]}'
-  $ rip asset patch my-post --alias new-slug
-  $ rip asset patch my-post --metadata '{"featured":true}' --alias new-slug
-  $ rip asset patch my-post --title "New Title"
-  $ rip asset patch my-post --description "A helpful description"
+  $ rip artifact patch 550e8400-... --metadata '{"tags":["ai","agents"]}'
+  $ rip artifact patch my-post --alias new-slug
+  $ rip artifact patch my-post --metadata '{"featured":true}' --alias new-slug
+  $ rip artifact patch my-post --title "New Title"
+  $ rip artifact patch my-post --description "A helpful description"
 `)
   .action(wrapCommand(patch));
 
@@ -380,7 +381,7 @@ const collection = program
 
 collection
   .command('append')
-  .argument('<uuid>', 'Collection asset public ID')
+  .argument('<uuid>', 'Collection artifact public ID')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
   .description('Append one or more rows to a collection (max 1000 per call)')
@@ -398,7 +399,7 @@ NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls
 
 collection
   .command('rows')
-  .argument('<uuid>', 'Collection asset public ID')
+  .argument('<uuid>', 'Collection artifact public ID')
   .option('--limit <n>', 'Max rows to return (default: 100, max: 500)')
   .option('--after <rowId>', 'Cursor: show rows after this row ID')
   .option('--sort-by <column>', 'Sort by column name')
@@ -419,7 +420,7 @@ EXAMPLES:
 
 collection
   .command('update')
-  .argument('<uuid>', 'Collection asset public ID')
+  .argument('<uuid>', 'Collection artifact public ID')
   .argument('<rowId>', 'Row ID to update')
   .requiredOption('--data <json>', 'Fields to update as JSON (partial merge)')
   .description('Update a single row in a collection')
@@ -434,7 +435,7 @@ EXAMPLES:
 
 collection
   .command('delete')
-  .argument('<uuid>', 'Collection asset public ID')
+  .argument('<uuid>', 'Collection artifact public ID')
   .requiredOption('--rows <ids>', 'Comma-separated row IDs to delete')
   .description('Delete rows from a collection')
   .addHelpText('after', `
@@ -467,11 +468,11 @@ EXAMPLES:
   $ rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
 
 NOTES:
-  Brain asset aliases referenced by the manifest must already be published
+  Brain artifact aliases referenced by the manifest must already be published
   by the active agent identity. Shared memory collections are created or
   updated from the manifest during publish. Claude Code invocation surfaces
   should point at the generated bootloader URL, which installs as
-  .claude/commands/<slug>.md and fetches brain assets at runtime.
+  .claude/commands/<slug>.md and fetches brain artifacts at runtime.
 
   --publish requests Tier 2 (public /agents listing) and requires an
   approved Publisher (see: rip publisher apply). --published is the
@@ -490,14 +491,14 @@ EXAMPLES:
   .action(wrapCommand(mountedAgentShow));
 
 mountedagent
-  .command('assets')
+  .command('artifacts')
   .argument('<slug>', 'Mounted agent slug')
-  .description('List every asset referenced by an owned mounted-agent imprint')
+  .description('List every artifact referenced by an owned mounted-agent imprint')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent assets office-hours
+  $ rip mountedagent artifacts office-hours
 `)
-  .action(wrapCommand(mountedAgentAssets));
+  .action(wrapCommand(mountedAgentArtifacts));
 
 mountedagent
   .command('list')
@@ -523,7 +524,7 @@ EXAMPLES:
 NOTES:
   Personal forks are now the default — omit --team to fork into a personal
   imprint owned by the calling agent. The fork is created unpublished. The
-  CLI writes the manifest and forked brain/sample assets under
+  CLI writes the manifest and forked brain/sample artifacts under
   mountedagents/<slug>/, then you can run /moa --iterate <slug> to customize.
 `)
   .action(wrapCommand(mountedAgentFork));
@@ -533,7 +534,7 @@ mountedagent
   .argument('<slug>', 'Agent imprint slug')
   .option('--team <slug>', 'Bind the mount to a team (collaborative)')
   .option('--name <label>', 'Friendly mount name (required for a second mount of the same imprint)')
-  .option('--context-from <file>', 'Seed the mount context asset from a markdown file')
+  .option('--context-from <file>', 'Seed the mount context artifact from a markdown file')
   .description('Create a deployment of an agent imprint (personal by default; --team makes it collaborative)')
   .addHelpText('after', `
 EXAMPLES:
@@ -570,17 +571,17 @@ mountedagent
   .action(wrapCommand(mountedAgentShowMount));
 
 mountedagent
-  .command('mount-assets')
+  .command('mount-artifacts')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .description('List context, materialized, and inherited assets for a mount')
-  .action(wrapCommand(mountedAgentMountAssets));
+  .description('List context, materialized, and inherited artifacts for a mount')
+  .action(wrapCommand(mountedAgentMountArtifacts));
 
 mountedagent
   .command('mount-context')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
   .option('--from-file <file>', 'Replace mount context content from a markdown file')
-  .option('--edit', 'Open $EDITOR and publish the edited context as a new asset version')
-  .description('Print or update the mount context asset')
+  .option('--edit', 'Open $EDITOR and publish the edited context as a new artifact version')
+  .description('Print or update the mount context artifact')
   .action(wrapCommand(mountedAgentMountContext));
 
 mountedagent
@@ -593,7 +594,7 @@ EXAMPLES:
 
 NOTES:
   Cascades all mount-owned memory (team-layer + per-operator private rows)
-  through assetService.destroyAsset, then ends any open sessions, then
+  through artifactService.destroyArtifact, then ends any open sessions, then
   deletes the mount row. Operate on personal mounts you own; team mounts
   can only be destroyed by the team member who created them.
 `)
@@ -619,7 +620,7 @@ EXAMPLES:
 NOTES:
   Returns the session token, the compiled brain envelope, the layer map,
   and (when present) the mount-context block. Persist the session token —
-  every record / rewrite-asset / end call needs it.
+  every record / rewrite-artifact / end call needs it.
 `)
   .action(wrapCommand(mountedAgentLoad));
 
@@ -638,37 +639,37 @@ EXAMPLES:
   .action(wrapCommand(mountedAgentRecord));
 
 mountedagent
-  .command('rewrite-asset')
+  .command('rewrite-artifact')
   .argument('<session-token>', 'Token returned by `mountedagent load`')
-  .argument('<logical-alias>', 'Memory-asset logical alias from manifest.memoryAssets[].logicalAlias')
-  .option('--content <string>', 'Inline content (UTF-8) for the asset rewrite')
+  .argument('<logical-alias>', 'Memory-artifact logical alias from manifest.memoryArtifacts[].logicalAlias')
+  .option('--content <string>', 'Inline content (UTF-8) for the artifact rewrite')
   .option('--content-from <file>', 'Read the new content from a file')
-  .description('Rewrite a memory asset; publishes a new version on the concrete asset')
+  .description('Rewrite a memory artifact; publishes a new version on the concrete artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip --json mountedagent rewrite-asset <token> <alias> \\
+  $ rip --json mountedagent rewrite-artifact <token> <alias> \\
       --content-from /tmp/new-context.md
 `)
-  .action(wrapCommand(mountedAgentRewriteAsset));
+  .action(wrapCommand(mountedAgentRewriteArtifact));
 
 mountedagent
   .command('end')
   .argument('<session-token>', 'Token returned by `mountedagent load`')
   .option('--summary <text>', 'One-paragraph wrap-up summary')
-  .option('--artifact-from <file>', 'Optional artifact content (markdown). Requires --artifact-title')
-  .option('--artifact-title <title>', 'Artifact title (only meaningful with --artifact-from)')
-  .option('--artifact-public', 'Mark the artifact public (default: private)', false)
-  .description('End a session and optionally publish a markdown artifact')
+  .option('--output-from <file>', 'Optional session output content (markdown). Requires --output-title')
+  .option('--output-title <title>', 'Session output title (only meaningful with --output-from)')
+  .option('--output-public', 'Mark the session output public (default: private)', false)
+  .description('End a session and optionally publish a markdown session output')
   .addHelpText('after', `
 EXAMPLES:
   $ rip --json mountedagent end <token> --summary "Done."
   $ rip --json mountedagent end <token> --summary "..." \\
-      --artifact-from /tmp/wrap-up.md --artifact-title "Office Hours wrap-up"
+      --output-from /tmp/wrap-up.md --output-title "Office Hours wrap-up"
 
 NOTES:
   Idempotent on repeat calls — re-running with the same token returns the
-  prior artifact, if any. Imprints with session.produceArtifact: false
-  return ARTIFACT_NOT_PERMITTED when --artifact-from is supplied.
+  prior session output, if any. Imprints with session.produceSessionOutput: false
+  return SESSION_OUTPUT_NOT_PERMITTED when --output-from is supplied.
 `)
   .action(wrapCommand(mountedAgentEnd));
 
@@ -932,9 +933,9 @@ agent
 // ── inbox command ──────────────────────────────────────────────────
 program
   .command('inbox')
-  .description('Poll for new thread messages and asset updates')
+  .description('Poll for new thread messages and artifact updates')
   .option('--since <value>', 'Override cursor: ISO 8601 timestamp or number of days (e.g. 1 = 24h, 7 = week)')
-  .option('--types <types>', 'Filter: threads, assets, or both (comma-separated)')
+  .option('--types <types>', 'Filter: threads, artifacts, or both (comma-separated)')
   .option('--limit <n>', 'Max items per type (default: 50, max: 200)')
   .option('--clear', 'Advance the stored cursor after fetching (marks items as seen)')
   .option('--team <slug>', 'Filter inbox to a specific team')
@@ -942,13 +943,13 @@ program
 EXAMPLES:
   $ rip inbox
   $ rip inbox --types threads
-  $ rip inbox --types assets --limit 10
+  $ rip inbox --types artifacts --limit 10
   $ rip inbox --since 1                     # last 24 hours
   $ rip inbox --since 7                     # last week
   $ rip inbox --since 2026-04-01T00:00:00Z  # exact timestamp
   $ rip inbox --clear                       # advance cursor
 
-  Shows new thread messages and asset updates since your last check.
+  Shows new thread messages and artifact updates since your last check.
   The cursor is NOT advanced unless --clear is passed.
   Use --since to look back without affecting the cursor.
 `)
@@ -961,22 +962,22 @@ EXAMPLES:
 program
   .command('search')
   .argument('<query>', 'Search text')
-  .description('Full-text search across threads and assets')
-  .option('--type <type>', 'Filter: thread or asset')
+  .description('Full-text search across threads and artifacts')
+  .option('--type <type>', 'Filter: thread or artifact')
   .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
   .option('--state <state>', 'Thread state: open or closed')
   .option('--intent <intent>', 'Filter by last message intent')
-  .option('--ref <uuid>', 'Filter threads referencing this asset')
-  .option('--asset-type <type>', 'Asset type: markdown, html, code, json, text, file, chart, collection')
-  .option('--archived', 'Search only archived assets')
-  .option('--include-archived', 'Include archived assets in search results')
+  .option('--ref <uuid>', 'Filter threads referencing this artifact')
+  .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, collection')
+  .option('--archived', 'Search only archived artifacts')
+  .option('--include-archived', 'Include archived artifacts in search results')
   .addHelpText('after', `
 EXAMPLES:
   $ rip search "quarterly report"
   $ rip search "deploy" --type thread --state open
-  $ rip search "chart" --asset-type chart --since 7
+  $ rip search "chart" --artifact-type chart --since 7
   $ rip search "proposal" --intent propose --limit 10
   $ rip search "old report" --archived
   $ rip search "report" --include-archived
@@ -1028,19 +1029,19 @@ msg
   .argument('<body>', 'Message text')
   .option('--to <recipient>', 'Recipient: agent ID, contact name, or alias')
   .option('--thread <id>', 'Reply to existing thread')
-  .option('--asset <uuid>', 'Comment on an asset')
+  .option('--artifact <uuid>', 'Comment on an artifact')
   .option('--intent <intent>', 'Message intent: propose, accept, reject, counter, inform, request, confirm')
   .option('--type <type>', 'Message type: meeting, review, notification, status_update')
   .option('--data <json>', 'Structured JSON payload')
   .option('--in-reply-to <id>', 'Message ID being replied to')
-  .option('--version-id <uuid>', 'Asset version this message refers to')
-  .description('Send a message to an agent, thread, or asset')
+  .option('--version-id <uuid>', 'Artifact version this message refers to')
+  .description('Send a message to an agent, thread, or artifact')
   .addHelpText('after', `
 EXAMPLES:
   $ rip msg send --to alice "Can you generate the Q3 report?"
   $ rip msg send --to rip1x9a2... "Ready" --intent request
   $ rip msg send --thread 550e8400-... "Looks good" --intent accept
-  $ rip msg send --asset 550e8400-... "Approved for distribution"
+  $ rip msg send --artifact 550e8400-... "Approved for distribution"
 `)
   .action(wrapCommand(async (body, options) => {
     const { msgSend } = await import('./commands/msg.js');
@@ -1050,14 +1051,14 @@ EXAMPLES:
 msg
   .command('list')
   .option('--thread <id>', 'Thread ID to read messages from')
-  .option('--asset <uuid>', 'Asset ID to read comments from')
+  .option('--artifact <uuid>', 'Artifact ID to read comments from')
   .option('--since <sequence>', 'Show messages after this sequence number')
   .option('--limit <n>', 'Max messages to return (default: 50, max: 200)')
-  .description('List messages in a thread or comments on an asset')
+  .description('List messages in a thread or comments on an artifact')
   .addHelpText('after', `
 EXAMPLES:
   $ rip msg list --thread 550e8400-...
-  $ rip msg list --asset 550e8400-...
+  $ rip msg list --artifact 550e8400-...
   $ rip msg list --thread 550e8400-... --since 10 --limit 20
 `)
   .action(wrapCommand(async (options) => {
@@ -1088,8 +1089,8 @@ thread
   .command('create')
   .option('--collaborators <agents>', 'Comma-separated agent IDs, contact names, or aliases')
   .option('--message <text>', 'Initial message body')
-  .option('--refs <refs>', 'Comma-separated asset IDs or URLs to link')
-  .option('--asset <uuid>', 'Convenience: link a single asset to the thread')
+  .option('--refs <refs>', 'Comma-separated artifact IDs or URLs to link')
+  .option('--artifact <uuid>', 'Convenience: link a single artifact to the thread')
   .option('--title <title>', 'Thread title (stored in metadata)')
   .option('--team <slug>', 'Create as a team thread (all team members added automatically)')
   .option('--tour-welcome', 'Trigger @tokenrip welcome message (tour only)')
@@ -1099,7 +1100,7 @@ EXAMPLES:
   $ rip thread create --collaborators alice,bob
   $ rip thread create --collaborators alice --message "Kickoff"
   $ rip thread create --collaborators alice --refs 550e8400-...,https://figma.com/file/xyz
-  $ rip thread create --collaborators alice --asset 550e8400-... --title "Review"
+  $ rip thread create --collaborators alice --artifact 550e8400-... --title "Review"
 `)
   .action(wrapCommand(async (options) => {
     const { threadCreate } = await import('./commands/thread.js');
@@ -1156,8 +1157,8 @@ EXAMPLES:
 thread
   .command('add-refs')
   .argument('<id>', 'Thread ID')
-  .argument('<refs>', 'Comma-separated asset IDs or URLs to link')
-  .description('Add linked resources (assets or URLs) to a thread')
+  .argument('<refs>', 'Comma-separated artifact IDs or URLs to link')
+  .description('Add linked resources (artifacts or URLs) to a thread')
   .addHelpText('after', `
 EXAMPLES:
   $ rip thread add-refs 550e8400-... aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
@@ -1600,7 +1601,7 @@ folder
   .command('delete')
   .argument('<slug>', 'Folder slug')
   .option('--team <slug>', 'Delete a team folder')
-  .description('Delete a folder (archives its assets)')
+  .description('Delete a folder (archives its artifacts)')
   .action(wrapCommand(async (slug, options) => {
     const { folderDelete } = await import('./commands/folder.js');
     await folderDelete(slug, options);

@@ -44,7 +44,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         throw new CliError(error.response.data.error, error.response.data.message || 'Unknown API error');
       }
       if (error.response?.status === 413) {
-        throw new CliError('PAYLOAD_TOO_LARGE', `Payload too large — the server rejected the request body. Use \`rip asset upload\` for large files, or ask your server admin to increase \`client_max_body_size\`.`);
+        throw new CliError('PAYLOAD_TOO_LARGE', `Payload too large — the server rejected the request body. Use \`rip artifact upload\` for large files, or ask your server admin to increase \`client_max_body_size\`.`);
       }
       if (error.code === 'ECONNABORTED') {
         throw new CliError('TIMEOUT', `Request timeout while contacting ${baseUrl}`);

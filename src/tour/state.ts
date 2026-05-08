@@ -4,7 +4,7 @@ import os from 'node:os';
 
 export interface TourState {
   step: number;
-  assetId: string | null;
+  artifactId: string | null;
   threadId: string | null;
   startedAt: string; // ISO 8601
 }

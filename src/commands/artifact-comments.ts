@@ -1,14 +1,14 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { formatMessageSent, formatMessages } from '../formatters.js';
-import { parseAssetId } from '../parse-asset-id.js';
+import { parseArtifactId } from '../parse-artifact-id.js';
 
-export async function assetComment(
+export async function artifactComment(
   input: string,
   message: string,
   options: { intent?: string; type?: string; versionId?: string },
 ): Promise<void> {
-  const uuid = parseAssetId(input);
+  const uuid = parseArtifactId(input);
   const { client } = requireAuthClient();
 
   const payload: Record<string, unknown> = { body: message };
@@ -16,21 +16,21 @@ export async function assetComment(
   if (options.type) payload.type = options.type;
   if (options.versionId) payload.on_version_id = options.versionId;
 
-  const { data } = await client.post(`/v0/assets/${uuid}/messages`, payload);
+  const { data } = await client.post(`/v0/artifacts/${uuid}/messages`, payload);
   outputSuccess(data.data, formatMessageSent);
 }
 
-export async function assetComments(
+export async function artifactComments(
   input: string,
   options: { since?: string; limit?: string },
 ): Promise<void> {
-  const uuid = parseAssetId(input);
+  const uuid = parseArtifactId(input);
   const { client } = requireAuthClient();
 
   const params: Record<string, string> = {};
   if (options.since) params.since_sequence = options.since;
   if (options.limit) params.limit = options.limit;
 
-  const { data } = await client.get(`/v0/assets/${uuid}/messages`, { params });
+  const { data } = await client.get(`/v0/artifacts/${uuid}/messages`, { params });
   outputSuccess(data.data as unknown as Record<string, unknown>, formatMessages);
 }

@@ -15,7 +15,7 @@ export function parseDuration(s: string): number {
 }
 
 export async function share(
-  assetId: string,
+  artifactId: string,
   options: { commentOnly?: boolean; expires?: string; for?: string },
 ): Promise<void> {
   const identity = resolveCurrentIdentity();
@@ -25,12 +25,12 @@ export async function share(
   const aud = options.for || undefined;
 
   const token = createCapabilityToken(
-    { sub: `asset:${assetId}`, iss: identity.agentId, perm, exp, aud },
+    { sub: `artifact:${artifactId}`, iss: identity.agentId, perm, exp, aud },
     identity.secretKey,
   );
 
   const frontendUrl = getFrontendUrl(loadConfig());
-  const url = `${frontendUrl}/s/${assetId}?cap=${encodeURIComponent(token)}`;
+  const url = `${frontendUrl}/s/${artifactId}?cap=${encodeURIComponent(token)}`;
 
-  outputSuccess({ url, token, assetId, perm, exp: exp ?? null, aud: aud ?? null }, formatShareLink);
+  outputSuccess({ url, token, artifactId, perm, exp: exp ?? null, aud: aud ?? null }, formatShareLink);
 }

@@ -4,8 +4,8 @@ import mime from 'mime-types';
 import { optionalAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatAssetDownloaded } from '../formatters.js';
-import { parseAssetId } from '../parse-asset-id.js';
+import { formatArtifactDownloaded } from '../formatters.js';
+import { parseArtifactId } from '../parse-artifact-id.js';
 
 function csvEscape(str: string): string {
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -14,20 +14,20 @@ function csvEscape(str: string): string {
   return str;
 }
 
-export async function assetDownload(
+export async function artifactDownload(
   input: string,
   options: { output?: string; version?: string; format?: string },
 ): Promise<void> {
-  const uuid = parseAssetId(input);
+  const uuid = parseArtifactId(input);
   const { client } = optionalAuthClient();
 
-  const { data: assetRes } = await client.get(`/v0/assets/${uuid}`);
-  const asset = assetRes.data;
+  const { data: artifactRes } = await client.get(`/v0/artifacts/${uuid}`);
+  const artifact = artifactRes.data;
 
-  if (asset.type !== 'collection') {
+  if (artifact.type !== 'collection') {
     const endpoint = options.version
-      ? `/v0/assets/${uuid}/versions/${options.version}/content`
-      : `/v0/assets/${uuid}/content`;
+      ? `/v0/artifacts/${uuid}/versions/${options.version}/content`
+      : `/v0/artifacts/${uuid}/content`;
 
     const response = await client.get(endpoint, { responseType: 'arraybuffer' });
 
@@ -39,7 +39,7 @@ export async function assetDownload(
 
     outputSuccess(
       { file: outPath, sizeBytes: response.data.byteLength, mimeType: contentType },
-      formatAssetDownloaded,
+      formatArtifactDownloaded,
     );
     return;
   }
@@ -49,14 +49,14 @@ export async function assetDownload(
     throw new CliError('INVALID_FORMAT', `Invalid format "${format}". Use csv or json.`);
   }
 
-  const schema: Array<{ name: string; position: number }> = asset.metadata?.schema ?? [];
+  const schema: Array<{ name: string; position: number }> = artifact.metadata?.schema ?? [];
 
   let allRows: Array<{ data: Record<string, unknown> }> = [];
   let cursor: string | undefined;
   do {
     const params: Record<string, string> = { limit: '500' };
     if (cursor) params.after = cursor;
-    const { data } = await client.get(`/v0/assets/${uuid}/rows`, { params });
+    const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params });
     allRows.push(...data.data.rows);
     cursor = data.data.nextCursor ?? undefined;
   } while (cursor);
@@ -80,12 +80,12 @@ export async function assetDownload(
     ext = 'csv';
   }
 
-  const filename = asset.title || uuid;
+  const filename = artifact.title || uuid;
   const outPath = path.resolve(options.output || `${filename}.${ext}`);
   fs.writeFileSync(outPath, content, 'utf-8');
 
   outputSuccess(
     { file: outPath, sizeBytes: Buffer.byteLength(content, 'utf-8'), mimeType },
-    formatAssetDownloaded,
+    formatArtifactDownloaded,
   );
 }

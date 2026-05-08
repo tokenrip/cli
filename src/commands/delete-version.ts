@@ -8,12 +8,12 @@ export async function deleteVersion(
   options: { dryRun?: boolean } = {},
 ): Promise<void> {
   if (options.dryRun) {
-    outputSuccess({ dryRun: true, action: 'would delete version', assetId: uuid, versionId }, formatVersionDeleted);
+    outputSuccess({ dryRun: true, action: 'would delete version', artifactId: uuid, versionId }, formatVersionDeleted);
     return;
   }
 
   const { client } = requireAuthClient();
-  await client.delete(`/v0/assets/${uuid}/versions/${versionId}`);
+  await client.delete(`/v0/artifacts/${uuid}/versions/${versionId}`);
 
-  outputSuccess({ assetId: uuid, versionId, deleted: true }, formatVersionDeleted);
+  outputSuccess({ artifactId: uuid, versionId, deleted: true }, formatVersionDeleted);
 }

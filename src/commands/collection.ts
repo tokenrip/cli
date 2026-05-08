@@ -25,7 +25,7 @@ export async function collectionAppend(
   }
 
   const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/assets/${uuid}/rows`, { rows });
+  const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, { rows });
   outputSuccess({ rows: data.data, count: data.data.length }, formatRowsAppended);
 }
 
@@ -46,7 +46,7 @@ export async function collectionRows(
     }
   }
 
-  const { data } = await client.get(`/v0/assets/${uuid}/rows`, { params });
+  const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params });
   outputSuccess(data.data, formatCollectionRows);
 }
 
@@ -57,7 +57,7 @@ export async function collectionUpdate(
 ): Promise<void> {
   const parsed = parseJsonObjectOption(options.data, '--data');
   const { client } = requireAuthClient();
-  const { data } = await client.put(`/v0/assets/${uuid}/rows/${rowId}`, { data: parsed });
+  const { data } = await client.put(`/v0/artifacts/${uuid}/rows/${rowId}`, { data: parsed });
   outputSuccess(data.data, formatRowUpdated);
 }
 
@@ -67,6 +67,6 @@ export async function collectionDelete(
 ): Promise<void> {
   const ids = options.rows.split(',').map((s) => s.trim());
   const { client } = requireAuthClient();
-  await client.delete(`/v0/assets/${uuid}/rows`, { data: { row_ids: ids } });
+  await client.delete(`/v0/artifacts/${uuid}/rows`, { data: { row_ids: ids } });
   outputSuccess({ deleted: ids.length }, formatRowsDeleted);
 }

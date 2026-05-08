@@ -5,9 +5,9 @@ import { spawnSync } from 'node:child_process';
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import {
-  formatImprintAssets,
+  formatImprintArtifacts,
   formatMount,
-  formatMountAssets,
+  formatMountArtifacts,
   formatMountContext,
   formatMountDrillIn,
   formatMountList,
@@ -62,10 +62,10 @@ export async function mountedAgentList(): Promise<void> {
   outputSuccess(data.data, formatMountedAgentList);
 }
 
-export async function mountedAgentAssets(slug: string): Promise<void> {
+export async function mountedAgentArtifacts(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/mountedagents/mine/${encodeURIComponent(slug)}/assets`);
-  outputSuccess(data.data, formatImprintAssets);
+  const { data } = await client.get(`/v0/mountedagents/mine/${encodeURIComponent(slug)}/artifacts`);
+  outputSuccess(data.data, formatImprintArtifacts);
 }
 
 export async function mountedAgentFork(
@@ -81,7 +81,7 @@ export async function mountedAgentFork(
   const fork = data.data as {
     slug: string;
     manifest: unknown;
-    scaffoldFiles?: Array<{ path: string; contentUrl: string; assetAlias: string }>;
+    scaffoldFiles?: Array<{ path: string; contentUrl: string; artifactAlias: string }>;
   };
 
   const root = options.outputDir ?? process.cwd();
@@ -134,10 +134,10 @@ export async function mountedAgentShowMount(mountId: string): Promise<void> {
   outputSuccess(data.data, formatMountDrillIn);
 }
 
-export async function mountedAgentMountAssets(mountId: string): Promise<void> {
+export async function mountedAgentMountArtifacts(mountId: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/mounts/${encodeURIComponent(mountId)}/assets`);
-  outputSuccess(data.data, formatMountAssets);
+  const { data } = await client.get(`/v0/mounts/${encodeURIComponent(mountId)}/artifacts`);
+  outputSuccess(data.data, formatMountArtifacts);
 }
 
 export async function mountedAgentMountContext(
@@ -149,15 +149,15 @@ export async function mountedAgentMountContext(
   }
   const { client } = requireAuthClient();
   const { data } = await client.get(`/v0/mounts/${encodeURIComponent(mountId)}/context`);
-  const current = data.data as { contextAsset?: { publicId?: string } | null; content?: string };
-  const publicId = current.contextAsset?.publicId;
+  const current = data.data as { contextArtifact?: { publicId?: string } | null; content?: string };
+  const publicId = current.contextArtifact?.publicId;
   if (!publicId) {
-    throw new CliError('MOUNT_CONTEXT_NOT_FOUND', 'This mount does not have a context asset');
+    throw new CliError('MOUNT_CONTEXT_NOT_FOUND', 'This mount does not have a context artifact');
   }
 
   if (options.fromFile) {
     const content = readFileSync(options.fromFile, 'utf-8');
-    const { data: updated } = await client.post(`/v0/assets/${encodeURIComponent(publicId)}/versions`, {
+    const { data: updated } = await client.post(`/v0/artifacts/${encodeURIComponent(publicId)}/versions`, {
       type: 'markdown',
       content,
     });
@@ -178,7 +178,7 @@ export async function mountedAgentMountContext(
     }
     const content = readFileSync(file, 'utf-8');
     rmSync(dir, { recursive: true, force: true });
-    const { data: updated } = await client.post(`/v0/assets/${encodeURIComponent(publicId)}/versions`, {
+    const { data: updated } = await client.post(`/v0/artifacts/${encodeURIComponent(publicId)}/versions`, {
       type: 'markdown',
       content,
     });
@@ -283,7 +283,7 @@ function readManifest(path: string): unknown {
 // ─── Session lifecycle ──────────────────────────────────────────────
 //
 // These four commands mirror the MCP tool surface (`mountedagent_load`,
-// `_record`, `_rewrite_asset`, `_session_end`) so the bootloader skill can
+// `_record`, `_rewrite_artifact`, `_session_end`) so the bootloader skill can
 // drive a tracked session from Claude Code via Bash, no MCP setup required.
 //
 // JSON-only output by design — the bootloader pipes results into `jq`. The
@@ -320,7 +320,7 @@ export async function mountedAgentRecord(
   outputSuccess(data.data);
 }
 
-export async function mountedAgentRewriteAsset(
+export async function mountedAgentRewriteArtifact(
   sessionToken: string,
   alias: string,
   options: { content?: string; contentFrom?: string },
@@ -338,7 +338,7 @@ export async function mountedAgentRewriteAsset(
   }
   const { client } = requireAuthClient();
   const { data } = await client.post(
-    `/v0/ma-sessions/${encodeURIComponent(sessionToken)}/asset-rewrites`,
+    `/v0/ma-sessions/${encodeURIComponent(sessionToken)}/artifact-rewrites`,
     { alias, content },
   );
   outputSuccess(data.data);
@@ -346,18 +346,18 @@ export async function mountedAgentRewriteAsset(
 
 export async function mountedAgentEnd(
   sessionToken: string,
-  options: { summary?: string; artifactFrom?: string; artifactTitle?: string; artifactPublic?: boolean },
+  options: { summary?: string; outputFrom?: string; outputTitle?: string; outputPublic?: boolean },
 ): Promise<void> {
   const body: Record<string, unknown> = {};
   if (options.summary !== undefined) body.summary = options.summary;
-  if (options.artifactFrom !== undefined) {
-    if (!options.artifactTitle) {
-      throw new CliError('INVALID_END', '--artifact-title is required when --artifact-from is set');
+  if (options.outputFrom !== undefined) {
+    if (!options.outputTitle) {
+      throw new CliError('INVALID_END', '--output-title is required when --output-from is set');
     }
-    body.artifact = {
-      title: options.artifactTitle,
-      content: readContentFile(options.artifactFrom),
-      isPublic: options.artifactPublic ?? false,
+    body.sessionOutput = {
+      title: options.outputTitle,
+      content: readContentFile(options.outputFrom),
+      isPublic: options.outputPublic ?? false,
     };
   }
   const { client } = requireAuthClient();

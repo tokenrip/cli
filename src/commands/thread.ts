@@ -60,7 +60,7 @@ export async function threadCreate(options: {
   collaborators?: string;
   message?: string;
   refs?: string;
-  asset?: string;
+  artifact?: string;
   title?: string;
   tourWelcome?: boolean;
   team?: string;
@@ -78,8 +78,8 @@ export async function threadCreate(options: {
 
   if (options.refs) {
     payload.refs = parseRefList(options.refs);
-  } else if (options.asset) {
-    payload.refs = [{ type: 'asset', target_id: options.asset }];
+  } else if (options.artifact) {
+    payload.refs = [{ type: 'artifact', target_id: options.artifact }];
   }
 
   if (options.message) {

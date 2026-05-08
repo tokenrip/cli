@@ -5,7 +5,7 @@ import mime from 'mime-types';
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatAssetCreated } from '../formatters.js';
+import { formatArtifactCreated } from '../formatters.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
 
@@ -20,7 +20,7 @@ export async function upload(filePath: string, options: { title?: string; parent
   const size = fs.statSync(absPath).size;
 
   if (options.dryRun) {
-    outputSuccess({ dryRun: true, action: 'would upload', file: absPath, title, mimeType, size }, formatAssetCreated);
+    outputSuccess({ dryRun: true, action: 'would upload', file: absPath, title, mimeType, size }, formatArtifactCreated);
     return;
   }
 
@@ -32,7 +32,7 @@ export async function upload(filePath: string, options: { title?: string; parent
   form.append('mimeType', mimeType);
   form.append('title', title);
 
-  if (options.parent) form.append('parentAssetId', options.parent);
+  if (options.parent) form.append('parentArtifactId', options.parent);
   if (options.context) form.append('creatorContext', options.context);
   if (options.refs) form.append('inputReferences', JSON.stringify(options.refs.split(',').map((r) => r.trim())));
   if (options.team) {
@@ -42,7 +42,7 @@ export async function upload(filePath: string, options: { title?: string; parent
   }
   if (options.folder) form.append('folder', options.folder);
 
-  const { data } = await client.post('/v0/assets', form, {
+  const { data } = await client.post('/v0/artifacts', form, {
     headers: form.getHeaders(),
     maxContentLength: Infinity,
     maxBodyLength: Infinity,
@@ -56,5 +56,5 @@ export async function upload(filePath: string, options: { title?: string; parent
     type: data.data.type,
     mimeType: data.data.mimeType,
     currentVersionId: data.data.currentVersionId,
-  }, formatAssetCreated);
+  }, formatArtifactCreated);
 }

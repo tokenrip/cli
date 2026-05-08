@@ -23,7 +23,7 @@ export {
 export { agentIdToPublicKey } from './crypto.js';
 export { loadContacts, saveContacts, addContact, removeContact, resolveRecipient, resolveRecipients } from './contacts.js';
 export { search } from './commands/search.js';
-export { folderCreate, folderList, folderShow, folderDelete, folderRename, assetMove } from './commands/folder.js';
+export { folderCreate, folderList, folderShow, folderDelete, folderRename, artifactMove } from './commands/folder.js';
 export type { Contact, Contacts } from './contacts.js';
 export { loadTeams, saveTeams, resolveTeam, resolveTeams, setAlias, removeAlias, syncTeamsFromResponse } from './teams.js';
 export type { LocalTeam, Teams, ServerTeamEntry } from './teams.js';

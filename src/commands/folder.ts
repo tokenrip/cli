@@ -61,11 +61,11 @@ export async function folderRename(oldSlug: string, newSlug: string, options: { 
   }
 }
 
-export async function assetMove(uuid: string, options: { folder?: string; team?: string; unfiled?: boolean }): Promise<void> {
+export async function artifactMove(uuid: string, options: { folder?: string; team?: string; unfiled?: boolean }): Promise<void> {
   const { client } = requireAuthClient();
 
   if (options.unfiled) {
-    await client.patch(`/v0/assets/${uuid}`, { folderId: null });
+    await client.patch(`/v0/artifacts/${uuid}`, { folderId: null });
     outputSuccess({ id: uuid, folder_id: null });
     return;
   }
@@ -85,6 +85,6 @@ export async function assetMove(uuid: string, options: { folder?: string; team?:
     folderId = data.data.id;
   }
 
-  const { data } = await client.patch(`/v0/assets/${uuid}`, { folderId });
+  const { data } = await client.patch(`/v0/artifacts/${uuid}`, { folderId });
   outputSuccess(data.data);
 }
