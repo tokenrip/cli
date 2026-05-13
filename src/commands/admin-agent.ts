@@ -10,13 +10,13 @@ export async function adminAgentList(): Promise<void> {
 
 export async function adminAgentShow(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/admin/mountedagents/${encodeURIComponent(slug)}`);
+  const { data } = await client.get(`/v0/admin/agents/${encodeURIComponent(slug)}`);
   outputSuccess(data.data);
 }
 
 export async function adminAgentUnpublish(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.patch(`/v0/admin/mountedagents/${encodeURIComponent(slug)}`, {
+  const { data } = await client.patch(`/v0/admin/agents/${encodeURIComponent(slug)}`, {
     isPublished: false,
   });
   outputSuccess(data.data);
@@ -33,7 +33,7 @@ export async function adminAgentSetFeatured(slug: string, weightArg: string): Pr
     }
   }
   const { client } = requireAuthClient();
-  const { data } = await client.patch(`/v0/admin/mountedagents/${encodeURIComponent(slug)}`, {
+  const { data } = await client.patch(`/v0/admin/agents/${encodeURIComponent(slug)}`, {
     isFeatured: weight,
   });
   outputSuccess(data.data);
@@ -42,7 +42,7 @@ export async function adminAgentSetFeatured(slug: string, weightArg: string): Pr
 export async function adminAgentSessions(slug: string): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(
-    `/v0/admin/mountedagents/${encodeURIComponent(slug)}/sessions`,
+    `/v0/admin/agents/${encodeURIComponent(slug)}/sessions`,
   );
   outputSuccess(data.data);
 }

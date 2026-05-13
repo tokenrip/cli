@@ -52,7 +52,7 @@ export async function agentPublish(
 
 export async function agentShow(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/mountedagents/mine/${encodeURIComponent(slug)}`);
+  const { data } = await client.get(`/v0/agents/mine/${encodeURIComponent(slug)}`);
   outputSuccess(data.data, formatAgent);
 }
 
@@ -64,7 +64,7 @@ export async function agentList(): Promise<void> {
 
 export async function agentArtifacts(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/mountedagents/mine/${encodeURIComponent(slug)}/artifacts`);
+  const { data } = await client.get(`/v0/agents/mine/${encodeURIComponent(slug)}/artifacts`);
   outputSuccess(data.data, formatImprintArtifacts);
 }
 
@@ -197,15 +197,15 @@ export async function agentUnmount(mountId: string): Promise<void> {
 
 export async function agentUnpublish(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.patch(`/v0/mountedagents/${encodeURIComponent(slug)}`, { isPublished: false });
+  const { data } = await client.patch(`/v0/agents/${encodeURIComponent(slug)}`, { isPublished: false });
   outputSuccess(data.data, formatAgent);
 }
 
 export async function agentPublishToggle(slug: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data: current } = await client.get(`/v0/mountedagents/mine/${encodeURIComponent(slug)}`);
+  const { data: current } = await client.get(`/v0/agents/mine/${encodeURIComponent(slug)}`);
   const next = !current.data.isPublished;
-  const { data } = await client.patch(`/v0/mountedagents/${encodeURIComponent(slug)}`, { isPublished: next });
+  const { data } = await client.patch(`/v0/agents/${encodeURIComponent(slug)}`, { isPublished: next });
   outputSuccess(data.data, formatAgent);
 }
 
@@ -220,7 +220,7 @@ export async function agentSetFeatured(slug: string, weightArg: string): Promise
     }
   }
   const { client } = requireAuthClient();
-  const { data } = await client.patch(`/v0/mountedagents/${encodeURIComponent(slug)}`, { isFeatured: weight });
+  const { data } = await client.patch(`/v0/agents/${encodeURIComponent(slug)}`, { isFeatured: weight });
   outputSuccess(data.data, formatAgent);
 }
 
@@ -241,7 +241,7 @@ export async function agentSetDisplay(
     );
   }
   const { client } = requireAuthClient();
-  const { data } = await client.patch(`/v0/mountedagents/${encodeURIComponent(slug)}/display`, body);
+  const { data } = await client.patch(`/v0/agents/${encodeURIComponent(slug)}/display`, body);
   outputSuccess(data.data, formatAgent);
 }
 
@@ -257,7 +257,7 @@ export async function agentDelete(slug: string, options: { force?: boolean }): P
     }
   }
   const { client } = requireAuthClient();
-  await client.delete(`/v0/mountedagents/${encodeURIComponent(slug)}`);
+  await client.delete(`/v0/agents/${encodeURIComponent(slug)}`);
   outputSuccess({ slug, deleted: true });
 }
 
@@ -298,7 +298,7 @@ export async function agentLoad(
   const body: Record<string, unknown> = {};
   if (options.team) body.team = options.team;
   const { data } = await client.post(
-    `/v0/mountedagents/${encodeURIComponent(slug)}/sessions`,
+    `/v0/agents/${encodeURIComponent(slug)}/sessions`,
     body,
   );
   // No human formatter — load output is structured for programmatic use only.
@@ -314,7 +314,7 @@ export async function agentRecord(
   if (options.collection) body.collection = options.collection;
   const { client } = requireAuthClient();
   const { data } = await client.post(
-    `/v0/ma-sessions/${encodeURIComponent(sessionToken)}/rows`,
+    `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/rows`,
     body,
   );
   outputSuccess(data.data);
@@ -338,7 +338,7 @@ export async function agentRewriteArtifact(
   }
   const { client } = requireAuthClient();
   const { data } = await client.post(
-    `/v0/ma-sessions/${encodeURIComponent(sessionToken)}/artifact-rewrites`,
+    `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/artifact-rewrites`,
     { alias, content },
   );
   outputSuccess(data.data);
@@ -362,7 +362,7 @@ export async function agentEnd(
   }
   const { client } = requireAuthClient();
   const { data } = await client.post(
-    `/v0/ma-sessions/${encodeURIComponent(sessionToken)}/end`,
+    `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/end`,
     body,
   );
   outputSuccess(data.data);

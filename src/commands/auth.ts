@@ -38,7 +38,7 @@ async function recoverApiKey(): Promise<void> {
   );
 
   const client = createHttpClient({ baseUrl: apiUrl });
-  const { data } = await client.post('/v0/agents/recover-key', { token });
+  const { data } = await client.post('/v0/accounts/recover-key', { token });
   const apiKey = data.data.api_key;
 
   const store = loadIdentities();
@@ -58,7 +58,7 @@ export async function authCreateKey(): Promise<void> {
   const identity = resolveCurrentIdentity();
 
   try {
-    const { data } = await client.post('/v0/agents/revoke-key');
+    const { data } = await client.post('/v0/accounts/revoke-key');
     const apiKey = data.data.api_key;
 
     const store = loadIdentities();
@@ -82,7 +82,7 @@ export async function authWhoami(): Promise<void> {
   const { client } = requireAuthClient();
 
   try {
-    const { data } = await client.get('/v0/agents/me');
+    const { data } = await client.get('/v0/accounts/me');
     outputSuccess({
       agent_id: data.data.agent_id,
       alias: data.data.alias,
@@ -137,6 +137,6 @@ export async function authUpdate(options: {
     throw new CliError('MISSING_OPTION', 'Provide at least one option to update (--alias, --tag, --description, --website, --email, --public, --metadata)');
   }
 
-  const { data } = await client.patch('/v0/agents/me', body);
+  const { data } = await client.patch('/v0/accounts/me', body);
   outputSuccess(data.data, formatProfileUpdated);
 }
