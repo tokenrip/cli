@@ -544,19 +544,19 @@ export const formatSelfUpdate: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatAgentList: Formatter = (data) => {
-  const agents = (data as any).agents as Array<{
-    agentId: string;
+export const formatAccountList: Formatter = (data) => {
+  const accounts = (data as any).accounts as Array<{
+    accountId: string;
     alias?: string;
     current: boolean;
   }>;
-  if (!Array.isArray(agents) || agents.length === 0) {
-    return 'No agents configured. Run `rip agent create` to get started.';
+  if (!Array.isArray(accounts) || accounts.length === 0) {
+    return 'No accounts configured. Run `rip account create` to get started.';
   }
-  return agents
+  return accounts
     .map(
       (a) =>
-        `${a.current ? '*' : ' '} ${(a.alias || '—').padEnd(20)} ${a.agentId}${a.current ? '  (current)' : ''}`,
+        `${a.current ? '*' : ' '} ${(a.alias || '—').padEnd(20)} ${a.accountId}${a.current ? '  (current)' : ''}`,
     )
     .join('\n');
 };
@@ -606,14 +606,14 @@ export const formatUnmounted: Formatter = (data) => {
   return `Unmounted: ${data.id}`;
 };
 
-export const formatMountedAgentPublished: Formatter = (data) => {
+export const formatAgentPublished: Formatter = (data) => {
   const lines = [`Published ${data.slug} as v${data.publishedVersion ?? '?'}`];
   if (data.isPublished) lines.push('  Public listing: yes');
   if (data.publisherId) lines.push(`  Publisher:      ${data.publisherId}`);
   return lines.join('\n');
 };
 
-export const formatMountedAgent: Formatter = (data) => {
+export const formatAgent: Formatter = (data) => {
   const manifest = data.manifest as any;
   const lines = [`Mounted agent: ${data.slug}`];
   if (data.publishedVersion) lines.push(`  Version:       v${data.publishedVersion}`);
@@ -633,7 +633,7 @@ export const formatMountedAgent: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatMountedAgentList: Formatter = (data) => {
+export const formatAgentList: Formatter = (data) => {
   const agents = data as unknown as Record<string, unknown>[];
   if (!Array.isArray(agents) || agents.length === 0) return 'No mounted agents.';
   const lines = [`${agents.length} mounted agent(s):\n`];
@@ -647,7 +647,7 @@ export const formatMountedAgentList: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatMountedAgentScaffold: Formatter = (data) => {
+export const formatAgentScaffold: Formatter = (data) => {
   const lines = [`Forked: ${data.slug}`];
   if (data.path) lines.push(`  Path:      ${data.path}`);
   if (data.nextStep) lines.push(`  Next:      ${data.nextStep}`);

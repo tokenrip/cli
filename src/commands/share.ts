@@ -25,7 +25,7 @@ export async function share(
   const aud = options.for || undefined;
 
   const token = createCapabilityToken(
-    { sub: `artifact:${artifactId}`, iss: identity.agentId, perm, exp, aud },
+    { sub: `artifact:${artifactId}`, iss: identity.accountId, perm, exp, aud },
     identity.secretKey,
   );
 

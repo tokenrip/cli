@@ -8,7 +8,9 @@ function getIdentitiesFile(): string {
 }
 
 export interface StoredIdentity {
-  agentId: string;
+  accountId: string;
+  /** @deprecated use accountId */
+  agentId?: string;
   publicKey: string;
   secretKey: string;
   apiKey: string;
@@ -19,7 +21,17 @@ export type IdentityStore = Record<string, StoredIdentity>;
 
 export function loadIdentities(): IdentityStore {
   try {
-    return JSON.parse(fs.readFileSync(getIdentitiesFile(), 'utf-8')) as IdentityStore;
+    const raw = JSON.parse(fs.readFileSync(getIdentitiesFile(), 'utf-8')) as IdentityStore;
+    // Migrate v1 identities: rename agentId → accountId
+    let changed = false;
+    for (const identity of Object.values(raw)) {
+      if (!identity.accountId && identity.agentId) {
+        identity.accountId = identity.agentId;
+        changed = true;
+      }
+    }
+    if (changed) saveIdentities(raw);
+    return raw;
   } catch {
     return {};
   }
@@ -40,33 +52,36 @@ export function saveIdentities(store: IdentityStore): void {
 
 export function addIdentity(identity: StoredIdentity): void {
   const store = loadIdentities();
-  store[identity.agentId] = identity;
+  store[identity.accountId] = identity;
   saveIdentities(store);
 }
 
 export function removeIdentity(target: string): void {
   const store = loadIdentities();
-  const agentId = resolveAgentId(store, target);
-  if (!agentId) {
+  const accountId = resolveAccountId(store, target);
+  if (!accountId) {
     throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
   }
   if (Object.keys(store).length <= 1) {
     throw new CliError(
       'LAST_IDENTITY',
-      'Cannot remove the last identity. Use `rip agent create` to add another first.',
+      'Cannot remove the last identity. Use `rip account create` to add another first.',
     );
   }
-  delete store[agentId];
+  delete store[accountId];
   saveIdentities(store);
 }
 
-export function resolveAgentId(store: IdentityStore, target: string): string | null {
+export function resolveAccountId(store: IdentityStore, target: string): string | null {
   if (store[target]) return target;
   for (const [id, identity] of Object.entries(store)) {
     if (identity.alias === target) return id;
   }
   return null;
 }
+
+/** @deprecated use resolveAccountId */
+export const resolveAgentId = resolveAccountId;
 
 let agentOverride: string | undefined;
 
@@ -81,17 +96,17 @@ export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentit
   if (entries.length === 0) {
     throw new CliError(
       'NO_IDENTITY',
-      'No agent identity found. Run `rip agent create` to set up your agent.',
+      'No account identity found. Run `rip account create` to set up your account.',
     );
   }
 
   const override = opts?.agent || agentOverride;
   if (override) {
-    const id = resolveAgentId(store, override);
+    const id = resolveAccountId(store, override);
     if (!id) {
       throw new CliError(
         'IDENTITY_NOT_FOUND',
-        `No local identity matching "${override}". Run \`rip agent list\` to see available agents.`,
+        `No local identity matching "${override}". Run \`rip account list\` to see available accounts.`,
       );
     }
     return store[id];
@@ -99,7 +114,7 @@ export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentit
 
   const envAgent = process.env.TOKENRIP_AGENT;
   if (envAgent) {
-    const id = resolveAgentId(store, envAgent);
+    const id = resolveAccountId(store, envAgent);
     if (!id) {
       throw new CliError(
         'IDENTITY_NOT_FOUND',
@@ -110,8 +125,9 @@ export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentit
   }
 
   const config = loadConfig();
-  if (config.currentAgent) {
-    const id = resolveAgentId(store, config.currentAgent);
+  const currentAccount = config.currentAccount || config.currentAgent;
+  if (currentAccount) {
+    const id = resolveAccountId(store, currentAccount);
     if (id) return store[id];
   }
 
@@ -119,6 +135,6 @@ export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentit
 
   throw new CliError(
     'AMBIGUOUS_IDENTITY',
-    'Multiple agents configured. Use `rip agent use <name>` to select one, or pass `--agent <name>`.',
+    'Multiple accounts configured. Use `rip account use <name>` to select one, or pass `--agent <name>`.',
   );
 }

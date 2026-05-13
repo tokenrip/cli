@@ -22,16 +22,19 @@ export function generateKeypair(): Keypair {
   };
 }
 
-export function publicKeyToAgentId(publicKeyHex: string): string {
+export function publicKeyToAccountId(publicKeyHex: string): string {
   const bytes = Buffer.from(publicKeyHex, 'hex');
   const words = bech32.toWords(bytes);
   return bech32.encode(AGENT_HRP, words, BECH32_LIMIT);
 }
 
-export function agentIdToPublicKey(agentId: string): string {
-  const { words } = bech32.decode(agentId, BECH32_LIMIT);
+export function accountIdToPublicKey(accountId: string): string {
+  const { words } = bech32.decode(accountId, BECH32_LIMIT);
   return Buffer.from(bech32.fromWords(words)).toString('hex');
 }
+
+/** @deprecated use accountIdToPublicKey */
+export const agentIdToPublicKey = accountIdToPublicKey;
 
 export interface CapabilityTokenOptions {
   sub: string;

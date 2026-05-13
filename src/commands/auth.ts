@@ -22,8 +22,8 @@ export async function authRegister(options: { alias?: string; force?: boolean })
     return;
   }
 
-  const { agentCreate } = await import('./agent.js');
-  await agentCreate({ alias: options.alias });
+  const { accountCreate } = await import('./account.js');
+  await accountCreate({ alias: options.alias });
 }
 
 async function recoverApiKey(): Promise<void> {
@@ -33,7 +33,7 @@ async function recoverApiKey(): Promise<void> {
 
   const exp = Math.floor(Date.now() / 1000) + 300;
   const token = signPayload(
-    { sub: 'key-recovery', iss: identity.agentId, exp, jti: Math.random().toString(36).slice(2) },
+    { sub: 'key-recovery', iss: identity.accountId, exp, jti: Math.random().toString(36).slice(2) },
     identity.secretKey,
   );
 
@@ -42,13 +42,13 @@ async function recoverApiKey(): Promise<void> {
   const apiKey = data.data.api_key;
 
   const store = loadIdentities();
-  if (store[identity.agentId]) {
-    store[identity.agentId].apiKey = apiKey;
+  if (store[identity.accountId]) {
+    store[identity.accountId].apiKey = apiKey;
     saveIdentities(store);
   }
 
   outputSuccess(
-    { agentId: identity.agentId, apiKey, message: 'API key recovered and saved' },
+    { accountId: identity.accountId, apiKey, message: 'API key recovered and saved' },
     formatAuthKey,
   );
 }
@@ -62,8 +62,8 @@ export async function authCreateKey(): Promise<void> {
     const apiKey = data.data.api_key;
 
     const store = loadIdentities();
-    if (store[identity.agentId]) {
-      store[identity.agentId].apiKey = apiKey;
+    if (store[identity.accountId]) {
+      store[identity.accountId].apiKey = apiKey;
       saveIdentities(store);
     }
 

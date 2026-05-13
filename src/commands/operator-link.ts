@@ -28,7 +28,7 @@ export async function operatorLink(
     : Math.floor(Date.now() / 1000) + 300; // default 5 minutes
 
   const token = signPayload(
-    { sub: 'operator-auth', iss: identity.agentId, exp, jti: randomUUID() },
+    { sub: 'operator-auth', iss: identity.accountId, exp, jti: randomUUID() },
     identity.secretKey,
   );
   const url = `${frontendUrl}/operator/auth?token=${encodeURIComponent(token)}`;
@@ -43,7 +43,7 @@ export async function operatorLink(
   } catch (initialError) {
     if (shouldRecoverLinkCodeError(initialError)) {
       try {
-        const recovered = await recoverAuthClient(identity.agentId, identity.secretKey, auth.apiUrl);
+        const recovered = await recoverAuthClient(identity.accountId, identity.secretKey, auth.apiUrl);
         client = recovered.client;
         warning = recovered.warning;
         const { data } = await createLinkCode(client);
@@ -64,7 +64,7 @@ export async function operatorLink(
       code,
       code_error: codeError,
       warning,
-      agent_id: identity.agentId,
+      agent_id: identity.accountId,
       expires_at: expiresAt,
       ...(code && { link_page: `${frontendUrl}/link` }),
     },

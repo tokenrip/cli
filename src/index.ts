@@ -15,12 +15,13 @@ export {
   addIdentity,
   removeIdentity,
   resolveCurrentIdentity,
+  resolveAccountId,
   resolveAgentId,
   setAgentOverride,
   type StoredIdentity,
   type IdentityStore,
 } from './identities.js';
-export { agentIdToPublicKey } from './crypto.js';
+export { accountIdToPublicKey, agentIdToPublicKey } from './crypto.js';
 export { loadContacts, saveContacts, addContact, removeContact, resolveRecipient, resolveRecipients } from './contacts.js';
 export { search } from './commands/search.js';
 export { folderCreate, folderList, folderShow, folderDelete, folderRename, artifactMove } from './commands/folder.js';

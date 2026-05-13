@@ -18,8 +18,8 @@ import { artifactCat } from './commands/artifact-cat.js';
 import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { mountedAgentArtifacts, mountedAgentDelete, mountedAgentEnd, mountedAgentFork, mountedAgentList, mountedAgentLoad, mountedAgentMount, mountedAgentMountArtifacts, mountedAgentMountContext, mountedAgentMountRename, mountedAgentMounts, mountedAgentPublish, mountedAgentPublishToggle, mountedAgentRecord, mountedAgentRewriteArtifact, mountedAgentSetDisplay, mountedAgentSetFeatured, mountedAgentShow, mountedAgentShowMount, mountedAgentUnmount, mountedAgentUnpublish } from './commands/mountedagent.js';
-import { adminMountedAgentList, adminMountedAgentSessions, adminMountedAgentSetFeatured, adminMountedAgentShow, adminMountedAgentUnpublish } from './commands/admin-mountedagent.js';
+import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentUnmount, agentUnpublish } from './commands/agent.js';
+import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
@@ -447,25 +447,25 @@ EXAMPLES:
     await collectionDelete(uuid, options);
   }));
 
-// ── mounted agent commands ───────────────────────────────────────────
+// ── agent commands ───────────────────────────────────────────────────
 const mountedagent = program
-  .command('mountedagent')
+  .command('agent')
   .alias('ma')
-  .description('Publish and administer mounted agents');
+  .description('Publish and manage agents');
 
 mountedagent
   .command('publish')
-  .argument('<manifest>', 'Path to mounted agent manifest JSON')
+  .argument('<manifest>', 'Path to agent manifest JSON')
   .option('--publish', 'Tier 2 — request public listing (requires an approved Publisher)')
   .option('--published', '[deprecated] alias for --publish; mapped automatically with a warning')
   .option('--featured <weight>', 'Set featured display weight; higher values sort first')
-  .option('--team <slug>', 'Publish as a team-owned mounted agent (maps to teamSlug in v2)')
-  .description('Publish or update a mounted agent imprint from a manifest')
+  .option('--team <slug>', 'Publish as a team-owned agent (maps to teamSlug in v2)')
+  .description('Publish or update an agent from a manifest')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent publish mountedagents/office-hours/manifest.json
-  $ rip mountedagent publish mountedagents/office-hours/manifest.json --publish --featured 10
-  $ rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
+  $ rip agent publish agents/office-hours/manifest.json
+  $ rip agent publish agents/office-hours/manifest.json --publish --featured 10
+  $ rip agent publish agents/chief-of-staff/manifest.json --team acme
 
 NOTES:
   Brain artifact aliases referenced by the manifest must already be published
@@ -478,80 +478,80 @@ NOTES:
   approved Publisher (see: rip publisher apply). --published is the
   legacy v1 flag and is mapped to --publish for backward compatibility.
 `)
-  .action(wrapCommand(mountedAgentPublish));
+  .action(wrapCommand(agentPublish));
 
 mountedagent
   .command('show')
-  .argument('<slug>', 'Mounted agent slug')
-  .description('Show a mounted agent published by the active identity')
+  .argument('<slug>', 'Agent slug')
+  .description('Show an agent published by the active identity')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent show office-hours
+  $ rip agent show office-hours
 `)
-  .action(wrapCommand(mountedAgentShow));
+  .action(wrapCommand(agentShow));
 
 mountedagent
   .command('artifacts')
-  .argument('<slug>', 'Mounted agent slug')
-  .description('List every artifact referenced by an owned mounted-agent imprint')
+  .argument('<slug>', 'Agent slug')
+  .description('List every artifact referenced by an owned agent')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent artifacts office-hours
+  $ rip agent artifacts office-hours
 `)
-  .action(wrapCommand(mountedAgentArtifacts));
+  .action(wrapCommand(agentArtifacts));
 
 mountedagent
   .command('list')
-  .description('List mounted agents published by the active identity')
+  .description('List agents published by the active identity')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent list
+  $ rip agent list
 `)
-  .action(wrapCommand(mountedAgentList));
+  .action(wrapCommand(agentList));
 
 mountedagent
   .command('fork')
-  .argument('<template-slug>', 'Published mounted-agent template slug')
+  .argument('<template-slug>', 'Published agent template slug')
   .option('--team <team-slug>', 'Team slug that will own the fork (omit for a personal fork)')
-  .option('--slug <new-slug>', 'Override the generated mounted-agent slug')
-  .description('Fork a published mounted-agent template into a personal or team-owned scaffold')
+  .option('--slug <new-slug>', 'Override the generated agent slug')
+  .description('Fork a published agent template into a personal or team-owned scaffold')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent fork chief-of-staff
-  $ rip mountedagent fork chief-of-staff --team my-team
-  $ rip mountedagent fork chief-of-staff --team my-team --slug my-team-cos
+  $ rip agent fork chief-of-staff
+  $ rip agent fork chief-of-staff --team my-team
+  $ rip agent fork chief-of-staff --team my-team --slug my-team-cos
 
 NOTES:
   Personal forks are now the default — omit --team to fork into a personal
-  imprint owned by the calling agent. The fork is created unpublished. The
+  agent owned by the calling account. The fork is created unpublished. The
   CLI writes the manifest and forked brain/sample artifacts under
-  mountedagents/<slug>/, then you can run /moa --iterate <slug> to customize.
+  agents/<slug>/, then you can run /moa --iterate <slug> to customize.
 `)
-  .action(wrapCommand(mountedAgentFork));
+  .action(wrapCommand(agentFork));
 
 mountedagent
   .command('mount')
-  .argument('<slug>', 'Agent imprint slug')
+  .argument('<slug>', 'Agent slug')
   .option('--team <slug>', 'Bind the mount to a team (collaborative)')
-  .option('--name <label>', 'Friendly mount name (required for a second mount of the same imprint)')
+  .option('--name <label>', 'Friendly mount name (required for a second mount of the same agent)')
   .option('--context-from <file>', 'Seed the mount context artifact from a markdown file')
-  .description('Create a deployment of an agent imprint (personal by default; --team makes it collaborative)')
+  .description('Create a deployment of an agent (personal by default; --team makes it collaborative)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent mount chief-of-staff
-  $ rip mountedagent mount chief-of-staff --team acme --name engineering
-  $ rip mountedagent mount blog-writing --name flowers --context-from ./flowers-context.md
+  $ rip agent mount chief-of-staff
+  $ rip agent mount chief-of-staff --team acme --name engineering
+  $ rip agent mount blog-writing --name flowers --context-from ./flowers-context.md
 `)
-  .action(wrapCommand(mountedAgentMount));
+  .action(wrapCommand(agentMount));
 
 mountedagent
   .command('mounts')
   .description("List the caller's mounts (personal + accessible team mounts)")
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent mounts
+  $ rip agent mounts
 `)
-  .action(wrapCommand(mountedAgentMounts));
+  .action(wrapCommand(agentMounts));
 
 mountedagent
   .command('mount-rename')
@@ -560,21 +560,21 @@ mountedagent
   .description('Rename a mount')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent mount-rename <mount-id> engineering
+  $ rip agent mount-rename <mount-id> engineering
 `)
-  .action(wrapCommand(mountedAgentMountRename));
+  .action(wrapCommand(agentMountRename));
 
 mountedagent
   .command('show-mount')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .description('Show mount context, imprint version, and materialized layers')
-  .action(wrapCommand(mountedAgentShowMount));
+  .description('Show mount context, agent version, and materialized layers')
+  .action(wrapCommand(agentShowMount));
 
 mountedagent
   .command('mount-artifacts')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
   .description('List context, materialized, and inherited artifacts for a mount')
-  .action(wrapCommand(mountedAgentMountArtifacts));
+  .action(wrapCommand(agentMountArtifacts));
 
 mountedagent
   .command('mount-context')
@@ -582,7 +582,7 @@ mountedagent
   .option('--from-file <file>', 'Replace mount context content from a markdown file')
   .option('--edit', 'Open $EDITOR and publish the edited context as a new artifact version')
   .description('Print or update the mount context artifact')
-  .action(wrapCommand(mountedAgentMountContext));
+  .action(wrapCommand(agentMountContext));
 
 mountedagent
   .command('unmount')
@@ -590,7 +590,7 @@ mountedagent
   .description('Destroy a mount and its mount-owned memory (irreversible)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip mountedagent unmount <mount-id>
+  $ rip agent unmount <mount-id>
 
 NOTES:
   Cascades all mount-owned memory (team-layer + per-operator private rows)
@@ -598,63 +598,63 @@ NOTES:
   deletes the mount row. Operate on personal mounts you own; team mounts
   can only be destroyed by the team member who created them.
 `)
-  .action(wrapCommand(mountedAgentUnmount));
+  .action(wrapCommand(agentUnmount));
 
 // ── session lifecycle (used by the generic /tokenrip bootloader) ─────
 //
-// These four commands wrap `MASessionService` so the bootloader skill can
+// These four commands wrap `AgentSessionService` so the bootloader skill can
 // drive a tracked session from Claude Code without any MCP setup.
 // Pair them with `--json` (or set TOKENRIP_OUTPUT=json) — output is
 // structured for programmatic consumption.
 
 mountedagent
   .command('load')
-  .argument('<slug>', 'Imprint slug to load')
+  .argument('<slug>', 'Agent slug to load')
   .option('--team <slug>', 'Bind to a team mount (caller must be a current team member)')
-  .description('Start a session against a published imprint (lazy-creates the caller’s default mount)')
+  .description('Start a session against a published agent (lazy-creates the caller\'s default mount)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip --json mountedagent load office-hours
-  $ rip --json mountedagent load chief-of-staff --team acme
+  $ rip --json agent load office-hours
+  $ rip --json agent load chief-of-staff --team acme
 
 NOTES:
   Returns the session token, the compiled brain envelope, the layer map,
   and (when present) the mount-context block. Persist the session token —
   every record / rewrite-artifact / end call needs it.
 `)
-  .action(wrapCommand(mountedAgentLoad));
+  .action(wrapCommand(agentLoad));
 
 mountedagent
   .command('record')
-  .argument('<session-token>', 'Token returned by `mountedagent load`')
+  .argument('<session-token>', 'Token returned by `agent load`')
   .option('--collection <slug>', 'Logical collection slug (defaults to the manifest default)')
   .option('--row <json>', 'Inline JSON object payload')
   .option('--row-file <file>', 'Read the JSON payload from a file')
-  .description('Record a memory row to the session’s collection')
+  .description("Record a memory row to the session's collection")
   .addHelpText('after', `
 EXAMPLES:
-  $ rip --json mountedagent record <token> --collection patterns \\
+  $ rip --json agent record <token> --collection patterns \\
       --row '{"pattern":"...","recommendation":"..."}'
 `)
-  .action(wrapCommand(mountedAgentRecord));
+  .action(wrapCommand(agentRecord));
 
 mountedagent
   .command('rewrite-artifact')
-  .argument('<session-token>', 'Token returned by `mountedagent load`')
+  .argument('<session-token>', 'Token returned by `agent load`')
   .argument('<logical-alias>', 'Memory-artifact logical alias from manifest.memoryArtifacts[].logicalAlias')
   .option('--content <string>', 'Inline content (UTF-8) for the artifact rewrite')
   .option('--content-from <file>', 'Read the new content from a file')
   .description('Rewrite a memory artifact; publishes a new version on the concrete artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip --json mountedagent rewrite-artifact <token> <alias> \\
+  $ rip --json agent rewrite-artifact <token> <alias> \\
       --content-from /tmp/new-context.md
 `)
-  .action(wrapCommand(mountedAgentRewriteArtifact));
+  .action(wrapCommand(agentRewriteArtifact));
 
 mountedagent
   .command('end')
-  .argument('<session-token>', 'Token returned by `mountedagent load`')
+  .argument('<session-token>', 'Token returned by `agent load`')
   .option('--summary <text>', 'One-paragraph wrap-up summary')
   .option('--output-from <file>', 'Optional session output content (markdown). Requires --output-title')
   .option('--output-title <title>', 'Session output title (only meaningful with --output-from)')
@@ -662,39 +662,39 @@ mountedagent
   .description('End a session and optionally publish a markdown session output')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip --json mountedagent end <token> --summary "Done."
-  $ rip --json mountedagent end <token> --summary "..." \\
+  $ rip --json agent end <token> --summary "Done."
+  $ rip --json agent end <token> --summary "..." \\
       --output-from /tmp/wrap-up.md --output-title "Office Hours wrap-up"
 
 NOTES:
   Idempotent on repeat calls — re-running with the same token returns the
-  prior session output, if any. Imprints with session.produceSessionOutput: false
+  prior session output, if any. Agents with session.produceSessionOutput: false
   return SESSION_OUTPUT_NOT_PERMITTED when --output-from is supplied.
 `)
-  .action(wrapCommand(mountedAgentEnd));
+  .action(wrapCommand(agentEnd));
 
 mountedagent
   .command('unpublish')
-  .argument('<slug>', 'Imprint slug')
-  .description('Set is_published = false on an owned imprint')
-  .action(wrapCommand(mountedAgentUnpublish));
+  .argument('<slug>', 'Agent slug')
+  .description('Set is_published = false on an owned agent')
+  .action(wrapCommand(agentUnpublish));
 
 mountedagent
   .command('publish-toggle')
-  .argument('<slug>', 'Imprint slug')
-  .description('Flip is_published on an owned imprint')
-  .action(wrapCommand(mountedAgentPublishToggle));
+  .argument('<slug>', 'Agent slug')
+  .description('Flip is_published on an owned agent')
+  .action(wrapCommand(agentPublishToggle));
 
 mountedagent
   .command('set-featured')
-  .argument('<slug>', 'Imprint slug')
+  .argument('<slug>', 'Agent slug')
   .argument('<weight>', 'Integer weight (higher sorts first) or "clear" to remove')
-  .description('Set or clear the featured-weight on an owned imprint')
-  .action(wrapCommand(mountedAgentSetFeatured));
+  .description('Set or clear the featured-weight on an owned agent')
+  .action(wrapCommand(agentSetFeatured));
 
 mountedagent
   .command('set-display')
-  .argument('<slug>', 'Imprint slug')
+  .argument('<slug>', 'Agent slug')
   .option('--display-name <name>', 'Display name')
   .option('--tagline <text>', 'Tagline')
   .option('--description <text>', 'Description')
@@ -704,51 +704,51 @@ mountedagent
     (v: string, prev: string[] = []) => prev.concat(v),
     [] as string[],
   )
-  .description('Update display block fields without re-publishing the manifest')
-  .action(wrapCommand(mountedAgentSetDisplay));
+  .description('Update display block fields without republishing the agent')
+  .action(wrapCommand(agentSetDisplay));
 
 mountedagent
   .command('delete')
-  .argument('<slug>', 'Imprint slug')
+  .argument('<slug>', 'Agent slug')
   .option('--force', 'Skip typed-slug confirmation', false)
-  .description('Destroy an imprint and cascade its mounts and memory (irreversible)')
-  .action(wrapCommand(mountedAgentDelete));
+  .description('Destroy an agent and cascade its mounts and memory (irreversible)')
+  .action(wrapCommand(agentDelete));
 
 // ── admin commands ──────────────────────────────────────────────────
 const adminCmd = program.command('admin').description('Admin-only commands');
-const adminMountedAgentCmd = adminCmd
-  .command('mountedagent')
-  .description('Admin imprint management');
+const adminAgentCmd = adminCmd
+  .command('agent')
+  .description('Admin agent management');
 
-adminMountedAgentCmd
+adminAgentCmd
   .command('list')
-  .description('List all imprints across all owners (admin)')
-  .action(wrapCommand(adminMountedAgentList));
+  .description('List all agents across all owners (admin)')
+  .action(wrapCommand(adminAgentList));
 
-adminMountedAgentCmd
+adminAgentCmd
   .command('show')
-  .argument('<slug>', 'Imprint slug')
-  .description('Show any imprint by slug (admin)')
-  .action(wrapCommand(adminMountedAgentShow));
+  .argument('<slug>', 'Agent slug')
+  .description('Show any agent by slug (admin)')
+  .action(wrapCommand(adminAgentShow));
 
-adminMountedAgentCmd
+adminAgentCmd
   .command('unpublish')
-  .argument('<slug>', 'Imprint slug')
-  .description('Force-unpublish an imprint regardless of owner (admin)')
-  .action(wrapCommand(adminMountedAgentUnpublish));
+  .argument('<slug>', 'Agent slug')
+  .description('Force-unpublish an agent regardless of owner (admin)')
+  .action(wrapCommand(adminAgentUnpublish));
 
-adminMountedAgentCmd
+adminAgentCmd
   .command('set-featured')
-  .argument('<slug>', 'Imprint slug')
+  .argument('<slug>', 'Agent slug')
   .argument('<weight>', 'Integer weight or "clear" to remove')
-  .description('Set or clear featured weight on any imprint (admin)')
-  .action(wrapCommand(adminMountedAgentSetFeatured));
+  .description('Set or clear featured weight on any agent (admin)')
+  .action(wrapCommand(adminAgentSetFeatured));
 
-adminMountedAgentCmd
+adminAgentCmd
   .command('sessions')
-  .argument('<slug>', 'Imprint slug')
-  .description('List recent sessions for an imprint (admin)')
-  .action(wrapCommand(adminMountedAgentSessions));
+  .argument('<slug>', 'Agent slug')
+  .description('List recent sessions for an agent (admin)')
+  .action(wrapCommand(adminAgentSessions));
 
 // ── publisher commands ──────────────────────────────────────────────
 const publisher = program
@@ -877,40 +877,40 @@ EXAMPLES:
   }));
 
 // ── agent commands ──────────────────────────────────────────────────
-const agent = program.command('agent').description('Manage agent identities');
+const agent = program.command('account').description('Manage account identities');
 
 agent
   .command('create')
   .description('Create and register a new agent identity')
   .option('--alias <name>', 'Human-readable alias')
   .action(wrapCommand(async (options) => {
-    const { agentCreate } = await import('./commands/agent.js');
-    await agentCreate(options);
+    const { accountCreate } = await import('./commands/account.js');
+    await accountCreate(options);
   }));
 
 agent
   .command('list')
   .description('List local agent identities')
   .action(wrapCommand(async () => {
-    const { agentList } = await import('./commands/agent.js');
-    const { formatAgentList } = await import('./formatters.js');
-    outputSuccess({ agents: agentList() }, formatAgentList);
+    const { accountList } = await import('./commands/account.js');
+    const { formatAccountList } = await import('./formatters.js');
+    outputSuccess({ accounts: accountList() }, formatAccountList);
   }));
 
 agent
   .command('use <name>')
   .description('Switch the current agent identity')
   .action(wrapCommand(async (name: string) => {
-    const { agentUse } = await import('./commands/agent.js');
-    agentUse(name);
+    const { accountUse } = await import('./commands/account.js');
+    accountUse(name);
   }));
 
 agent
   .command('remove <name>')
   .description('Remove an agent identity from this machine')
   .action(wrapCommand(async (name: string) => {
-    const { agentRemove } = await import('./commands/agent.js');
-    agentRemove(name);
+    const { accountRemove } = await import('./commands/account.js');
+    accountRemove(name);
   }));
 
 agent
@@ -918,16 +918,16 @@ agent
   .description('Export an agent identity encrypted for another agent')
   .requiredOption('--to <agentId>', 'Target agent ID to encrypt for')
   .action(wrapCommand(async (name: string, options: { to: string }) => {
-    const { agentExport } = await import('./commands/agent.js');
-    await agentExport(name, options);
+    const { accountExport } = await import('./commands/account.js');
+    await accountExport(name, options);
   }));
 
 agent
   .command('import <file>')
   .description('Import an encrypted agent identity (use - for stdin)')
   .action(wrapCommand(async (file: string) => {
-    const { agentImport } = await import('./commands/agent.js');
-    await agentImport(file);
+    const { accountImport } = await import('./commands/account.js');
+    await accountImport(file);
   }));
 
 // ── inbox command ──────────────────────────────────────────────────

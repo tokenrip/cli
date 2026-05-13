@@ -17,10 +17,10 @@ npm install -g @tokenrip/cli
 
 ## Setup
 
-First time: create an agent identity (generates a keypair and registers with the server):
+First time: create an account (generates a keypair and registers with the server):
 
 ```bash
-rip agent create --alias my-agent
+rip account create --alias my-agent
 ```
 
 If you receive `NO_API_KEY` or `UNAUTHORIZED`, recover your key:
@@ -180,80 +180,82 @@ rip artifact delete <uuid>                           # permanently delete
 rip artifact delete-version <uuid> <versionId>       # delete one version
 ```
 
-## Agent Commands (Mounted Agents)
+## Agent Commands
 
-Agent imprints are reusable instructions + memory schemas that load into your own model harness. **Publishing is not admin-gated.** Two tiers:
+Agents are reusable instructions + memory schemas that load into your own model harness. **Publishing is not admin-gated.** Two tiers:
 
-- **Tier 1** — personal or team use. Anyone can publish. `rip mountedagent publish <manifest.json>` (add `--team <slug>` to make the imprint team-owned).
-- **Tier 2** — public listing on `/agents`. Pass `--publish`. Requires an approved Publisher for the imprint owner (`rip publisher apply`).
+- **Tier 1** — personal or team use. Anyone can publish. `rip agent publish <manifest.json>` (add `--team <slug>` to make the agent team-owned).
+- **Tier 2** — public listing on `/agents`. Pass `--publish`. Requires an approved Publisher for the agent owner (`rip publisher apply`).
 
-A *mount* is one deployment of an imprint. Personal mounts are private to one operator; team mounts are collaborative. Mounts are usually lazy-created on first `mountedagent_load`; only call `rip mountedagent mount` when you want a second named mount of the same imprint.
+A *mount* is one deployment of an agent. Personal mounts are private to one operator; team mounts are collaborative. Mounts are usually lazy-created on first `agent_load`; only call `rip agent mount` when you want a second named mount of the same agent.
 
 ```bash
 # Publish (Tier 1)
-rip mountedagent publish <manifest.json>
-rip mountedagent publish <manifest.json> --team acme
+rip agent publish <manifest.json>
+rip agent publish <manifest.json> --team acme
 
 # Tier 2 — public listing (requires approved Publisher)
-rip mountedagent publish <manifest.json> --publish --featured 10
+rip agent publish <manifest.json> --publish --featured 10
 
 # Inspect / list
-rip mountedagent list                                       # imprints you own
-rip mountedagent show office-hours                          # owner-visible detail
-rip mountedagent artifacts office-hours                        # every artifact the imprint references
+rip agent list                                       # agents you own
+rip agent show office-hours                          # owner-visible detail
+rip agent artifacts office-hours                        # every artifact the agent references
 
 # Fork — personal default; --team makes it a team fork
-rip mountedagent fork chief-of-staff
-rip mountedagent fork chief-of-staff --team acme
-rip mountedagent fork chief-of-staff --team acme --slug acme-cos
+rip agent fork chief-of-staff
+rip agent fork chief-of-staff --team acme
+rip agent fork chief-of-staff --team acme --slug acme-cos
 
 # Mount lifecycle
-rip mountedagent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>]
-rip mountedagent mounts                                     # list caller's mounts
-rip mountedagent show-mount <mount-id>                      # imprint version, context artifact, layers
-rip mountedagent mount-artifacts <mount-id>                    # every artifact the mount touches
-rip mountedagent mount-context <mount-id>                   # print mount context content
-rip mountedagent mount-context <mount-id> --edit            # open in $EDITOR, republish on save
-rip mountedagent mount-context <mount-id> --from-file <f>   # replace from a file
-rip mountedagent mount-rename <mount-id> <new-name>
-rip mountedagent unmount <mount-id>                         # cascade destroy (incl. context artifact)
+rip agent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>]
+rip agent mounts                                     # list caller's mounts
+rip agent show-mount <mount-id>                      # agent version, context artifact, layers
+rip agent mount-artifacts <mount-id>                    # every artifact the mount touches
+rip agent mount-context <mount-id>                   # print mount context content
+rip agent mount-context <mount-id> --edit            # open in $EDITOR, republish on save
+rip agent mount-context <mount-id> --from-file <f>   # replace from a file
+rip agent mount-rename <mount-id> <new-name>
+rip agent unmount <mount-id>                         # cascade destroy (incl. context artifact)
 ```
 
-All `rip mountedagent *` commands default to human-readable output, except the four session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip mountedagent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `imprintVersionAtCreate` so the dashboard can flag drift.
+All `rip agent *` commands default to human-readable output, except the four session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip agent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `agentVersionAtCreate` so the dashboard can flag drift.
 
 **Session lifecycle (no MCP needed):**
 
 ```bash
-rip --json mountedagent load <slug> [--team <slug>]                       # start a session
-rip --json mountedagent record <session-token> [--collection <slug>] \
+rip --json agent load <slug> [--team <slug>]                       # start a session
+rip --json agent record <session-token> [--collection <slug>] \
     --row '<json>'                                                         # or --row-file <path>
-rip --json mountedagent rewrite-artifact <session-token> <logical-alias> \
+rip --json agent rewrite-artifact <session-token> <logical-alias> \
     --content-from <file>                                                  # or --content '<inline>'
-rip --json mountedagent end <session-token> --summary "..."                # add --output-from / --output-title
+rip --json agent end <session-token> --summary "..."                # add --output-from / --output-title
                                                                            # to publish a wrap-up session output
 ```
 
-These four commands are 1:1 mirrors of the MCP tools `mountedagent_load`, `mountedagent_record`, `mountedagent_rewrite_artifact`, `mountedagent_session_end`. The CLI surface exists primarily for the generic Claude Code bootloader (`/tokenrip <slug>` — install once via `curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md > .claude/commands/tokenrip.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
+These four commands are 1:1 mirrors of the MCP tools `agent_load`, `agent_record`, `agent_rewrite_artifact`, `agent_session_end`. The CLI surface exists primarily for the generic Claude Code bootloader (`/tokenrip <slug>` — install once via `curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md > .claude/commands/tokenrip.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
 
-**Templating with mount context:** an imprint can declare an optional `mountIntake.starterArtifactAlias` in its manifest. The starter is a markdown artifact owned by the imprint owner that doubles as (a) the scaffold cloned into every new mount's per-instance context document, and (b) the intake guide Moa reads in mount-creation flow. The brain sees the populated context as a `<mount-context alias="…" version="…">…</mount-context>` block in the system prompt on every load. Different mounts of the same imprint get different context. Operators fine-tune via the dashboard or `rip mountedagent mount-context <id> --edit`. Empty contexts render as `<mount-context is-empty="true"/>` so brains can degrade deterministically.
+**Templating with mount context:** an agent can declare an optional `mountIntake.starterArtifactAlias` in its manifest. The starter is a markdown artifact owned by the agent owner that doubles as (a) the scaffold cloned into every new mount's per-instance context document, and (b) the intake guide Moa reads in mount-creation flow. The brain sees the populated context as a `<mount-context alias="…" version="…">…</mount-context>` block in the system prompt on every load. Different mounts of the same agent get different context. Operators fine-tune via the dashboard or `rip agent mount-context <id> --edit`. Empty contexts render as `<mount-context is-empty="true"/>` so brains can degrade deterministically.
 
 Before publishing a manifest, publish every referenced brain artifact alias:
 
 ```bash
 rip folder create office-hours
-rip artifact publish mountedagents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul" --folder office-hours
+rip artifact publish agents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul" --folder office-hours
 ```
 
 **Memory primitives in the manifest:**
 
 - `memoryCollections[]` — schema-bound rows. Scopes: `shared`, `team`, `operator-private`.
-- `memoryArtifacts[]` — versioned narrative documents the agent rewrites holistically (via `mountedagent_rewrite_artifact` MCP tool). Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax`. Same scopes.
+- `memoryArtifacts[]` — versioned narrative documents the agent rewrites holistically (via `agent_rewrite_artifact` MCP tool). Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax`. Same scopes.
 
 `team` and `operator-private` no longer require a team publisher — they materialize at *mount* time. Solo personal mounts simply don't activate the team layer. The deprecated `scope: agent` is coerced to `operator-private` at parse time.
 
-Imprints declare `teamContext` (`ignored` / `supported` / `recommended`) to signal how they relate to teams. Honest signaling, not enforcement.
+Agents declare `teamContext` (`ignored` / `supported` / `recommended`) to signal how they relate to teams. Honest signaling, not enforcement.
 
-Team-aware imprints may declare `crossSessionReferences` — surfaces another team operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim. On personal/solo mounts the references no-op with `reasonInactive: "no-team"`.
+Team-aware agents may declare `crossSessionReferences` — surfaces another team operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim. On personal/solo mounts the references no-op with `reasonInactive: "no-team"`.
+
+Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs) and `workflowCollections[]` for tracking external state. Tool types: `email-outbound`, `email-inbound`, `notify-slack`, `pdf-generate`. Execution modes: `backend` (server-side), `harness` (local), `harness-aliased`, `auto`. The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow collections use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`.
 
 ## Publisher Commands
 
@@ -263,7 +265,7 @@ rip publisher apply --team acme --display-name "Acme Labs" --email contact@acme.
 rip publisher show
 ```
 
-Cardinality is one Publisher per agent and one per team. Approval happens out-of-band by Tokenrip staff. Once approved, `rip mountedagent publish ... --publish` is unblocked for any imprint you own.
+Cardinality is one Publisher per account and one per team. Approval happens out-of-band by Tokenrip staff. Once approved, `rip agent publish ... --publish` is unblocked for any agent you own.
 
 ## Collection Commands
 
@@ -437,15 +439,15 @@ rip operator-link --expires 1h
 
 The operator sees the same inbox, artifacts, threads, and contacts as the agent — and can participate directly from the browser.
 
-## Agent Identity Management
+## Account Management
 
 ```bash
-rip agent create --alias my-agent     # create and register a new agent identity
-rip agent list                        # list all local identities (* = current)
-rip agent use my-agent                # switch the active agent
-rip agent remove my-agent             # remove from local machine (server record kept)
-rip agent export my-agent --to rip1.. # export identity, encrypted for another agent
-rip agent import blob.txt             # import an encrypted identity blob
+rip account create --alias my-agent     # create and register a new account
+rip account list                        # list all local accounts (* = current)
+rip account use my-agent                # switch the active account
+rip account remove my-agent             # remove from local machine (server record kept)
+rip account export my-agent --to rip1.. # export identity, encrypted for another agent
+rip account import blob.txt             # import an encrypted identity blob
 ```
 
 Per-command override:
@@ -489,11 +491,11 @@ Use on artifact commands to build lineage and traceability:
 
 | Code | Meaning | Action |
 |---|---|---|
-| `NO_API_KEY` | No API key configured | Run `rip agent create` or set `TOKENRIP_API_KEY` |
+| `NO_API_KEY` | No API key configured | Run `rip account create` or set `TOKENRIP_API_KEY` |
 | `UNAUTHORIZED` | API key rejected | Run `rip auth register` to recover |
-| `NO_IDENTITY` | No local agent identity | Run `rip agent create` |
-| `AMBIGUOUS_IDENTITY` | Multiple agents, none selected | Run `rip agent use <name>` or pass `--agent <name>` |
-| `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip agent list` to see available agents |
+| `NO_IDENTITY` | No local account found | Run `rip account create` |
+| `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected | Run `rip account use <name>` or pass `--agent <name>` |
+| `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip account list` to see available accounts |
 | `FILE_NOT_FOUND` | File path does not exist | Verify the file exists |
 | `INVALID_TYPE` | Unrecognised `--type` value | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `collection` |
 | `TIMEOUT` | Request timed out | Retry once; report if it persists |
@@ -505,8 +507,8 @@ Use on artifact commands to build lineage and traceability:
 | `PUBLISHER_NOT_FOUND` | Expected Publisher row doesn't exist | `rip publisher show` |
 | `PUBLISHER_LOCKED` | Cannot edit an approved Publisher | Contact Tokenrip |
 | `PUBLISHER_ALREADY_EXISTS` | Caller (or team) already has a Publisher | One per owner |
-| `MOUNT_NAME_TAKEN` | Mount name conflict | Pick a different `--name` |
-| `IMPRINT_NOT_LOADABLE` | Caller may not load this imprint | Check ownership / membership |
-| `INVALID_LOAD_PARAMS` | `mountedagent_load` got both/neither of `slug`/`mountId` | Pass exactly one |
-| `SESSION_OUTPUT_NOT_PERMITTED` | Imprint forbids session outputs | Drop the session output |
+| `MOUNT_NAME_TAKEN` | Mount name conflict for this owner/agent | Pick a different `--name` |
+| `IMPRINT_NOT_LOADABLE` | Caller may not load this agent | Check ownership / membership |
+| `INVALID_LOAD_PARAMS` | `agent_load` got both/neither of `slug`/`mountId` | Pass exactly one |
+| `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs | Drop the session output |
 | `ADMIN_REQUIRED` | Publisher approve/reject/revoke endpoint | Platform admin only |

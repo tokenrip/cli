@@ -2,19 +2,19 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 
-export async function adminMountedAgentList(): Promise<void> {
+export async function adminAgentList(): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get('/v0/admin/mountedagents');
+  const { data } = await client.get('/v0/admin/agents');
   outputSuccess(data.data);
 }
 
-export async function adminMountedAgentShow(slug: string): Promise<void> {
+export async function adminAgentShow(slug: string): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(`/v0/admin/mountedagents/${encodeURIComponent(slug)}`);
   outputSuccess(data.data);
 }
 
-export async function adminMountedAgentUnpublish(slug: string): Promise<void> {
+export async function adminAgentUnpublish(slug: string): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.patch(`/v0/admin/mountedagents/${encodeURIComponent(slug)}`, {
     isPublished: false,
@@ -22,7 +22,7 @@ export async function adminMountedAgentUnpublish(slug: string): Promise<void> {
   outputSuccess(data.data);
 }
 
-export async function adminMountedAgentSetFeatured(slug: string, weightArg: string): Promise<void> {
+export async function adminAgentSetFeatured(slug: string, weightArg: string): Promise<void> {
   let weight: number | null;
   if (weightArg === 'clear' || weightArg === 'null') {
     weight = null;
@@ -39,7 +39,7 @@ export async function adminMountedAgentSetFeatured(slug: string, weightArg: stri
   outputSuccess(data.data);
 }
 
-export async function adminMountedAgentSessions(slug: string): Promise<void> {
+export async function adminAgentSessions(slug: string): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(
     `/v0/admin/mountedagents/${encodeURIComponent(slug)}/sessions`,

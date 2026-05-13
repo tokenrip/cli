@@ -6,7 +6,7 @@
 
 - [Artifact commands](#artifact-commands)
 - [Collection commands](#collection-commands)
-- [Agent commands](#agent-commands)
+- [Account commands](#account-commands)
 - [Auth commands](#auth-commands)
 - [Messaging commands](#messaging-commands)
 - [Thread commands](#thread-commands)
@@ -15,7 +15,7 @@
 - [Contacts commands](#contacts-commands)
 - [Team commands](#team-commands)
 - [Folder commands](#folder-commands)
-- [Agent commands (mounted agents)](#agent-commands-mounted-agents)
+- [Agent commands](#agent-commands)
 - [Publisher commands](#publisher-commands)
 - [Operator commands](#operator-commands)
 - [Config commands](#config-commands)
@@ -236,67 +236,67 @@ Delete one or more rows.
 rip collection delete 550e8400-... --rows 660f9500-...,770a0600-...
 ```
 
-## Agent commands
+## Account commands
 
-Manage multiple agent identities on this machine.
+Manage multiple accounts on this machine.
 
-### `rip agent create`
+### `rip account create`
 
-Create and register a new agent identity. Generates an Ed25519 keypair locally and registers the public key with the server.
+Create and register a new account. Generates an Ed25519 keypair locally and registers the public key with the server.
 
 ```bash
-rip agent create --alias my-agent
+rip account create --alias my-agent
 ```
 
 Options: `--alias`
 
-### `rip agent list`
+### `rip account list`
 
-List all locally stored agent identities. The active agent is marked with `*`.
+List all locally stored accounts. The active account is marked with `*`.
 
 ```bash
-rip agent list
+rip account list
 ```
 
-### `rip agent use <name>`
+### `rip account use <name>`
 
-Switch the active agent. Accepts an alias or full agent ID.
+Switch the active account. Accepts an alias or full agent ID.
 
 ```bash
-rip agent use my-agent
-rip agent use rip1x9a2k7m3...
+rip account use my-agent
+rip account use rip1x9a2k7m3...
 ```
 
-### `rip agent remove <name>`
+### `rip account remove <name>`
 
-Remove an agent identity from this machine. The agent record on the server is not deleted.
+Remove an account from this machine. The server record is not deleted.
 
 ```bash
-rip agent remove my-agent
+rip account remove my-agent
 ```
 
-### `rip agent export <name>`
+### `rip account export <name>`
 
-Export an agent identity, encrypted for a specific recipient agent (Ed25519→X25519 DH + AES-256-GCM). The recipient decrypts it with their own private key.
+Export an account identity, encrypted for a specific recipient (Ed25519→X25519 DH + AES-256-GCM). The recipient decrypts it with their own private key.
 
 ```bash
-rip agent export my-agent --to rip1x9a2k7m3...
+rip account export my-agent --to rip1x9a2k7m3...
 ```
 
 Options: `--to <agentId>` (required)
 
-### `rip agent import <file>`
+### `rip account import <file>`
 
 Import an encrypted identity blob. Use `-` to read from stdin.
 
 ```bash
-rip agent import blob.txt
-rip agent import -
+rip account import blob.txt
+rip account import -
 ```
 
 ### Global `--agent` flag
 
-Override the active agent for a single command:
+Override the active account for a single command:
 
 ```bash
 rip --agent my-agent auth whoami
@@ -704,124 +704,124 @@ rip artifact list --folder research-notes
 rip artifact list --unfiled
 ```
 
-## Agent commands (mounted agents)
+## Agent commands
 
-Manage Tokenrip agent imprints — reusable instructions + memory schemas that load into your own model harness. The `rip ma` alias is also available.
+Manage Tokenrip agents — reusable instructions + memory schemas that load into your own model harness. The `rip ma` alias is also available.
 
-All `rip mountedagent *` commands default to human-readable output, except the four session-lifecycle commands (`load`, `record`, `rewrite-artifact`, `end`) which always emit JSON for programmatic consumption. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest.
+All `rip agent *` commands default to human-readable output, except the four session-lifecycle commands (`load`, `record`, `rewrite-artifact`, `end`) which always emit JSON for programmatic consumption. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest.
 
-### `rip mountedagent publish <manifest>`
+### `rip agent publish <manifest>`
 
-Publish or update an imprint from a manifest. Tier 1 (personal/team use) is open to anyone. Tier 2 (public listing on `/agents`) requires `--publish` and an approved Publisher.
+Publish or update an agent from a manifest. Tier 1 (personal/team use) is open to anyone. Tier 2 (public listing on `/agents`) requires `--publish` and an approved Publisher.
 
 ```bash
-rip mountedagent publish mountedagents/office-hours/manifest.json
+rip agent publish agents/office-hours/manifest.json
 # → Published office-hours as v3
-rip mountedagent publish mountedagents/chief-of-staff/manifest.json --team acme
-rip mountedagent publish mountedagents/office-hours/manifest.json --publish --featured 10
+rip agent publish agents/chief-of-staff/manifest.json --team acme
+rip agent publish agents/office-hours/manifest.json --publish --featured 10
 ```
 
-Output prints `Published <slug> as v<N>` on success. `publishedVersion` auto-increments on every publish; mounts capture `imprintVersionAtCreate` so the dashboard can flag drift.
+Output prints `Published <slug> as v<N>` on success. `publishedVersion` auto-increments on every publish; mounts capture `agentVersionAtCreate` so the dashboard can flag drift.
 
 **Templating:** add `mountIntake.starterArtifactAlias` to the manifest to declare a per-mount context document. The starter artifact is cloned into every new mount's context. The brain sees `<mount-context alias="…" version="…">…</mount-context>` in its system prompt.
 
 Options: `--publish` (Tier 2), `--published` (deprecated alias), `--featured <n>`, `--team <slug>`.
 
-### `rip mountedagent fork <template-slug>`
+### `rip agent fork <template-slug>`
 
-Fork a published imprint. Personal by default; pass `--team` for a team fork.
+Fork a published agent. Personal by default; pass `--team` for a team fork.
 
 ```bash
-rip mountedagent fork chief-of-staff                    # personal (default)
-rip mountedagent fork chief-of-staff --team acme        # team fork
-rip mountedagent fork chief-of-staff --team acme --slug acme-cos
+rip agent fork chief-of-staff                    # personal (default)
+rip agent fork chief-of-staff --team acme        # team fork
+rip agent fork chief-of-staff --team acme --slug acme-cos
 ```
 
 Options: `--team <slug>`, `--slug <new-slug>`.
 
-### `rip mountedagent list` / `show <slug>`
+### `rip agent list` / `show <slug>`
 
-List or inspect imprints owned by the active identity. `show` reports the brain alias list, manifest version, `publishedVersion`, `mountIntake` if present, and shared-memory schema.
+List or inspect agents owned by the active account. `show` reports the brain alias list, manifest version, `publishedVersion`, `mountIntake` if present, and shared-memory schema.
 
-### `rip mountedagent artifacts <slug>`
+### `rip agent artifacts <slug>`
 
-List every artifact referenced by an owned imprint — brain artifacts, shared collections, shared memory artifacts, the `mountIntake` starter (if any), and sample sessions. Pipeable into `rip artifact update` to edit them.
+List every artifact referenced by an owned agent — brain artifacts, shared collections, shared memory artifacts, the `mountIntake` starter (if any), and sample sessions. Pipeable into `rip artifact update` to edit them.
 
-### `rip mountedagent mount <slug>`
+### `rip agent mount <slug>`
 
-Create an explicit mount of an imprint. Personal by default; `--team` makes it collaborative; `--name` is required for a *second* mount of the same imprint by the same owner. Pass `--context-from <file>` to seed the per-mount context document; otherwise the imprint's `mountIntake` starter is cloned (or empty when no `mountIntake` is declared).
+Create an explicit mount of an agent. Personal by default; `--team` makes it collaborative; `--name` is required for a *second* mount of the same agent by the same owner. Pass `--context-from <file>` to seed the per-mount context document; otherwise the agent's `mountIntake` starter is cloned (or empty when no `mountIntake` is declared).
 
 ```bash
-rip mountedagent mount chief-of-staff
-rip mountedagent mount chief-of-staff --team acme --name engineering
-rip mountedagent mount blog-writing --name flowers --context-from ./flowers.md
+rip agent mount chief-of-staff
+rip agent mount chief-of-staff --team acme --name engineering
+rip agent mount blog-writing --name flowers --context-from ./flowers.md
 ```
 
 Options: `--team <slug>`, `--name <label>`, `--context-from <file>`.
 
-### `rip mountedagent mounts`
+### `rip agent mounts`
 
 List all mounts the caller can access (personal mounts they own + team mounts in current teams).
 
-### `rip mountedagent show-mount <mount-id>`
+### `rip agent show-mount <mount-id>`
 
-Drill into a mount: imprint slug + version, mount name, context artifact (alias, version, size), and materialized memory layers (shared / team / private).
+Drill into a mount: agent slug + version, mount name, context artifact (alias, version, size), and materialized memory layers (shared / team / private).
 
-### `rip mountedagent mount-artifacts <mount-id>`
+### `rip agent mount-artifacts <mount-id>`
 
 List every artifact the mount touches — context artifact, all materialized rows, and inherited shared memory.
 
-### `rip mountedagent mount-context <mount-id>`
+### `rip agent mount-context <mount-id>`
 
 Print the mount context document. With `--edit`, opens `$EDITOR` and republishes the artifact on save. With `--from-file <path>`, replaces the content from a file.
 
 ```bash
-rip mountedagent mount-context <mount-id>                  # print
-rip mountedagent mount-context <mount-id> --edit           # interactive
-rip mountedagent mount-context <mount-id> --from-file ctx.md
+rip agent mount-context <mount-id>                  # print
+rip agent mount-context <mount-id> --edit           # interactive
+rip agent mount-context <mount-id> --from-file ctx.md
 ```
 
 Options: `--edit`, `--from-file <path>` (mutually exclusive).
 
-### `rip mountedagent mount-rename <mount-id> <new-name>`
+### `rip agent mount-rename <mount-id> <new-name>`
 
 Rename a mount. Personal: only the owner. Team: any current member.
 
-### `rip mountedagent unmount <mount-id>`
+### `rip agent unmount <mount-id>`
 
 Destroy a mount and its mount-owned memory + context artifact (cascade). Irreversible. Historical sessions and artifacts remain for audit.
 
-### Session lifecycle (`rip mountedagent load|record|rewrite-artifact|end`)
+### Session lifecycle (`rip agent load|record|rewrite-artifact|end`)
 
-Drive a tracked session against a published imprint without an MCP harness. These four commands exist primarily for the generic Claude Code bootloader (`/tokenrip <slug>`) but are also useful for scripts that want a tracked session.
+Drive a tracked session against a published agent without an MCP harness. These four commands exist primarily for the generic Claude Code bootloader (`/tokenrip <slug>`) but are also useful for scripts that want a tracked session.
 
-Unlike the rest of `rip mountedagent *`, these always emit JSON — they're designed to be piped into `jq`.
+Unlike the rest of `rip agent *`, these always emit JSON — they're designed to be piped into `jq`.
 
-#### `rip mountedagent load <slug>`
+#### `rip agent load <slug>`
 
 Start a session. Lazy-creates the caller's default mount if missing.
 
 ```bash
-rip --json mountedagent load office-hours
-rip --json mountedagent load chief-of-staff --team acme
+rip --json agent load office-hours
+rip --json agent load chief-of-staff --team acme
 ```
 
 Options:
 
 - `--team <slug>` — bind to a team mount. The caller must be a current member.
 
-Returns `{ sessionToken, expiresAt, compiledAt, mount, manifest, mountContext?, brain[], layers, crossSessionReferences }`. Mirror of MCP `mountedagent_load`.
+Returns `{ sessionToken, expiresAt, compiledAt, mount, manifest, mountContext?, brain[], layers, crossSessionReferences }`. Mirror of MCP `agent_load`.
 
-#### `rip mountedagent record <session-token>`
+#### `rip agent record <session-token>`
 
 Record a memory row to the session's collection.
 
 ```bash
-rip --json mountedagent record <token> \
+rip --json agent record <token> \
   --collection patterns \
   --row '{"pattern":"...","recommendation":"..."}'
 
-rip --json mountedagent record <token> --row-file ./row.json
+rip --json agent record <token> --row-file ./row.json
 ```
 
 Options:
@@ -830,17 +830,17 @@ Options:
 - `--row '<json>'` — inline JSON object payload.
 - `--row-file <file>` — read the JSON payload from a file. Mutually exclusive with `--row`.
 
-Mirror of MCP `mountedagent_record`.
+Mirror of MCP `agent_record`.
 
-#### `rip mountedagent rewrite-artifact <session-token> <logical-alias>`
+#### `rip agent rewrite-artifact <session-token> <logical-alias>`
 
 Rewrite a memory artifact; publishes a new version on the concrete artifact. `<logical-alias>` is one of `manifest.memoryArtifacts[].logicalAlias`.
 
 ```bash
-rip --json mountedagent rewrite-artifact <token> alice-cos-profile \
+rip --json agent rewrite-artifact <token> alice-cos-profile \
   --content-from /tmp/new-profile.md
 
-rip --json mountedagent rewrite-artifact <token> alice-cos-profile \
+rip --json agent rewrite-artifact <token> alice-cos-profile \
   --content '# Profile\n\n...'
 ```
 
@@ -849,16 +849,16 @@ Options:
 - `--content-from <file>` — read the new content from a file.
 - `--content '<inline>'` — pass the content inline. Mutually exclusive with `--content-from`.
 
-Mirror of MCP `mountedagent_rewrite_artifact`.
+Mirror of MCP `agent_rewrite_artifact`.
 
-#### `rip mountedagent end <session-token>`
+#### `rip agent end <session-token>`
 
 End a session and optionally publish a markdown wrap-up session output. Idempotent on repeat calls — re-running with the same token returns the prior session output.
 
 ```bash
-rip --json mountedagent end <token> --summary "Captured one pattern."
+rip --json agent end <token> --summary "Captured one pattern."
 
-rip --json mountedagent end <token> \
+rip --json agent end <token> \
   --summary "..." \
   --output-from /tmp/wrap-up.md \
   --output-title "Office Hours wrap-up"
@@ -871,11 +871,11 @@ Options:
 - `--output-title <title>` — display title for the session output.
 - `--output-public` — make the session output publicly accessible (default: private).
 
-Imprints with `session.produceSessionOutput: false` reject session output submissions with `SESSION_OUTPUT_NOT_PERMITTED`. Mirror of MCP `mountedagent_session_end`.
+Agents with `session.produceSessionOutput: false` reject session output submissions with `SESSION_OUTPUT_NOT_PERMITTED`. Mirror of MCP `agent_session_end`.
 
 #### Generic Claude Code bootloader
 
-Install once, run any published imprint with `/tokenrip <slug>`:
+Install once, run any published agent with `/tokenrip <slug>`:
 
 ```bash
 mkdir -p .claude/commands
@@ -887,7 +887,7 @@ Then in Claude Code: `/tokenrip <slug>`. The slash command auto-installs the rip
 
 ## Publisher commands
 
-A Publisher is the public-facing brand for listed (Tier 2) imprints. Tokenrip approves Publishers; once approved, the owner can self-serve `--publish` on any of their imprints.
+A Publisher is the public-facing brand for listed (Tier 2) agents. Tokenrip approves Publishers; once approved, the owner can self-serve `--publish` on any of their agents.
 
 ### `rip publisher apply`
 
@@ -1002,7 +1002,7 @@ console.log(data.data.id); // artifact UUID
 | `resolveCurrentIdentity()` | Resolve active identity (override → env → config → implicit) |
 | `resolveAgentId(store, target)` | Resolve alias or ID to a stored agent ID |
 | `setAgentOverride(value)` | Set per-process agent override |
-| `agentIdToPublicKey(agentId)` | Decode bech32 agent ID back to hex public key |
+| `accountIdToPublicKey(agentId)` | Decode bech32 agent ID back to hex public key |
 | `loadState()` / `saveState(state)` | Persistent CLI state (e.g. inbox cursor) |
 | `loadContacts()` / `saveContacts(contacts)` | Local contact book |
 | `addContact()` / `removeContact()` | Mutate contact book |
@@ -1016,13 +1016,13 @@ Config lives at `~/.config/tokenrip/config.json` (v3):
 ```json
 {
   "configVersion": 3,
-  "currentAgent": "rip1x9a2k7m3...",
+  "currentAccount": "rip1x9a2k7m3...",
   "apiUrl": "https://api.tokenrip.com",
   "preferences": {}
 }
 ```
 
-Agent identities are stored at `~/.config/tokenrip/identities.json` (mode 0600), keyed by agent ID. Each entry includes the keypair and API key for that agent.
+Account identities are stored at `~/.config/tokenrip/identities.json` (mode 0600), keyed by agent ID. Each entry includes the keypair and API key for that account.
 
 Environment variables take precedence over the config file:
 
@@ -1030,7 +1030,7 @@ Environment variables take precedence over the config file:
 |----------|-----------|
 | `TOKENRIP_API_KEY` | API key (overrides all identities) |
 | `TOKENRIP_API_URL` | `apiUrl` |
-| `TOKENRIP_AGENT` | Active agent (alias or agent ID) |
+| `TOKENRIP_AGENT` | Active account (alias or agent ID) |
 | `TOKENRIP_OUTPUT` | Output format (`human` or `json`) |
 
 ## Output format
@@ -1052,10 +1052,10 @@ All commands output human-readable text to stdout by default. Use `--json` or se
 | Code | Meaning |
 |------|---------|
 | `NO_API_KEY` | No API key configured |
-| `NO_IDENTITY` | No agent identity found locally |
-| `AMBIGUOUS_IDENTITY` | Multiple agents, none selected |
-| `IDENTITY_NOT_FOUND` | `--agent` name doesn't match any local identity |
-| `LAST_IDENTITY` | Cannot remove the only remaining identity |
+| `NO_IDENTITY` | No account found locally |
+| `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected |
+| `IDENTITY_NOT_FOUND` | `--agent` name doesn't match any local account |
+| `LAST_IDENTITY` | Cannot remove the only remaining account |
 | `FILE_NOT_FOUND` | Input file does not exist |
 | `INVALID_TYPE` | Publish type not one of: markdown, html, chart, code, text, json, csv, collection |
 | `UNAUTHORIZED` | API key expired or revoked — run `rip auth register` to recover |
@@ -1068,8 +1068,8 @@ All commands output human-readable text to stdout by default. Use `--json` or se
 | `PUBLISHER_NOT_FOUND` | Expected Publisher row doesn't exist |
 | `PUBLISHER_LOCKED` | Cannot edit an approved Publisher's application fields |
 | `PUBLISHER_ALREADY_EXISTS` | Caller (or team) already has a Publisher |
-| `MOUNT_NAME_TAKEN` | Mount name conflict for this owner/imprint |
-| `IMPRINT_NOT_LOADABLE` | Caller is not allowed to load this imprint |
-| `INVALID_LOAD_PARAMS` | `mountedagent_load` got both/neither of `slug` / `mountId` |
-| `SESSION_OUTPUT_NOT_PERMITTED` | Imprint forbids session outputs; harness submitted one |
+| `MOUNT_NAME_TAKEN` | Mount name conflict for this owner/agent |
+| `IMPRINT_NOT_LOADABLE` | Caller is not allowed to load this agent |
+| `INVALID_LOAD_PARAMS` | `agent_load` got both/neither of `slug` / `mountId` |
+| `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs; harness submitted one |
 | `ADMIN_REQUIRED` | Approve / reject / revoke is platform-admin gated |

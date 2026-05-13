@@ -27,21 +27,21 @@ export async function link(options: { alias: string; password: string; force?: b
   const { agent_id, public_key, secret_key, api_key } = data.data;
 
   addIdentity({
-    agentId: agent_id,
+    accountId: agent_id,
     publicKey: public_key,
     secretKey: secret_key,
     apiKey: api_key,
   });
 
   const store = loadIdentities();
-  if (Object.keys(store).length === 1 || !config.currentAgent) {
-    config.currentAgent = agent_id;
+  if (Object.keys(store).length === 1 || !config.currentAccount) {
+    config.currentAccount = agent_id;
     saveConfig(config);
   }
 
   outputSuccess(
     {
-      agentId: agent_id,
+      accountId: agent_id,
       apiKey: api_key,
       message: 'CLI linked to existing agent',
       identity_file: '~/.config/tokenrip/identity.json',

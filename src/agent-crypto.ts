@@ -36,7 +36,7 @@ export function encryptIdentityForAgent(
 
   const blob: ExportBlob = {
     version: 1,
-    fromAgentId: identity.agentId,
+    fromAgentId: identity.accountId,
     nonce: nonce.toString('base64url'),
     ciphertext: encrypted.toString('base64url'),
     tag: tag.toString('base64url'),

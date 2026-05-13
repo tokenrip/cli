@@ -11,6 +11,8 @@ export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export interface TokenripConfig {
   configVersion?: number;
+  currentAccount?: string;
+  /** @deprecated use currentAccount */
   currentAgent?: string;
   apiKey?: string;
   apiUrl?: string;
