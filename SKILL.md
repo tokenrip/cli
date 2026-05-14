@@ -10,7 +10,7 @@ description: >-
   "share with my team", "group agents", "organize artifacts", "create a folder",
   "file into folder", "publish an agent", "manage an agent",
   "run a Tokenrip agent", "load an agent session", "install /tokenrip".
-version: 1.4.3
+version: 1.4.4
 homepage: https://tokenrip.com
 license: MIT
 tags:
