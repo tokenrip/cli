@@ -66,7 +66,7 @@ export async function operatorLink(
       warning,
       agent_id: identity.accountId,
       expires_at: expiresAt,
-      ...(code && { link_page: `${frontendUrl}/link` }),
+      ...(code && { link_page: `${frontendUrl}/login` }),
     },
     (data) => {
       const codeError = data.code_error as OperatorLinkIssue | null | undefined;
