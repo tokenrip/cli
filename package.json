@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "description": "CLI and library for AI agents to create and share artifacts via Tokenrip",
   "keywords": [
     "ai-agents",
@@ -37,7 +37,8 @@
     "dist",
     "AGENTS.md",
     "SKILL.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "references"
   ],
   "scripts": {
     "build": "tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",

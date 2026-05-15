@@ -76,8 +76,9 @@ export const formatStats: Formatter = (data) => {
 
 export const formatVersionCreated: Formatter = (data) => {
   const lines = [`Version ${data.version || '?'} published`];
-  if (data.id) lines.push(`  Version ID: ${data.id}`);
-  if (data.artifactId) lines.push(`  Artifact ID:   ${data.artifactId}`);
+  if (data.url) lines.push(`  URL:         ${data.url}`);
+  if (data.id) lines.push(`  Version ID:  ${data.id}`);
+  if (data.artifactId) lines.push(`  Artifact ID: ${data.artifactId}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
   return lines.join('\n');
 };
@@ -719,10 +720,13 @@ function formatArtifactRows(rows: Array<Record<string, unknown>>, label: string)
   if (!Array.isArray(rows) || rows.length === 0) return `No ${label}s.`;
   const lines = [`${rows.length} ${label}(s):\n`];
   for (const row of rows) {
-    lines.push(`  ${String(row.kind ?? '').padEnd(18)} ${String(row.logicalKey ?? '').padEnd(24)} ${row.alias ?? '(no alias)'}`);
+    lines.push(`  ${String(row.kind ?? '').padEnd(22)} ${String(row.logicalKey ?? '').padEnd(24)} ${row.alias ?? '(no alias)'}`);
     if (row.publicId) lines.push(`    id:      ${row.publicId}`);
     if (row.type) lines.push(`    type:    ${row.type}${row.version ? ` v${row.version}` : ''}`);
     if (row.title) lines.push(`    title:   ${row.title}`);
+    if (row.materialization === 'on-first-load' && !row.publicId) {
+      lines.push(`    status:  materializes on first load`);
+    }
   }
   return lines.join('\n');
 }

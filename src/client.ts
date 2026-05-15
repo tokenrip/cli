@@ -24,7 +24,15 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
 
   client.interceptors.response.use(
     (response) => response,
-    (error: AxiosError<{ ok: boolean; error?: string; message?: string }>) => {
+    (
+      error: AxiosError<{
+        ok: boolean;
+        error?: string;
+        message?: string;
+        details?: Array<{ path?: Array<string | number>; message?: string }>;
+        errors?: Array<{ code?: string; message?: string }>;
+      }>,
+    ) => {
       if (error.response?.data) {
         const raw: unknown = error.response.data;
         if (raw instanceof ArrayBuffer || Buffer.isBuffer(raw)) {
@@ -41,7 +49,21 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         );
       }
       if (error.response?.data?.error) {
-        throw new CliError(error.response.data.error, error.response.data.message || 'Unknown API error');
+        const data = error.response.data;
+        const errorCode = data.error ?? 'API_ERROR';
+        let message = data.message || 'Unknown API error';
+        const fieldLines: string[] = [];
+        for (const issue of data.details ?? []) {
+          const path = (issue.path ?? []).join('.');
+          fieldLines.push(`  ${path || '(root)'}: ${issue.message ?? 'invalid'}`);
+        }
+        for (const issue of data.errors ?? []) {
+          fieldLines.push(`  ${issue.code ?? 'error'}: ${issue.message ?? 'invalid'}`);
+        }
+        if (fieldLines.length > 0) {
+          message += `\n${fieldLines.join('\n')}`;
+        }
+        throw new CliError(errorCode, message);
       }
       if (error.response?.status === 413) {
         throw new CliError('PAYLOAD_TOO_LARGE', `Payload too large — the server rejected the request body. Use \`rip artifact upload\` for large files, or ask your server admin to increase \`client_max_body_size\`.`);

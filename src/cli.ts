@@ -450,8 +450,7 @@ EXAMPLES:
 // ── agent commands ───────────────────────────────────────────────────
 const mountedagent = program
   .command('agent')
-  .alias('ma')
-  .description('Publish and manage agents');
+  .description('Manage agents');
 
 mountedagent
   .command('publish')
@@ -609,13 +608,15 @@ NOTES:
 
 mountedagent
   .command('load')
-  .argument('<slug>', 'Agent slug to load')
+  .argument('<slug>', 'Agent slug to load (scoped form ~owner/slug or _team/slug when ambiguous)')
   .option('--team <slug>', 'Bind to a team mount (caller must be a current team member)')
+  .option('--personal', 'Force a private personal mount of a team-owned agent')
   .description('Start a session against a published agent (lazy-creates the caller\'s default mount)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip --json agent load office-hours
   $ rip --json agent load chief-of-staff --team acme
+  $ rip --json agent load meeting-prep --personal
 
 NOTES:
   Returns the session token, the compiled brain envelope, the layer map,
