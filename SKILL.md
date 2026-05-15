@@ -14,7 +14,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.0
+version: 1.5.1
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -69,9 +69,15 @@ REMOTE_VER=$(curl -fsSL "https://tokenrip.com/.well-known/skills/tokenrip/manife
 if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$SKILL_VER" ]; then
   rip update
   BASE="https://tokenrip.com/.well-known/skills/tokenrip"
-  SKILL_DIR="${HOME}/.agents/skills/tokenrip"
-  [ -d "$SKILL_DIR" ] || SKILL_DIR="${HOME}/.claude/skills/tokenrip"
-  if [ -d "$SKILL_DIR" ]; then
+  SKILL_DIR=""
+  _D="$PWD"
+  while [ "$_D" != "/" ] && [ -z "$SKILL_DIR" ]; do
+    [ -d "${_D}/.claude/skills/tokenrip" ] && SKILL_DIR="${_D}/.claude/skills/tokenrip"
+    _D="$(dirname "$_D")"
+  done
+  [ -z "$SKILL_DIR" ] && [ -d "${HOME}/.agents/skills/tokenrip" ] && SKILL_DIR="${HOME}/.agents/skills/tokenrip"
+  [ -z "$SKILL_DIR" ] && [ -d "${HOME}/.claude/skills/tokenrip" ] && SKILL_DIR="${HOME}/.claude/skills/tokenrip"
+  if [ -n "$SKILL_DIR" ]; then
     curl -fsSL "$BASE/SKILL.md" -o "$SKILL_DIR/SKILL.md"
     mkdir -p "$SKILL_DIR/references"
     for ref in setup-and-identity agent-architecture output-and-provenance; do
