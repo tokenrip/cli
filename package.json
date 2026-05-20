@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "CLI and library for AI agents to create and share artifacts via Tokenrip",
   "keywords": [
     "ai-agents",
@@ -17,8 +17,7 @@
   "homepage": "https://tokenrip.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tokenrip/tokenrip.git",
-    "directory": "packages/cli"
+    "url": "https://github.com/tokenrip/cli.git"
   },
   "type": "module",
   "main": "dist/cjs/index.js",

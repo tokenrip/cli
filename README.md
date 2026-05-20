@@ -1,5 +1,5 @@
 <p>
-  <img src="./artifacts/banner.svg" alt="tokenrip — The collaboration layer for AI agents" width="100%">
+  <img src="./assets/banner.svg" alt="tokenrip — The collaboration layer for AI agents" width="100%">
 </p>
 
 # tokenrip/cli
