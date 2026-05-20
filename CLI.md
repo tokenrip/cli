@@ -179,6 +179,17 @@ rip artifact versions 550e8400-...
 
 Options: `--version`
 
+### `rip artifact diff <identifier>`
+
+Show what changed in a version compared to the version immediately before it. Word-level diff for text artifacts (markdown, html, code, text, json), row-level diff for CSV. Defaults to the current version; the earliest version and non-diffable types (chart, file, collection) report no diff.
+
+```bash
+rip artifact diff 550e8400-...                  # current version vs. previous
+rip artifact diff my-alias --version abc123     # a specific version vs. its previous
+```
+
+Options: `--version`
+
 ### `rip artifact comment <uuid-or-url> <message>` / `rip artifact comments <uuid-or-url>`
 
 Post or list comments. Accepts a UUID or full artifact URL. First comment creates a thread linked to the artifact.
@@ -636,6 +647,22 @@ rip thread create --team research-team --message "Q2 review"
 
 Organize artifacts into named buckets. Folders can be personal or team-scoped.
 
+### Managed folders
+
+Two folder kinds are managed by the platform and locked against direct
+mutation:
+
+- **`kind='agent'`** — auto-created under the agent owner on `rip agent
+  publish` / `fork`. Holds the agent's brain, sample, and shared artifacts.
+- **`kind='mount'`** — auto-created on `rip agent mount`. One per team mount,
+  plus one per operator for private-layer materialized artifacts and themes.
+
+`rip folder rename`, `rip folder delete`, and `rip artifact move` into or
+out of these folders return `FOLDER_LOCKED` (HTTP 409). Manage them through
+the agent lifecycle instead: delete the agent (cascades the agent folder)
+or `rip agent unmount` (cascades mount folders). Folder slugs follow the
+agent slug automatically — a rename of the agent updates its folder.
+
 ### `rip folder create <slug>`
 
 Create a folder. Optionally scope it to a team.
@@ -673,11 +700,17 @@ rip folder rename research-notes research-archive
 
 ### `rip folder delete <slug>`
 
-Delete a folder. Artifacts in the folder are archived.
+Delete a folder. By default, artifacts in the folder are archived and remain
+accessible by ID. With `--delete-contents`, every artifact in the folder is
+permanently destroyed before the folder is removed — this cannot be undone.
 
 ```bash
 rip folder delete research-archive
+rip folder delete research --team research-team
+rip folder delete drafts --delete-contents
 ```
+
+Options: `--team`, `--delete-contents`
 
 ### `rip artifact move <uuid>`
 
@@ -690,6 +723,24 @@ rip artifact move 550e8400-... --unfiled
 ```
 
 Options: `--folder`, `--team`, `--unfiled`
+
+### `rip artifact bulk <action>`
+
+Move, archive, or delete many artifacts in one call. `<action>` is `move`,
+`archive`, or `delete`. Up to 200 ids per call. The output reports the
+`succeeded` ids and any `failed` entries (`{ publicId, error }`).
+
+```bash
+rip artifact bulk move --ids "id1,id2,id3" --folder reports
+rip artifact bulk move --ids "id1,id2" --folder research --team research-team
+rip artifact bulk move --ids "id1,id2" --unfiled
+rip artifact bulk archive --ids "id1,id2,id3"
+rip artifact bulk delete --ids "id1,id2"
+```
+
+Options: `--ids` (required, comma-separated identifiers — UUID, alias, or URL),
+`--folder`, `--team`, `--unfiled`. The `delete` action permanently destroys
+the artifacts and cannot be undone.
 
 ### Folder flags on existing commands
 
@@ -790,6 +841,59 @@ Rename a mount. Personal: only the owner. Team: any current member.
 ### `rip agent unmount <mount-id>`
 
 Destroy a mount and its mount-owned memory + context artifact (cascade). Irreversible. Historical sessions and artifacts remain for audit.
+
+### Mount collections (`rip agent collection ...`)
+
+Generic read/patch surface over any mount's materialized collections — workflow or memory. Same backend that powers the operator dashboard and the `mount_collection_*` MCP tool family.
+
+#### `rip agent collection list <mount-id>`
+
+List the mount's materialized collections with manifest metadata (kind, tags).
+
+```bash
+rip agent collection list <mount-id>
+```
+
+#### `rip agent collection rows <mount-id> <slug>`
+
+Paginated rows on a named collection. Type-aware sort, equality filters, cursor pagination.
+
+```bash
+rip agent collection rows <mount-id> upwork-leads \
+  --filter status:new --sort composite_score:desc --limit 15
+```
+
+Flags: `--filter key:value` (repeatable), `--sort col:asc|desc`, `--limit N` (default 100, max 500), `--after <rowId>`.
+
+#### `rip agent collection latest <mount-id> <slug>`
+
+Single most-recent row on a collection. 404s if the collection is empty.
+
+```bash
+rip agent collection latest <mount-id> activity
+```
+
+#### `rip agent collection by-tag <mount-id> <tag>`
+
+Interleaved rows across every workflow collection on the mount whose manifest declares the tag in its `tags` array. One call instead of fan-out.
+
+```bash
+rip agent collection by-tag <mount-id> bid --sort composite_score:desc --limit 15
+```
+
+Each row in the response carries its source `collectionSlug`.
+
+#### `rip agent collection patch <mount-id> <slug> <row-id>`
+
+Partial-merge update to a single row's `data` field. Validated against the declared schema.
+
+```bash
+rip agent collection patch <mount-id> upwork-leads <row-id> --set status=seen
+rip agent collection patch <mount-id> flags <flag-id> \
+  --set resolved_at=2026-05-20T11:00:00Z --set resolution_note=operator_approved
+```
+
+`--set key=value` is repeatable. Workflow-collection PATCH is allowed (workflow-readonly guard is append-only).
 
 ### Session lifecycle (`rip agent load|record|rewrite-artifact|end`)
 
@@ -1073,3 +1177,4 @@ All commands output human-readable text to stdout by default. Use `--json` or se
 | `INVALID_LOAD_PARAMS` | `agent_load` got both/neither of `slug` / `mountId` |
 | `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs; harness submitted one |
 | `ADMIN_REQUIRED` | Approve / reject / revoke is platform-admin gated |
+| `FOLDER_LOCKED` | Attempted to rename/delete or move artifacts in/out of a system-managed `kind='agent'` or `kind='mount'` folder (HTTP 409) |

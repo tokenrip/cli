@@ -113,7 +113,21 @@ Agent versioning: `rip agent publish` prints `Published <slug> as v<N>`. Mounts 
 
 Agents declare `tools[]` for external I/O and `workflowCollections[]` for tracking external state.
 
-Tool types: `email-outbound`, `email-inbound`, `notify-slack`, `pdf-generate`. Execution modes: `backend`, `harness`, `harness-aliased`, `auto`. The brain calls `agent_tool_execute` (server-side) or `agent_tool_submit` (harness-produced results). Workflow collections use `mount-shared` scope.
+Tool types: `email-outbound`, `email-inbound`, `notify-slack`, `pdf-generate`, `feed-search-{twitter,reddit,upwork,jobboard}`. Execution modes: `backend`, `harness`, `harness-aliased`, `auto`. The brain calls `agent_tool_execute` (server-side) or `agent_tool_submit` (harness-produced results). Workflow collections use `mount-shared` scope.
+
+### Reading and patching mount-scoped collections
+
+Use `rip agent collection ...` to read or patch rows on any mount's materialized collections — workflow or memory. Same backend powers the operator dashboard and the `mount_collection_*` MCP tools.
+
+```bash
+rip agent collection list <mount-id>
+rip agent collection rows <mount-id> <slug> [--filter k:v] [--sort col:dir] [--limit N] [--after id]
+rip agent collection latest <mount-id> <slug>
+rip agent collection by-tag <mount-id> <tag> [--filter] [--sort] [--limit]
+rip agent collection patch <mount-id> <slug> <row-id> --set key=value [--set key=value ...]
+```
+
+Workflow collections in the manifest can declare `tags: ["bid", "review", ...]`. `by-tag` interleaves rows across every collection carrying that tag — useful for unified dashboard views without backend knowledge of which slugs belong together. `patch` works on workflow-collection rows (the workflow-readonly guard is append-only).
 
 ## Cross-session references
 

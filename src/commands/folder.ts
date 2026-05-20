@@ -1,6 +1,27 @@
+import type { AxiosInstance } from 'axios';
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { resolveTeam } from '../teams.js';
+
+/**
+ * Resolve a folder slug to its ID. Personal folders by default; pass a team
+ * slug to resolve a team folder. Used by `artifact move` and `artifact bulk`.
+ */
+export async function resolveFolderId(
+  client: AxiosInstance,
+  folderSlug: string,
+  teamSlug?: string,
+): Promise<string> {
+  if (teamSlug) {
+    const team = resolveTeam(teamSlug);
+    const { data } = await client.get(
+      `/v0/teams/${encodeURIComponent(team)}/folders/${encodeURIComponent(folderSlug)}`,
+    );
+    return data.data.id;
+  }
+  const { data } = await client.get(`/v0/folders/${encodeURIComponent(folderSlug)}`);
+  return data.data.id;
+}
 
 export async function folderCreate(slug: string, options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
@@ -38,15 +59,19 @@ export async function folderShow(slug: string, options: { team?: string }): Prom
   }
 }
 
-export async function folderDelete(slug: string, options: { team?: string }): Promise<void> {
+export async function folderDelete(
+  slug: string,
+  options: { team?: string; deleteContents?: boolean },
+): Promise<void> {
   const { client } = requireAuthClient();
+  const config = options.deleteContents ? { params: { mode: 'delete' } } : undefined;
   if (options.team) {
     const teamSlug = resolveTeam(options.team);
-    await client.delete(`/v0/teams/${encodeURIComponent(teamSlug)}/folders/${encodeURIComponent(slug)}`);
+    await client.delete(`/v0/teams/${encodeURIComponent(teamSlug)}/folders/${encodeURIComponent(slug)}`, config);
   } else {
-    await client.delete(`/v0/folders/${encodeURIComponent(slug)}`);
+    await client.delete(`/v0/folders/${encodeURIComponent(slug)}`, config);
   }
-  outputSuccess({ ok: true });
+  outputSuccess({ deleted: true, slug, contents: options.deleteContents ? 'deleted' : 'archived' });
 }
 
 export async function folderRename(oldSlug: string, newSlug: string, options: { team?: string }): Promise<void> {
@@ -74,16 +99,7 @@ export async function artifactMove(uuid: string, options: { folder?: string; tea
     throw new Error('Provide --folder <slug> or --unfiled');
   }
 
-  // Resolve folder slug to ID
-  let folderId: string;
-  if (options.team) {
-    const teamSlug = resolveTeam(options.team);
-    const { data } = await client.get(`/v0/teams/${encodeURIComponent(teamSlug)}/folders/${encodeURIComponent(options.folder)}`);
-    folderId = data.data.id;
-  } else {
-    const { data } = await client.get(`/v0/folders/${encodeURIComponent(options.folder)}`);
-    folderId = data.data.id;
-  }
+  const folderId = await resolveFolderId(client, options.folder, options.team);
 
   const { data } = await client.patch(`/v0/artifacts/${uuid}`, { folderId });
   outputSuccess(data.data);

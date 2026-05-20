@@ -14,7 +14,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.1
+version: 1.5.3
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -53,7 +53,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.0 -->
+<!-- tokenrip-skill-version: 1.5.2 -->
 
 ## Auto-Installation
 
@@ -64,7 +64,7 @@ if ! command -v rip &> /dev/null; then
 fi
 
 # Auto-update CLI and skill files if a newer version is available
-SKILL_VER="1.5.0"
+SKILL_VER="1.5.2"
 REMOTE_VER=$(curl -fsSL "https://tokenrip.com/.well-known/skills/tokenrip/manifest.json" 2>/dev/null | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)
 if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$SKILL_VER" ]; then
   rip update
@@ -198,6 +198,15 @@ Team inbox?
   → rip inbox --team <slug>
 ```
 
+### Folders you can't touch
+
+`rip agent publish` / `fork` / `mount` auto-create system-managed folders
+(`kind='agent'` for an agent's package, `kind='mount'` for a mount's
+materialized artifacts and themes). `rip folder rename`, `rip folder delete`,
+and `rip artifact move` into or out of those folders return `FOLDER_LOCKED`
+(HTTP 409). Use the agent lifecycle instead — delete the agent or `rip agent
+unmount` to remove the folder; both cascade to the filed artifacts.
+
 ### Updating vs versioning
 
 ```
@@ -208,11 +217,20 @@ Fix metadata (title, description, alias) without a new version?
 Publish a new version (content changed)?
   → rip artifact update <uuid> <file> --type markdown --label "revised"
 
+See what changed between a version and the one before it?
+  → rip artifact diff <id-or-alias>            # current version vs. previous
+  → rip artifact diff <id-or-alias> --version <versionId>
+
 Archive (hide from listings, still accessible by ID)?
   → rip artifact archive <identifier>
 
 Permanently delete?
   → rip artifact delete <identifier>
+
+Move, archive, or delete many artifacts at once (up to 200)?
+  → rip artifact bulk move --ids "id1,id2" --folder <slug>
+  → rip artifact bulk archive --ids "id1,id2"
+  → rip artifact bulk delete --ids "id1,id2"
 ```
 
 ### Aliases and resolution
@@ -311,6 +329,7 @@ For JSON output format, provenance flags, or `--json` details, read `references/
 | `MOUNT_NAME_TAKEN` | Pick a different `--name` |
 | `IMPRINT_NOT_LOADABLE` | Verify agent ownership or team membership |
 | `TIMEOUT` / `NETWORK_ERROR` | Retry once; check connection with `rip config show` |
+| `FOLDER_LOCKED` | Don't rename/delete or move into/out of system-managed agent/mount folders — manage via the agent lifecycle |
 
 ## CLI Updates
 

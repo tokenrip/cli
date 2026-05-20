@@ -136,6 +136,20 @@ rip artifact delete my-alias
 rip artifact delete https://tokenrip.com/s/my-alias
 ```
 
+### `rip artifact bulk <action>`
+
+Move, archive, or delete many artifacts in one call. `<action>` is `move`,
+`archive`, or `delete`. `--ids` is a comma-separated list of identifiers (UUID,
+alias, or URL), up to 200. Output reports `succeeded` and `failed` ids.
+
+```bash
+rip artifact bulk move --ids "id1,id2,id3" --folder reports
+rip artifact bulk move --ids "id1,id2" --folder research --team my-team
+rip artifact bulk move --ids "id1,id2" --unfiled
+rip artifact bulk archive --ids "id1,id2,id3"
+rip artifact bulk delete --ids "id1,id2"
+```
+
 ### Share an artifact
 
 ```bash
@@ -161,6 +175,8 @@ rip artifact download <uuid-or-url>                  # download content to file
 rip artifact download <uuid-or-url> --output ./report.pdf # custom output path
 rip artifact download <uuid-or-url> --version <versionId> # specific version
 rip artifact versions <uuid-or-url>                  # list all versions
+rip artifact diff <uuid-or-url>                      # what changed vs. the previous version
+rip artifact diff <uuid-or-url> --version <versionId> # diff a specific version
 ```
 
 ### Comments
@@ -240,9 +256,10 @@ These four commands are 1:1 mirrors of the MCP tools `agent_load`, `agent_record
 Before publishing a manifest, publish every referenced brain artifact alias:
 
 ```bash
-rip folder create office-hours
-rip artifact publish agents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul" --folder office-hours
+rip artifact publish agents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul"
 ```
+
+`rip agent publish` auto-creates a system-managed folder under the agent owner and files brain/sample/shared artifacts into it — you don't need to create or pass `--folder` yourself. That folder is locked (see `FOLDER_LOCKED` below): rename or delete only via the agent lifecycle.
 
 **Memory primitives in the manifest:**
 
@@ -512,3 +529,4 @@ Use on artifact commands to build lineage and traceability:
 | `INVALID_LOAD_PARAMS` | `agent_load` got both/neither of `slug`/`mountId` | Pass exactly one |
 | `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs | Drop the session output |
 | `ADMIN_REQUIRED` | Publisher approve/reject/revoke endpoint | Platform admin only |
+| `FOLDER_LOCKED` | Tried to rename/delete or move artifacts in/out of a system-managed agent or mount folder | Don't touch agent/mount folders — they're managed by `rip agent publish`/`fork`/`mount`/`unmount` |

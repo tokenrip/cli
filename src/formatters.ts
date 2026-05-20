@@ -745,3 +745,36 @@ function formatBytes(bytes: number): string {
   const value = bytes / Math.pow(1024, i);
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
+
+const ANSI = { green: '\x1b[32m', red: '\x1b[31m', dim: '\x1b[2m', reset: '\x1b[0m' };
+
+export const formatVersionDiff: Formatter = (data) => {
+  const payload = data.payload as
+    | { strategy: 'text'; segments: { op: string; value: string }[]; stats: { added: number; removed: number } }
+    | { strategy: 'rows'; rows: { op: string; value: string }[]; stats: { added: number; removed: number } }
+    | null;
+
+  if (!payload) {
+    return 'No diff — earliest version or non-diffable artifact type.';
+  }
+
+  const header = `Changes vs v${data.baseVersion}  ` +
+    `${ANSI.green}+${payload.stats.added}${ANSI.reset} ${ANSI.red}-${payload.stats.removed}${ANSI.reset}\n`;
+
+  if (payload.strategy === 'text') {
+    let body = '';
+    for (const s of payload.segments) {
+      if (s.op === 'insert') body += `${ANSI.green}${s.value}${ANSI.reset}`;
+      else if (s.op === 'delete') body += `${ANSI.red}${s.value}${ANSI.reset}`;
+      else body += `${ANSI.dim}${s.value}${ANSI.reset}`;
+    }
+    return header + '\n' + body;
+  }
+
+  const lines = payload.rows.map((r) => {
+    if (r.op === 'insert') return `${ANSI.green}+ ${r.value}${ANSI.reset}`;
+    if (r.op === 'delete') return `${ANSI.red}- ${r.value}${ANSI.reset}`;
+    return `  ${ANSI.dim}${r.value}${ANSI.reset}`;
+  });
+  return header + '\n' + lines.join('\n');
+};

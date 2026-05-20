@@ -16,9 +16,11 @@ import { artifactGet } from './commands/artifact-get.js';
 import { artifactDownload } from './commands/artifact-download.js';
 import { artifactCat } from './commands/artifact-cat.js';
 import { artifactVersions } from './commands/artifact-versions.js';
+import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
 import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentUnmount, agentUnpublish } from './commands/agent.js';
+import { mountCollectionList, mountCollectionRows, mountCollectionLatest, mountCollectionByTag, mountCollectionPatch } from './commands/mount-collection.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
@@ -311,6 +313,18 @@ EXAMPLES:
   .action(wrapCommand(artifactVersions));
 
 artifact
+  .command('diff')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
+  .option('--version <versionId>', 'Diff a specific version (default: current version)')
+  .description('Show what changed in a version vs. the previous version')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact diff 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact diff my-alias --version abc123
+`)
+  .action(wrapCommand(artifactDiff));
+
+artifact
   .command('comment')
   .argument('<uuid>', 'Artifact UUID or full URL')
   .argument('<message>', 'Comment text')
@@ -350,10 +364,40 @@ EXAMPLES:
   $ rip artifact move 550e8400-... --folder reports
   $ rip artifact move 550e8400-... --folder research --team my-team
   $ rip artifact move 550e8400-... --unfiled
+
+NOTES:
+  Returns FOLDER_LOCKED (HTTP 409) for moves into or out of system-managed
+  agent or mount folders — agent package contents and mount-materialized
+  artifacts are managed by the platform.
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { artifactMove } = await import('./commands/folder.js');
     await artifactMove(uuid, options);
+  }));
+
+artifact
+  .command('bulk')
+  .argument('<action>', 'Bulk action: move, archive, or delete')
+  .requiredOption('--ids <csv>', 'Comma-separated artifact identifiers (UUID, alias, or URL)')
+  .option('--folder <slug>', 'Target folder slug (for move)')
+  .option('--team <slug>', 'Target team for the folder (for move into a team folder)')
+  .option('--unfiled', 'Unfile the artifacts (for move)')
+  .description('Move, archive, or delete many artifacts in one call')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact bulk move --ids "id1,id2,id3" --folder reports
+  $ rip artifact bulk move --ids "id1,id2" --folder research --team my-team
+  $ rip artifact bulk move --ids "id1,id2" --unfiled
+  $ rip artifact bulk archive --ids "id1,id2,id3"
+  $ rip artifact bulk delete --ids "id1,id2"
+
+CAUTION:
+  The "delete" action permanently destroys every listed artifact and its
+  shareable link. This action cannot be undone. Up to 200 ids per call.
+`)
+  .action(wrapCommand(async (action, options) => {
+    const { artifactBulk } = await import('./commands/bulk.js');
+    await artifactBulk(action, options);
   }));
 
 artifact
@@ -476,6 +520,10 @@ NOTES:
   --publish requests Tier 2 (public /agents listing) and requires an
   approved Publisher (see: rip publisher apply). --published is the
   legacy v1 flag and is mapped to --publish for backward compatibility.
+
+  Publish auto-creates a system-managed folder under the agent owner and
+  files brain/sample/shared artifacts into it. That folder can't be
+  renamed or deleted directly — delete the agent to remove it.
 `)
   .action(wrapCommand(agentPublish));
 
@@ -525,6 +573,9 @@ NOTES:
   agent owned by the calling account. The fork is created unpublished. The
   CLI writes the manifest and forked brain/sample artifacts under
   agents/<slug>/, then you can run /moa --iterate <slug> to customize.
+
+  The fork's folder is marked as a system-managed agent folder and can't
+  be renamed or deleted directly.
 `)
   .action(wrapCommand(agentFork));
 
@@ -540,6 +591,12 @@ EXAMPLES:
   $ rip agent mount chief-of-staff
   $ rip agent mount chief-of-staff --team acme --name engineering
   $ rip agent mount blog-writing --name flowers --context-from ./flowers-context.md
+
+NOTES:
+  Creates a system-managed team mount folder (and a personal mount folder
+  per operator for private-layer artifacts) holding the mount's
+  materialized artifacts and themes. Mount folders are locked — they
+  can't be renamed or deleted directly; unmount to remove them.
 `)
   .action(wrapCommand(agentMount));
 
@@ -583,6 +640,60 @@ mountedagent
   .description('Print or update the mount context artifact')
   .action(wrapCommand(agentMountContext));
 
+// ── mount-scoped collection access (generic surface) ────────────────
+//
+// Reads and patches against any mount's materialized collections via the
+// generic `/v0/operator/mounts/:mountId/collections/*` endpoints. Pairs with
+// MCP `mount_collection_*` and the operator dashboard's lib functions —
+// triple-surface parity. See `docs/architecture/mount-collections.md`.
+
+const mountedagentCollection = mountedagent
+  .command('collection')
+  .description('Read or patch rows on a mount\'s materialized collections');
+
+mountedagentCollection
+  .command('list')
+  .argument('<mount-id>', 'Mount ID')
+  .description('List the mount\'s materialized collections (slug, kind, tags)')
+  .action(wrapCommand(mountCollectionList));
+
+mountedagentCollection
+  .command('rows')
+  .argument('<mount-id>', 'Mount ID')
+  .argument('<slug>', 'Collection slug (e.g. "upwork-leads", "pipeline")')
+  .option('--filter <key:value...>', 'Equality filter on a JSONB column (repeatable)')
+  .option('--sort <col:dir>', 'Sort by column (e.g. composite_score:desc)')
+  .option('--limit <n>', 'Max rows (default 100, max 500)')
+  .option('--after <id>', 'Cursor: row UUID to start after')
+  .description('Paginated rows on a named collection')
+  .action(wrapCommand(mountCollectionRows));
+
+mountedagentCollection
+  .command('latest')
+  .argument('<mount-id>', 'Mount ID')
+  .argument('<slug>', 'Collection slug')
+  .description('Most-recent single row on a named collection')
+  .action(wrapCommand(mountCollectionLatest));
+
+mountedagentCollection
+  .command('by-tag')
+  .argument('<mount-id>', 'Mount ID')
+  .argument('<tag>', 'Tag declared on one or more workflowCollections in the imprint manifest')
+  .option('--filter <key:value...>', 'Equality filter on a JSONB column (repeatable)')
+  .option('--sort <col:dir>', 'Sort by column (e.g. composite_score:desc)')
+  .option('--limit <n>', 'Per-collection cap (default 100, max 500)')
+  .description('Interleaved rows across every collection tagged with <tag>')
+  .action(wrapCommand(mountCollectionByTag));
+
+mountedagentCollection
+  .command('patch')
+  .argument('<mount-id>', 'Mount ID')
+  .argument('<slug>', 'Collection slug')
+  .argument('<row-id>', 'Row UUID')
+  .option('--set <key=value...>', 'Field to set (repeatable), e.g. --set status=seen --set owner=alice')
+  .description('Partial update to a row\'s data (validated against the collection schema)')
+  .action(wrapCommand(mountCollectionPatch));
+
 mountedagent
   .command('unmount')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
@@ -596,6 +707,8 @@ NOTES:
   through artifactService.destroyArtifact, then ends any open sessions, then
   deletes the mount row. Operate on personal mounts you own; team mounts
   can only be destroyed by the team member who created them.
+
+  Mount folders and their filed artifacts are removed by FK cascade.
 `)
   .action(wrapCommand(agentUnmount));
 
@@ -1602,7 +1715,24 @@ folder
   .command('delete')
   .argument('<slug>', 'Folder slug')
   .option('--team <slug>', 'Delete a team folder')
-  .description('Delete a folder (archives its artifacts)')
+  .option('--delete-contents', 'Permanently delete all artifacts in the folder instead of archiving them')
+  .description('Delete a folder (archives its artifacts by default)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip folder delete drafts
+  $ rip folder delete research --team my-team
+  $ rip folder delete drafts --delete-contents
+
+CAUTION:
+  By default, artifacts in the folder are archived and remain accessible.
+  With --delete-contents, every artifact in the folder is permanently
+  destroyed before the folder is removed. This action cannot be undone.
+
+NOTES:
+  Returns FOLDER_LOCKED (HTTP 409) for system-managed agent or mount
+  folders — those can't be deleted directly. Delete the owning agent or
+  unmount the mount instead.
+`)
   .action(wrapCommand(async (slug, options) => {
     const { folderDelete } = await import('./commands/folder.js');
     await folderDelete(slug, options);
@@ -1614,6 +1744,12 @@ folder
   .argument('<new-slug>', 'New folder slug')
   .option('--team <slug>', 'Rename a team folder')
   .description('Rename a folder')
+  .addHelpText('after', `
+NOTES:
+  Returns FOLDER_LOCKED (HTTP 409) for system-managed agent or mount
+  folders — those are renamed automatically when the agent slug changes
+  and can't be renamed directly.
+`)
   .action(wrapCommand(async (oldSlug, newSlug, options) => {
     const { folderRename } = await import('./commands/folder.js');
     await folderRename(oldSlug, newSlug, options);
