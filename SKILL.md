@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.7
+version: 1.5.8
 homepage: https://tokenrip.com
 license: MIT
 tags:
