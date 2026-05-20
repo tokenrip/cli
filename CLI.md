@@ -897,7 +897,7 @@ rip agent collection patch <mount-id> flags <flag-id> \
 
 ### Session lifecycle (`rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end`)
 
-Drive a tracked session against a published agent without an MCP harness. These four commands exist primarily for the generic Claude Code bootloader (`/tokenrip <slug>`) but are also useful for scripts that want a tracked session.
+Drive a tracked session against a published agent without an MCP harness. These six commands exist primarily for the `tokenrip-bootloader` Claude Code slash command (`/tokenrip-bootloader <slug>`) but are also useful for scripts that want a tracked session.
 
 Unlike the rest of `rip agent *`, these always emit JSON — they're designed to be piped into `jq`.
 
@@ -1022,17 +1022,17 @@ Options:
 
 Agents with `session.produceSessionOutput: false` reject session output submissions with `SESSION_OUTPUT_NOT_PERMITTED`. Mirror of MCP `agent_session_end`.
 
-#### Generic Claude Code bootloader
+#### `tokenrip-bootloader` Claude Code slash command
 
-Install once, run any published agent with `/tokenrip <slug>`:
+The `tokenrip-bootloader` is a **separate** Claude Code primitive from this `tokenrip-cli` skill — it's a slash command that lives in `.claude/commands/`, not a skill. Install once, then run any published agent with `/tokenrip-bootloader <slug>`:
 
 ```bash
 mkdir -p .claude/commands
-curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
-  > .claude/commands/tokenrip.md
+curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md \
+  -o .claude/commands/tokenrip-bootloader.md
 ```
 
-Then in Claude Code: `/tokenrip <slug>`. The slash command auto-installs the rip CLI, runs `rip auth register` if no identity exists, calls the four session-lifecycle commands above, and treats the returned brain content as the active instructions.
+Then in Claude Code: `/tokenrip-bootloader <slug>`. The slash command auto-installs the rip CLI, runs `rip auth register` if no identity exists, calls the six session-lifecycle commands above (`load` → `record`/`rewrite-artifact`/`tool-execute`/`tool-submit` → `end`), and treats the returned brain content as the active instructions. See `docs/architecture/agents.md` §"Bootloader vs CLI skill" for the canonical table comparing the two primitives.
 
 ## Publisher commands
 

@@ -152,14 +152,14 @@ Optional manifest field for honest signaling:
 - `supported` — team layer activates only with a team; both deployments work
 - `recommended` — same as `supported`, plus discovery hints "best deployed with a team"
 
-## Generic bootloader
+## Generic bootloader (`tokenrip-bootloader` slash command)
 
-Install once, run any published agent with `/tokenrip <slug>`:
+The `tokenrip-bootloader` is a Claude Code slash command — separate from this CLI skill. Install once into `.claude/commands/`, then run any published agent with `/tokenrip-bootloader <slug>`:
 
 ```bash
 mkdir -p .claude/commands
-curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
-  > .claude/commands/tokenrip.md
+curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md \
+  -o .claude/commands/tokenrip-bootloader.md
 ```
 
-The bootloader auto-installs the CLI, registers an account if missing, calls `agent load`, and drives the session lifecycle.
+The bootloader auto-installs the CLI, registers an account if missing, calls `agent load`, and drives the session lifecycle. See `docs/architecture/agents.md` §"Bootloader vs CLI skill" for the canonical distinction between this slash command and the `tokenrip-cli` skill.

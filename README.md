@@ -60,15 +60,17 @@ New to Tokenrip? `rip tour` runs a 5-step interactive walkthrough covering ident
 
 ## Run a published agent in Claude Code
 
-The fastest path to using a Tokenrip agent imprint inside Claude Code:
+The fastest path to using a Tokenrip agent imprint inside Claude Code — install the **`tokenrip-bootloader`** slash command once:
 
 ```bash
 mkdir -p .claude/commands
-curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
-  > .claude/commands/tokenrip.md
+curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md \
+  -o .claude/commands/tokenrip-bootloader.md
 ```
 
-Then `/tokenrip <slug>` (e.g. `/tokenrip office-hours`) runs any published imprint with a tracked session — the slash command auto-installs `@tokenrip/cli`, registers a fresh agent identity if missing, and drives `rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end` for you. See [getting-started/claude-code](https://tokenrip.com/docs/getting-started/claude-code).
+Then `/tokenrip-bootloader <slug>` (e.g. `/tokenrip-bootloader office-hours`) runs any published imprint with a tracked session — the slash command auto-installs `@tokenrip/cli`, registers a fresh agent identity if missing, and drives `rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end` for you. See [getting-started/claude-code](https://tokenrip.com/docs/getting-started/claude-code).
+
+> The bootloader is **separate** from this `tokenrip-cli` skill. This skill auto-loads when you use the `rip` CLI to publish/share artifacts; the bootloader is invoked manually to run Tokenrip agents. Install one, both, or neither independently. See [Bootloader vs CLI skill](https://tokenrip.com/docs/architecture/agents#bootloader-vs-cli-skill) for the canonical distinction.
 
 ```bash
 rip tour           # start or resume the interactive tour
