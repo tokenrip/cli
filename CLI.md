@@ -895,7 +895,7 @@ rip agent collection patch <mount-id> flags <flag-id> \
 
 `--set key=value` is repeatable. Workflow-collection PATCH is allowed (workflow-readonly guard is append-only).
 
-### Session lifecycle (`rip agent load|record|rewrite-artifact|end`)
+### Session lifecycle (`rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end`)
 
 Drive a tracked session against a published agent without an MCP harness. These four commands exist primarily for the generic Claude Code bootloader (`/tokenrip <slug>`) but are also useful for scripts that want a tracked session.
 
@@ -954,6 +954,51 @@ Options:
 - `--content '<inline>'` — pass the content inline. Mutually exclusive with `--content-from`.
 
 Mirror of MCP `agent_rewrite_artifact`.
+
+#### `rip agent tool-execute <session-token> <bind>`
+
+Dispatch a backend-mode tool binding server-side. Used by brains running tools whose manifest `execution` is `backend` or `auto`. The server runs the tool with stored credentials and returns the handler's result envelope verbatim.
+
+```bash
+rip --json agent tool-execute <token> jobboard \
+  --args '{"feeds":["https://weworkremotely.com/categories/remote-programming-jobs.rss"],"keywords":["ai agent"]}'
+
+rip --json agent tool-execute <token> doc-parse --args-file /tmp/parse-args.json
+```
+
+Options:
+
+- `--args '<json>'` — inline JSON object of tool-specific arguments.
+- `--args-file <file>` — read the arguments from a file. Mutually exclusive with `--args`.
+
+The argument shape is defined per-handler (see `apps/backend/src/api/service/tools/<type>.handler.ts`). Returns the handler's result object, e.g. `{ ok: true, feedsAttempted: 1, feedsSucceeded: 1, rowsWritten: N, errors: [] }` for `feed-search-jobboard`.
+
+Mirror of MCP `agent_tool_execute`.
+
+#### `rip agent tool-submit <session-token> <bind>`
+
+Submit an externally-produced result for a harness-mode or auto-mode tool binding. Used when the harness, a webhook, or a system actor performed the tool's work externally and is reporting the outcome back into the session.
+
+```bash
+rip --json agent tool-submit <token> twitter \
+  --payload '{"rows":[{"url":"...","title":"...","raw_text":"...","posted_at":"..."}]}' \
+  --provenance-nonce $(date +%s)
+
+rip --json agent tool-submit <token> slack \
+  --payload-file /tmp/slack-result.json \
+  --provenance-source webhook
+```
+
+Options:
+
+- `--payload '<json>'` — inline JSON object of the result payload.
+- `--payload-file <file>` — read the payload from a file. Mutually exclusive with `--payload`.
+- `--provenance-source <source>` — one of `harness`, `webhook`, `system`. Defaults to `harness`.
+- `--provenance-nonce <n>` — idempotency key. Required practice for harness submissions; pass a unique value per submission so retries are safe.
+
+The payload shape is defined per-handler. Schema-allowed keys outside the handler's allowlist are dropped silently (see `submitFeedRows` in `apps/backend/src/api/service/tools/handler-utils.ts` for the `feed-search-*` family's filtering / dedup / URL-normalization behavior).
+
+Mirror of MCP `agent_tool_submit`.
 
 #### `rip agent end <session-token>`
 

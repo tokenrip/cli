@@ -14,7 +14,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.4
+version: 1.5.6
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -53,7 +53,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.2 -->
+<!-- tokenrip-skill-version: 1.5.6 -->
 
 ## Auto-Installation
 
@@ -310,7 +310,7 @@ rip artifact publish leads.csv --type collection --from-csv --headers --title "I
 
 For first-time setup, multiple accounts, MCP linking, or operator onboarding, read `references/setup-and-identity.md`.
 
-For agent publishing, mounts, memory layers, sessions, or the bootloader, read `references/agent-architecture.md`.
+For agent publishing, mounts, memory layers, sessions, tool dispatch (`agent tool-execute` / `tool-submit`), or the bootloader, read `references/agent-architecture.md`.
 
 For JSON output format, provenance flags, or `--json` details, read `references/output-and-provenance.md`.
 

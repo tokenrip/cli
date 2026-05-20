@@ -345,6 +345,51 @@ export async function agentRewriteArtifact(
   outputSuccess(data.data);
 }
 
+export async function agentToolExecute(
+  sessionToken: string,
+  bind: string,
+  options: { args?: string; argsFile?: string },
+): Promise<void> {
+  let args: Record<string, unknown> = {};
+  if (options.args !== undefined || options.argsFile !== undefined) {
+    args = readJsonOption(options.args, options.argsFile, '--args / --args-file');
+  }
+  const { client } = requireAuthClient();
+  const { data } = await client.post(
+    `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/tool-execute`,
+    { bind, args },
+  );
+  outputSuccess(data.data);
+}
+
+export async function agentToolSubmit(
+  sessionToken: string,
+  bind: string,
+  options: {
+    payload?: string;
+    payloadFile?: string;
+    provenanceSource?: string;
+    provenanceNonce?: string;
+  },
+): Promise<void> {
+  const payload = readJsonOption(options.payload, options.payloadFile, '--payload / --payload-file');
+  const provenanceSource = options.provenanceSource ?? 'harness';
+  if (provenanceSource !== 'harness' && provenanceSource !== 'webhook' && provenanceSource !== 'system') {
+    throw new CliError(
+      'INVALID_PROVENANCE',
+      `--provenance-source must be one of "harness", "webhook", "system" (got: ${provenanceSource})`,
+    );
+  }
+  const body: Record<string, unknown> = { bind, payload, provenanceSource };
+  if (options.provenanceNonce) body.provenanceNonce = options.provenanceNonce;
+  const { client } = requireAuthClient();
+  const { data } = await client.post(
+    `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/tool-submit`,
+    body,
+  );
+  outputSuccess(data.data);
+}
+
 export async function agentEnd(
   sessionToken: string,
   options: { summary?: string; outputFrom?: string; outputTitle?: string; outputPublic?: boolean },

@@ -235,7 +235,7 @@ rip agent mount-rename <mount-id> <new-name>
 rip agent unmount <mount-id>                         # cascade destroy (incl. context artifact)
 ```
 
-All `rip agent *` commands default to human-readable output, except the four session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip agent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `agentVersionAtCreate` so the dashboard can flag drift.
+All `rip agent *` commands default to human-readable output, except the six session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip agent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `agentVersionAtCreate` so the dashboard can flag drift.
 
 **Session lifecycle (no MCP needed):**
 
@@ -245,11 +245,20 @@ rip --json agent record <session-token> [--collection <slug>] \
     --row '<json>'                                                         # or --row-file <path>
 rip --json agent rewrite-artifact <session-token> <logical-alias> \
     --content-from <file>                                                  # or --content '<inline>'
+rip --json agent tool-execute <session-token> <bind> \
+    --args '<json>'                                                        # or --args-file <path>
+                                                                           # for backend/auto-mode tool bindings
+rip --json agent tool-submit <session-token> <bind> \
+    --payload '<json>' \                                                   # or --payload-file <path>
+    [--provenance-source harness|webhook|system] \                         # defaults to harness
+    [--provenance-nonce <n>]                                               # idempotency key for harness submissions
 rip --json agent end <session-token> --summary "..."                # add --output-from / --output-title
                                                                            # to publish a wrap-up session output
 ```
 
-These four commands are 1:1 mirrors of the MCP tools `agent_load`, `agent_record`, `agent_rewrite_artifact`, `agent_session_end`. The CLI surface exists primarily for the generic Claude Code bootloader (`/tokenrip <slug>` — install once via `curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md > .claude/commands/tokenrip.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
+These six commands are 1:1 mirrors of the MCP tools `agent_load`, `agent_record`, `agent_rewrite_artifact`, `agent_tool_execute`, `agent_tool_submit`, `agent_session_end`. Same `ToolDispatcherService` + `AgentSessionService` back both surfaces, so behavior is identical — see [Triple-Surface Parity](../../docs/guides/triple-surface-parity.md). The CLI surface exists primarily for the generic Claude Code bootloader (`/tokenrip <slug>` — install once via `curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md > .claude/commands/tokenrip.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
+
+**Tool dispatch:** `tool-execute` runs a `backend` / `auto` mode tool server-side (using stored `ServiceCredential`s). `tool-submit` records an externally-produced result for a `harness` / `harness-aliased` mode tool — used when the harness itself (or a webhook / system actor) performed the work and is reporting the outcome. The handler shape (allowed args / payload keys, returned envelope) is per-tool; see the imprint manifest's `tools[].type` to look up the handler at `apps/backend/src/api/service/tools/<type>.handler.ts`.
 
 **Templating with mount context:** an agent can declare an optional `mountIntake.starterArtifactAlias` in its manifest. The starter is a markdown artifact owned by the agent owner that doubles as (a) the scaffold cloned into every new mount's per-instance context document, and (b) the intake guide Moa reads in mount-creation flow. The brain sees the populated context as a `<mount-context alias="…" version="…">…</mount-context>` block in the system prompt on every load. Different mounts of the same agent get different context. Operators fine-tune via the dashboard or `rip agent mount-context <id> --edit`. Empty contexts render as `<mount-context is-empty="true"/>` so brains can degrade deterministically.
 

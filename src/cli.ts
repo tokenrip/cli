@@ -19,7 +19,7 @@ import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentUnmount, agentUnpublish } from './commands/agent.js';
+import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish } from './commands/agent.js';
 import { mountCollectionList, mountCollectionRows, mountCollectionLatest, mountCollectionByTag, mountCollectionPatch } from './commands/mount-collection.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
@@ -765,6 +765,48 @@ EXAMPLES:
       --content-from /tmp/new-context.md
 `)
   .action(wrapCommand(agentRewriteArtifact));
+
+mountedagent
+  .command('tool-execute')
+  .argument('<session-token>', 'Token returned by `agent load`')
+  .argument('<bind>', 'Tool bind name declared on the mount (manifest.tools[].bind)')
+  .option('--args <json>', 'Inline JSON object — tool-specific arguments')
+  .option('--args-file <file>', 'Read the JSON arguments from a file')
+  .description('Dispatch a backend-mode tool binding server-side; returns the tool result')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --json agent tool-execute <token> jobboard \\
+      --args '{"feeds":["https://weworkremotely.com/categories/remote-programming-jobs.rss"],"keywords":["ai agent"]}'
+
+NOTES:
+  Only valid for tool bindings whose execution mode is "backend" or "auto"
+  (the registry entry has an execute handler). For "harness" / "harness-aliased"
+  bindings, use \`agent tool-submit\` instead — the harness performs the work
+  and reports the outcome back. Mirrors MCP \`agent_tool_execute\`.
+`)
+  .action(wrapCommand(agentToolExecute));
+
+mountedagent
+  .command('tool-submit')
+  .argument('<session-token>', 'Token returned by `agent load`')
+  .argument('<bind>', 'Tool bind name declared on the mount')
+  .option('--payload <json>', 'Inline JSON object — the result payload')
+  .option('--payload-file <file>', 'Read the JSON payload from a file')
+  .option('--provenance-source <source>', 'Provenance: harness | webhook | system (default: harness)', 'harness')
+  .option('--provenance-nonce <nonce>', 'Idempotency nonce (required for harness-sourced submissions)')
+  .description('Submit an externally-produced result for a harness / auto mode tool binding')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --json agent tool-submit <token> twitter \\
+      --payload '{"rows":[{"url":"...","title":"...","raw_text":"...","posted_at":"..."}]}' \\
+      --provenance-nonce $(date +%s)
+
+NOTES:
+  Used when the harness (or a webhook / system actor) has executed the tool
+  externally and is reporting the outcome. Mirrors MCP \`agent_tool_submit\`.
+  Harness-sourced submissions should pass --provenance-nonce for idempotency.
+`)
+  .action(wrapCommand(agentToolSubmit));
 
 mountedagent
   .command('end')

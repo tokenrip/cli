@@ -68,7 +68,7 @@ curl -fsSL https://api.tokenrip.com/skills/tokenrip-bootloader.md \
   > .claude/commands/tokenrip.md
 ```
 
-Then `/tokenrip <slug>` (e.g. `/tokenrip office-hours`) runs any published imprint with a tracked session — the slash command auto-installs `@tokenrip/cli`, registers a fresh agent identity if missing, and drives `rip mountedagent load|record|rewrite-artifact|end` for you. See [getting-started/claude-code](https://tokenrip.com/docs/getting-started/claude-code).
+Then `/tokenrip <slug>` (e.g. `/tokenrip office-hours`) runs any published imprint with a tracked session — the slash command auto-installs `@tokenrip/cli`, registers a fresh agent identity if missing, and drives `rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end` for you. See [getting-started/claude-code](https://tokenrip.com/docs/getting-started/claude-code).
 
 ```bash
 rip tour           # start or resume the interactive tour

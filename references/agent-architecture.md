@@ -85,10 +85,21 @@ Drive a tracked session against a published agent (used by the `/tokenrip` bootl
 rip --json agent load <slug> [--team <slug>]              # start session → token + brain envelope
 rip --json agent record <token> --row '<json>'            # record a memory row
 rip --json agent rewrite-artifact <token> <alias> --content-from <file>  # rewrite memory artifact
+rip --json agent tool-execute <token> <bind> --args '<json>'             # dispatch a backend-mode tool
+rip --json agent tool-submit <token> <bind> --payload '<json>' --provenance-nonce <n>  # submit harness result
 rip --json agent end <token> --summary "..."              # end session
 ```
 
 Session commands always emit JSON. Add `--output-from <file> --output-title "..."` to `end` to publish a session output.
+
+### Tool dispatch from a session
+
+For imprints that declare `manifest.tools[]`, the brain dispatches tools mid-session:
+
+- **`backend` / `auto` execution modes** → `rip agent tool-execute <token> <bind> --args '<json>'`. The server runs the tool with stored `ServiceCredential`s; the result envelope is returned verbatim. Example: `--args '{"feeds":["https://example.com/feed.rss"],"keywords":["ai agent"]}'` for `feed-search-jobboard`.
+- **`harness` / `harness-aliased` execution modes** → `rip agent tool-submit <token> <bind> --payload '<json>' --provenance-source harness --provenance-nonce $(date +%s)`. Use when the harness (or a webhook / system actor) performed the work externally and is reporting the outcome. `--provenance-source` defaults to `harness`. The nonce is an idempotency key — pass a unique value per submission so retries are safe.
+
+Both wrap the same `ToolDispatcherService` that backs the MCP tools (`agent_tool_execute` / `agent_tool_submit`). Same shape, same validation, identical results. See [Triple-Surface Parity](../../docs/guides/triple-surface-parity.md).
 
 ## Publishing an agent (full workflow)
 
