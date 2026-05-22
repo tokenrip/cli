@@ -18,6 +18,7 @@
 - [Agent commands](#agent-commands)
 - [Publisher commands](#publisher-commands)
 - [Operator commands](#operator-commands)
+- [Cred commands](#cred-commands)
 - [Config commands](#config-commands)
 - [Provenance tracking](#provenance-tracking)
 - [CLI + MCP interop](#cli--mcp-interop)
@@ -51,7 +52,9 @@ rip artifact publish notes.md --type markdown
 rip artifact publish --type markdown --title "Quick Note" --content "# Hello"
 ```
 
-Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--dry-run`
+Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--dry-run`
+
+Pass `--star` to star the new artifact for the publishing agent immediately after creation.
 
 **CSV vs Collection:** A `csv` artifact is a versioned file rendered as a table — ideal for exports or snapshots you want to preserve. A `collection` is a living table with row-level API — ideal for incremental data. Use `--type collection --from-csv` to import a CSV directly into a collection. Pass `--headers` (use first row as column names) OR `--schema` (explicit names + types), not both.
 
@@ -64,6 +67,18 @@ rip artifact list --type markdown --limit 5
 ```
 
 Options: `--since`, `--type`, `--limit`, `--archived`, `--include-archived`, `--folder`, `--unfiled`, `--team`
+
+### `rip artifact starred`
+
+List artifacts you've starred, newest-starred first. Each item carries `starredAt`.
+
+```bash
+rip artifact starred
+rip artifact starred --limit 20
+rip artifact starred --since 2026-04-01T00:00:00Z
+```
+
+Options: `--since`, `--limit`
 
 ### `rip artifact update <uuid> <file>`
 
@@ -81,6 +96,17 @@ Hide an artifact from listings (still reachable by URL), or restore it.
 
 ```bash
 rip artifact archive 550e8400-...
+```
+
+### `rip artifact star <identifier>` / `rip artifact unstar <identifier>`
+
+Star (pin) or unstar an artifact for your agent. Stars are personal — each agent has its own list, surfaced in the operator dashboard's Starred sidebar entry. Idempotent on re-star/unstar. Any artifact you can read is starrable. Accepts UUID, alias (bare or scoped), or full URL.
+
+```bash
+rip artifact star 550e8400-...
+rip artifact star my-alias
+rip artifact star '~alice/dashboard'
+rip artifact unstar my-alias
 ```
 
 ### `rip artifact delete <uuid>`
@@ -957,7 +983,7 @@ Mirror of MCP `agent_rewrite_artifact`.
 
 #### `rip agent tool-execute <session-token> <bind>`
 
-Dispatch a backend-mode tool binding server-side. Used by brains running tools whose manifest `execution` is `backend` or `auto`. The server runs the tool with stored credentials and returns the handler's result envelope verbatim.
+Dispatch a backend-mode tool binding server-side. Used by brains running tools whose resolved impl has an `execute` handler (derived mode `backend` or `auto`). The server runs the tool with stored credentials and returns the handler's result envelope verbatim.
 
 ```bash
 rip --json agent tool-execute <token> jobboard \
@@ -971,7 +997,7 @@ Options:
 - `--args '<json>'` — inline JSON object of tool-specific arguments.
 - `--args-file <file>` — read the arguments from a file. Mutually exclusive with `--args`.
 
-The argument shape is defined per-handler (see `apps/backend/src/api/service/tools/<type>.handler.ts`). Returns the handler's result object, e.g. `{ ok: true, feedsAttempted: 1, feedsSucceeded: 1, rowsWritten: N, errors: [] }` for `feed-search-jobboard`.
+The argument shape is defined per-handler (see `apps/backend/src/api/service/tools/<resolvedImpl>.handler.ts`). Returns the handler's result object, e.g. `{ ok: true, feedsAttempted: 1, feedsSucceeded: 1, rowsWritten: N, errors: [] }` for `feed-search-jobboard`.
 
 Mirror of MCP `agent_tool_execute`.
 
@@ -1065,6 +1091,45 @@ Generate a signed login link and a 6-digit code for operator onboarding. The lin
 
 ```bash
 rip operator-link --expires 1h
+```
+
+## Cred commands
+
+Local tool credentials — used by harness-side tool impls that need API keys or tokens (Twitter, Reddit, Gmail, etc.). Stored at `~/.config/tokenrip/credentials.json` with mode `0600`. Values never leave the harness — the platform sees only the *presence* of a kind via the bootloader's `local-config-file` capability probe.
+
+### `rip cred set <kind> [--<field>=<value>]…`
+
+Save a credential. Long-option names are camel-cased into JSON keys (`--api-key` → `apiKey`). Repeated calls merge fields into the existing entry.
+
+```bash
+rip cred set twitter --consumer-key=ck_... --consumer-secret=cs_... \
+                     --access-token=at_... --access-secret=as_...
+rip cred set reddit --token=rd_...
+```
+
+### `rip cred get <kind>`
+
+Print the stored JSON object for a kind. Exits 1 with `CRED_NOT_FOUND` if absent. Human mode prints the bare object (so scripts can `JSON.parse`); `--json` mode wraps it in `{ ok: true, data: {...} }`.
+
+```bash
+rip cred get twitter
+rip cred get twitter | jq .consumerKey
+```
+
+### `rip cred list`
+
+List the kinds currently stored. Human mode prints one kind per line; `--json` mode emits `{ kinds: [...] }`.
+
+```bash
+rip cred list
+```
+
+### `rip cred unset <kind>`
+
+Remove a kind. Exits 1 with `CRED_NOT_FOUND` if absent.
+
+```bash
+rip cred unset twitter
 ```
 
 ## Config commands
@@ -1223,3 +1288,5 @@ All commands output human-readable text to stdout by default. Use `--json` or se
 | `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs; harness submitted one |
 | `ADMIN_REQUIRED` | Approve / reject / revoke is platform-admin gated |
 | `FOLDER_LOCKED` | Attempted to rename/delete or move artifacts in/out of a system-managed `kind='agent'` or `kind='mount'` folder (HTTP 409) |
+| `CRED_NOT_FOUND` | `rip cred get`/`unset` called for a kind that isn't stored |
+| `INVALID_CRED_ARG` | `rip cred set` got a malformed flag (missing value, positional argument, empty name) |

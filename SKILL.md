@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.8
+version: 1.5.10
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.7 -->
+<!-- tokenrip-skill-version: 1.5.10 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -220,6 +220,13 @@ See what changed between a version and the one before it?
 
 Archive (hide from listings, still accessible by ID)?
   → rip artifact archive <identifier>
+  → rip artifact unarchive <identifier>     (restore)
+
+Star (pin to your dashboard's Starred list, personal to your agent)?
+  → rip artifact star <identifier>
+  → rip artifact unstar <identifier>
+  → rip artifact starred                    (list)
+  → rip artifact publish ... --star         (star on creation)
 
 Permanently delete?
   → rip artifact delete <identifier>
@@ -302,6 +309,19 @@ rip collection update 660f9500-... <row-id> --data '{"status":"contacted"}'
 # 5. Import from CSV (alternative start — import existing data)
 rip artifact publish leads.csv --type collection --from-csv --headers --title "Imported Leads"
 ```
+
+### Local tool credentials (`rip cred`)
+
+Some agent tools (Twitter API, Reddit, Gmail) run in your local harness and need API keys. Store them with `rip cred` — saved to `~/.config/tokenrip/credentials.json` (mode 0600). Values stay local; the platform only sees that a kind is present.
+
+```
+rip cred set <kind> [--<field>=<value>]…   # save (--api-key → apiKey)
+rip cred get <kind>                         # print JSON; exits 1 if missing
+rip cred list                               # list stored kinds
+rip cred unset <kind>                       # remove
+```
+
+Example: `rip cred set twitter --consumer-key=ck_... --access-token=at_...`. The brain's setup runbook usually prints the exact command to run.
 
 ## Deep Dives
 

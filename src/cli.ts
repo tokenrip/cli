@@ -7,6 +7,7 @@ import { publish } from './commands/publish.js';
 import { status } from './commands/status.js';
 import { deleteArtifact } from './commands/delete.js';
 import { archiveArtifact, unarchiveArtifact } from './commands/archive.js';
+import { star, unstar, starred } from './commands/star.js';
 import { forkArtifact } from './commands/fork.js';
 import { update } from './commands/update.js';
 import { deleteVersion } from './commands/delete-version.js';
@@ -88,6 +89,7 @@ artifact
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
   .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
+  .option('--star', 'Star the artifact immediately after publishing')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -181,6 +183,42 @@ EXAMPLES:
   $ rip artifact unarchive my-alias
 `)
   .action(wrapCommand(unarchiveArtifact));
+
+artifact
+  .command('star')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
+  .description('Star an artifact — pins it to your dashboard')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact star 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact star my-alias
+  $ rip artifact star '~alice/dashboard'
+`)
+  .action(wrapCommand(star));
+
+artifact
+  .command('unstar')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
+  .description('Unstar an artifact')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact unstar 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact unstar my-alias
+`)
+  .action(wrapCommand(unstar));
+
+artifact
+  .command('starred')
+  .option('--since <iso>', 'Only return stars created after this ISO 8601 timestamp')
+  .option('--limit <n>', 'Maximum number of items to return', '100')
+  .description('List your starred artifacts (newest-starred first)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact starred
+  $ rip artifact starred --limit 20
+  $ rip artifact starred --since 2026-04-01T00:00:00Z
+`)
+  .action(wrapCommand(starred));
 
 artifact
   .command('fork')
@@ -1538,6 +1576,74 @@ EXAMPLES:
   Displays your API URL, whether an API key is set, and config file paths.
 `)
   .action(wrapCommand(configShow));
+
+// ── cred commands ────────────────────────────────────────────────────
+const cred = program
+  .command('cred')
+  .description('Manage local tool credentials stored under ~/.config/tokenrip/credentials.json');
+
+cred
+  .command('set')
+  .argument('<kind>', 'Credential kind / tool name (e.g. "twitter", "reddit")')
+  .allowUnknownOption(true)
+  .description('Save a credential. Pass each field as --<name>=<value>.')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip cred set twitter --api-key=abc --api-secret=xyz
+  $ rip cred set reddit --token=def
+
+NOTES:
+  Long-option names are camel-cased into JSON keys:
+    --api-key  -> apiKey
+    --api-secret -> apiSecret
+  The credentials file is written with mode 0600.
+`)
+  .action(wrapCommand(async (kind: string, _opts: unknown, cmd: { args: string[] }) => {
+    const { credSet } = await import('./commands/cred.js');
+    // commander gives us the positional + every unknown option in cmd.args
+    // when allowUnknownOption is enabled. Drop the leading <kind>.
+    const rawArgs = cmd.args.slice(1);
+    await credSet(kind, rawArgs);
+  }));
+
+cred
+  .command('get')
+  .argument('<kind>', 'Credential kind to retrieve')
+  .description('Print the stored credential as JSON. Exits 1 if missing.')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip cred get twitter
+  $ rip cred get twitter | jq .consumerKey
+`)
+  .action(wrapCommand(async (kind: string) => {
+    const { credGet } = await import('./commands/cred.js');
+    await credGet(kind);
+  }));
+
+cred
+  .command('list')
+  .description('List the kinds of credentials currently stored')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip cred list
+`)
+  .action(wrapCommand(async () => {
+    const { credList } = await import('./commands/cred.js');
+    await credList();
+  }));
+
+cred
+  .command('unset')
+  .argument('<kind>', 'Credential kind to remove')
+  .description('Remove a stored credential')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip cred unset twitter
+`)
+  .action(wrapCommand(async (kind: string) => {
+    const { credUnset } = await import('./commands/cred.js');
+    await credUnset(kind);
+  }));
 
 // ── team commands ────────────────────────────────────────────────────
 const team = program.command('team').description('Manage teams');

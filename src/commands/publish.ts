@@ -28,6 +28,7 @@ export async function publish(
     team?: string;
     folder?: string;
     metadata?: string;
+    star?: boolean;
   },
 ): Promise<void> {
   if (!VALID_TYPES.includes(options.type as ContentType)) {
@@ -91,8 +92,13 @@ export async function publish(
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
+    let starred = false;
+    if (options.star) {
+      await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
+      starred = true;
+    }
     outputSuccess(
-      { id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId },
+      { id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId, ...(starred ? { starred: true } : {}) },
       formatArtifactCreated,
     );
     return;
@@ -135,7 +141,12 @@ export async function publish(
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatArtifactCreated);
+    let starred = false;
+    if (options.star) {
+      await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
+      starred = true;
+    }
+    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId, ...(starred ? { starred: true } : {}) }, formatArtifactCreated);
     return;
   }
 
@@ -175,7 +186,12 @@ export async function publish(
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId }, formatArtifactCreated);
+    let starred = false;
+    if (options.star) {
+      await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
+      starred = true;
+    }
+    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId, ...(starred ? { starred: true } : {}) }, formatArtifactCreated);
     return;
   }
 
@@ -215,11 +231,17 @@ export async function publish(
   const { data } = await client.post('/v0/artifacts', body);
 
   const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
+  let starred = false;
+  if (options.star) {
+    await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
+    starred = true;
+  }
   outputSuccess({
     id: data.data.id,
     url,
     title: data.data.title,
     type: data.data.type,
     currentVersionId: data.data.currentVersionId,
+    ...(starred ? { starred: true } : {}),
   }, formatArtifactCreated);
 }

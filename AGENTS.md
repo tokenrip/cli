@@ -116,6 +116,21 @@ rip artifact unarchive 550e8400-...
 rip artifact unarchive my-alias
 ```
 
+### `rip artifact star <identifier>` / `rip artifact unstar <identifier>` / `rip artifact starred`
+
+Star (pin) artifacts to your agent's Starred list — personal to each agent, surfaced in the operator dashboard sidebar between Inbox and Artifacts. Any artifact you can read is starrable (owner, collaborator, or public). Both `star` and `unstar` are idempotent; stars silently drop if the artifact is destroyed or you lose access.
+
+```bash
+rip artifact star 550e8400-...
+rip artifact star my-alias
+rip artifact star '~alice/dashboard'
+rip artifact unstar my-alias
+rip artifact starred                                # list, newest-starred first
+rip artifact starred --since 2026-04-01T00:00:00Z --limit 20
+```
+
+Pass `--star` on `rip artifact publish` to star a new artifact at creation time. The star is scoped to the publishing agent.
+
 ### `rip artifact fork <identifier>`
 
 Fork any artifact to create your own independent copy. Accepts UUID, bare alias, or scoped alias (`~agent/alias`, `_team/alias`).
@@ -258,7 +273,7 @@ rip --json agent end <session-token> --summary "..."                # add --outp
 
 These six commands are 1:1 mirrors of the MCP tools `agent_load`, `agent_record`, `agent_rewrite_artifact`, `agent_tool_execute`, `agent_tool_submit`, `agent_session_end`. Same `ToolDispatcherService` + `AgentSessionService` back both surfaces, so behavior is identical — see [Triple-Surface Parity](../../docs/guides/triple-surface-parity.md). The CLI surface exists primarily for the `tokenrip-bootloader` Claude Code slash command (`/tokenrip-bootloader <slug>` — install once via `mkdir -p .claude/commands && curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md -o .claude/commands/tokenrip-bootloader.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
 
-**Tool dispatch:** `tool-execute` runs a `backend` / `auto` mode tool server-side (using stored `ServiceCredential`s). `tool-submit` records an externally-produced result for a `harness` / `harness-aliased` mode tool — used when the harness itself (or a webhook / system actor) performed the work and is reporting the outcome. The handler shape (allowed args / payload keys, returned envelope) is per-tool; see the imprint manifest's `tools[].type` to look up the handler at `apps/backend/src/api/service/tools/<type>.handler.ts`.
+**Tool dispatch:** `tool-execute` runs a `backend` / `auto` mode tool server-side (using stored `ServiceCredential`s). `tool-submit` records an externally-produced result for a `harness` / `auto` mode tool — used when the harness itself (or a webhook / system actor) performed the work and is reporting the outcome. The handler shape (allowed args / payload keys, returned envelope) is per-tool; the registered impl id is what `agent_load` returns in each binding's `resolvedImpl`. Find the handler at `apps/backend/src/api/service/tools/<resolvedImpl>.handler.ts`.
 
 **Templating with mount context:** an agent can declare an optional `mountIntake.starterArtifactAlias` in its manifest. The starter is a markdown artifact owned by the agent owner that doubles as (a) the scaffold cloned into every new mount's per-instance context document, and (b) the intake guide Moa reads in mount-creation flow. The brain sees the populated context as a `<mount-context alias="…" version="…">…</mount-context>` block in the system prompt on every load. Different mounts of the same agent get different context. Operators fine-tune via the dashboard or `rip agent mount-context <id> --edit`. Empty contexts render as `<mount-context is-empty="true"/>` so brains can degrade deterministically.
 
@@ -281,7 +296,7 @@ Agents declare `teamContext` (`ignored` / `supported` / `recommended`) to signal
 
 Team-aware agents may declare `crossSessionReferences` — surfaces another team operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim. On personal/solo mounts the references no-op with `reasonInactive: "no-team"`.
 
-Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs) and `workflowCollections[]` for tracking external state. Tool types: `email-outbound`, `email-inbound`, `notify-slack`, `pdf-generate`. Execution modes: `backend` (server-side), `harness` (local), `harness-aliased`, `auto`. The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow collections use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`.
+Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs, Twitter, …) and `workflowCollections[]` for tracking external state. Each entry is `{ kind, bind, required? }` — the platform resolves the impl at session start based on the caller's advertised `capabilities[]` augmented with `server-credential:*` caps the server already knows about. Execution mode is derived at dispatch from the chosen impl's handlers: `backend` (server-side), `harness` (local), `auto` (both). The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow collections use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`. For any tool-declaring manifest, `agent_load` is a two-phase handshake (probe → resolve) — see [`/cli/cred`](#local-tool-credentials) for the credential side.
 
 ## Publisher Commands
 
@@ -454,6 +469,28 @@ rip contacts remove alice
 rip contacts sync
 ```
 
+## Local Tool Credentials
+
+Some agent tools (Twitter, Reddit, Gmail, etc.) run in your local harness and need API keys. Store them with `rip cred` — saved to `~/.config/tokenrip/credentials.json` with mode `0600`. **Values never leave the harness** — the platform's capability probe only checks that a kind is present, never the field values.
+
+```bash
+rip cred set <kind> --<field>=<value> [--<field>=<value>]…   # save (camel-cased)
+rip cred get <kind>                                            # print stored JSON
+rip cred list                                                  # list stored kinds
+rip cred unset <kind>                                          # remove
+```
+
+Long-option names are camel-cased into JSON keys (`--api-key` → `apiKey`). Examples:
+
+```bash
+rip cred set twitter --consumer-key=ck_... --consumer-secret=cs_... \
+                     --access-token=at_... --access-secret=as_...
+rip cred set reddit --token=rd_...
+rip cred get twitter | jq .consumerKey
+```
+
+When a Tokenrip agent declares a `kind`-form tool (e.g. `{ "kind": "twitter", "bind": "tw" }`), `agent_load` runs a two-phase handshake: the bootloader probes your environment, you re-invoke with `capabilities: [...]`, and the resolver picks the best impl. If a required tool resolves to nothing, the brain's Phase 0 reads `unavailableTools[]` and relays a `setupHint` to the operator — usually a copy-pasteable `rip cred set <kind> …` command.
+
 ## Operator Dashboard
 
 Generate a signed login link + 6-digit code for the operator (human) to access the dashboard:
@@ -539,3 +576,5 @@ Use on artifact commands to build lineage and traceability:
 | `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs | Drop the session output |
 | `ADMIN_REQUIRED` | Publisher approve/reject/revoke endpoint | Platform admin only |
 | `FOLDER_LOCKED` | Tried to rename/delete or move artifacts in/out of a system-managed agent or mount folder | Don't touch agent/mount folders — they're managed by `rip agent publish`/`fork`/`mount`/`unmount` |
+| `CRED_NOT_FOUND` | `rip cred get`/`unset` for a kind that isn't stored | Run `rip cred list` to see what's stored |
+| `INVALID_CRED_ARG` | `rip cred set` got a malformed flag | Pass each field as `--<name>=<value>` |

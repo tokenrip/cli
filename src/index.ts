@@ -24,6 +24,8 @@ export {
 export { accountIdToPublicKey, agentIdToPublicKey } from './crypto.js';
 export { loadContacts, saveContacts, addContact, removeContact, resolveRecipient, resolveRecipients } from './contacts.js';
 export { search } from './commands/search.js';
+export { credSet, credGet, credList, credUnset, credPath, readCreds, writeCreds } from './commands/cred.js';
+export type { CredFields, CredStore } from './commands/cred.js';
 export { folderCreate, folderList, folderShow, folderDelete, folderRename, artifactMove } from './commands/folder.js';
 export type { Contact, Contacts } from './contacts.js';
 export { loadTeams, saveTeams, resolveTeam, resolveTeams, setAlias, removeAlias, syncTeamsFromResponse } from './teams.js';
