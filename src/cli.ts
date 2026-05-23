@@ -20,7 +20,7 @@ import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish } from './commands/agent.js';
+import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
 import { mountCollectionList, mountCollectionRows, mountCollectionLatest, mountCollectionByTag, mountCollectionPatch } from './commands/mount-collection.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
@@ -541,12 +541,14 @@ mountedagent
   .option('--published', '[deprecated] alias for --publish; mapped automatically with a warning')
   .option('--featured <weight>', 'Set featured display weight; higher values sort first')
   .option('--team <slug>', 'Publish as a team-owned agent (maps to teamSlug in v2)')
+  .option('--dry-run', 'Validate the manifest without persisting; exits 1 if validation fails')
   .description('Publish or update an agent from a manifest')
   .addHelpText('after', `
 EXAMPLES:
   $ rip agent publish agents/office-hours/manifest.json
   $ rip agent publish agents/office-hours/manifest.json --publish --featured 10
   $ rip agent publish agents/chief-of-staff/manifest.json --team acme
+  $ rip agent publish agents/office-hours/manifest.json --dry-run
 
 NOTES:
   Brain artifact aliases referenced by the manifest must already be published
@@ -559,11 +561,38 @@ NOTES:
   approved Publisher (see: rip publisher apply). --published is the
   legacy v1 flag and is mapped to --publish for backward compatibility.
 
+  --dry-run runs every validator (Zod schema, semantic validator,
+  brain-artifact existence + ownership, mount-intake + themes starter,
+  Publisher gate when --publish is set) and prints a structured result
+  without persisting. No Agent row, no folder, no collection artifacts
+  get written. Exits 1 if validation fails. Prefer 'rip agent validate'
+  for a dedicated validation entry point.
+
   Publish auto-creates a system-managed folder under the agent owner and
   files brain/sample/shared artifacts into it. That folder can't be
   renamed or deleted directly — delete the agent to remove it.
 `)
   .action(wrapCommand(agentPublish));
+
+mountedagent
+  .command('validate')
+  .argument('<manifest>', 'Path to agent manifest JSON')
+  .description('Validate a manifest without publishing (alias for `publish --dry-run`)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip agent validate mountedagents/reddit-scout/manifest.json
+  $ rip agent validate ./manifest.json --json
+
+NOTES:
+  Runs every validator the publish path runs (Zod schema, semantic validator,
+  brain-artifact existence + ownership, mount-intake + themes starter, etc.)
+  and prints a structured result without persisting. No Agent row, no folder,
+  no collection artifacts get written.
+
+  Exit code 0 = validation passed; exit code 1 = validation failed (errors in
+  output). Suitable for pre-commit hooks and CI gates.
+`)
+  .action(wrapCommand(agentValidate));
 
 mountedagent
   .command('show')

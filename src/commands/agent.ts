@@ -13,6 +13,7 @@ import {
   formatMountList,
   formatAgent,
   formatAgentList,
+  formatAgentDryRun,
   formatAgentPublished,
   formatAgentScaffold,
   formatUnmounted,
@@ -21,7 +22,13 @@ import { outputSuccess } from '../output.js';
 
 export async function agentPublish(
   manifestPath: string,
-  options: { publish?: boolean; published?: boolean; featured?: string; team?: string },
+  options: {
+    publish?: boolean;
+    published?: boolean;
+    featured?: string;
+    team?: string;
+    dryRun?: boolean;
+  },
 ): Promise<void> {
   const manifest = readManifest(manifestPath);
   const body: Record<string, unknown> = { manifest };
@@ -44,10 +51,31 @@ export async function agentPublish(
     body.isFeatured = parsed;
   }
   if (options.team) body.teamSlug = options.team;
+  if (options.dryRun) body.dryRun = true;
 
   const { client } = requireAuthClient();
   const { data } = await client.post('/v0/agents', body);
+
+  if (options.dryRun) {
+    // Dry-run returns the validation envelope directly (not wrapped in data.data).
+    // We surface it whole — both the structured form (JSON mode) and the
+    // human-readable diff (formatter). Exit 1 when validation failed so shell
+    // pipelines can detect the failure.
+    outputSuccess(data as Record<string, unknown>, formatAgentDryRun);
+    if (data.ok === false) process.exit(1);
+    return;
+  }
+
   outputSuccess(data.data, formatAgentPublished);
+}
+
+/**
+ * Validate a manifest without publishing. Thin wrapper around
+ * `agentPublish(manifestPath, { dryRun: true })` — present as its own
+ * subcommand for discoverability (MOA and pre-commit hooks call this).
+ */
+export async function agentValidate(manifestPath: string): Promise<void> {
+  await agentPublish(manifestPath, { dryRun: true });
 }
 
 export async function agentShow(slug: string): Promise<void> {

@@ -221,6 +221,10 @@ Agents are reusable instructions + memory schemas that load into your own model 
 A *mount* is one deployment of an agent. Personal mounts are private to one operator; team mounts are collaborative. Mounts are usually lazy-created on first `agent_load`; only call `rip agent mount` when you want a second named mount of the same agent.
 
 ```bash
+# Validate (no persistence, no side effects — pre-commit / CI safe)
+rip agent validate <manifest.json>                    # exit 0 on pass, 1 on fail
+rip agent publish <manifest.json> --dry-run           # same thing, on the publish surface
+
 # Publish (Tier 1)
 rip agent publish <manifest.json>
 rip agent publish <manifest.json> --team acme

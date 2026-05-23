@@ -614,6 +614,51 @@ export const formatAgentPublished: Formatter = (data) => {
   return lines.join('\n');
 };
 
+export const formatAgentDryRun: Formatter = (data) => {
+  const slug = data.slug ?? '(unknown)';
+  const errors = (data.errors as Array<{ code: string; message: string }>) ?? [];
+  const resolved = data.resolved as
+    | {
+        brainArtifacts?: Array<{ alias: string; publicId: string }>;
+        memoryCollectionsCount?: number;
+        memoryArtifactsCount?: number;
+        workflowCollectionsCount?: number;
+      }
+    | undefined;
+
+  if (data.ok === false) {
+    const lines = [`Validation failed for ${slug} (${errors.length} error${errors.length === 1 ? '' : 's'})`, ''];
+    for (const err of errors) {
+      lines.push(`  [${err.code}] ${err.message}`);
+    }
+    return lines.join('\n');
+  }
+
+  const lines = [`Validation passed for ${slug}`];
+  if (resolved?.brainArtifacts && resolved.brainArtifacts.length > 0) {
+    lines.push('');
+    lines.push('Brain artifacts resolved:');
+    const longestAlias = Math.max(...resolved.brainArtifacts.map((b) => b.alias.length));
+    for (const ba of resolved.brainArtifacts) {
+      lines.push(`  ${ba.alias.padEnd(longestAlias)}  ${ba.publicId}`);
+    }
+  }
+  const counts: Array<[string, number | undefined]> = [
+    ['Memory collections', resolved?.memoryCollectionsCount],
+    ['Memory artifacts', resolved?.memoryArtifactsCount],
+    ['Workflow collections', resolved?.workflowCollectionsCount],
+  ];
+  const nonZero = counts.filter(([, n]) => typeof n === 'number' && n > 0);
+  if (nonZero.length > 0) {
+    lines.push('');
+    const longestLabel = Math.max(...nonZero.map(([label]) => label.length));
+    for (const [label, n] of nonZero) {
+      lines.push(`  ${label.padEnd(longestLabel)}  ${n}`);
+    }
+  }
+  return lines.join('\n');
+};
+
 export const formatAgent: Formatter = (data) => {
   const manifest = data.manifest as any;
   const lines = [`Mounted agent: ${data.slug}`];

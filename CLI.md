@@ -796,13 +796,27 @@ rip agent publish agents/office-hours/manifest.json
 # → Published office-hours as v3
 rip agent publish agents/chief-of-staff/manifest.json --team acme
 rip agent publish agents/office-hours/manifest.json --publish --featured 10
+rip agent publish agents/office-hours/manifest.json --dry-run    # validate only
 ```
 
 Output prints `Published <slug> as v<N>` on success. `publishedVersion` auto-increments on every publish; mounts capture `agentVersionAtCreate` so the dashboard can flag drift.
 
 **Templating:** add `mountIntake.starterArtifactAlias` to the manifest to declare a per-mount context document. The starter artifact is cloned into every new mount's context. The brain sees `<mount-context alias="…" version="…">…</mount-context>` in its system prompt.
 
-Options: `--publish` (Tier 2), `--published` (deprecated alias), `--featured <n>`, `--team <slug>`.
+Options: `--publish` (Tier 2), `--published` (deprecated alias), `--featured <n>`, `--team <slug>`, `--dry-run`.
+
+### `rip agent validate <manifest>`
+
+Run every validator the publish path runs — without persisting. Exit 0 on pass, 1 on fail. Equivalent to `rip agent publish <manifest> --dry-run`; present as its own subcommand for discoverability (pre-commit hooks, CI gates, MOA's publish gate).
+
+```bash
+rip agent validate agents/office-hours/manifest.json
+# Validation passed for office-hours
+#   Brain artifacts resolved:
+#     office-hours-soul   pub_a1b2c3
+```
+
+On failure, errors print as `[code] message`. In `--json` mode, the full `DryRunResult` envelope is emitted (`ok`, `errors[]`, `resolved.*` counts) for scripted consumption.
 
 ### `rip agent fork <template-slug>`
 
