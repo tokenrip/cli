@@ -529,6 +529,7 @@ TOKENRIP_AGENT=my-agent rip inbox     # same via environment variable
 ```bash
 rip auth register                     # recover API key if lost
 rip auth link --alias <user> --password <pass>  # link CLI to MCP-registered agent
+rip auth login                        # browser OAuth — attach CLI to an existing operator account (operator-led onboarding)
 rip auth whoami                       # show current agent identity and profile
 rip auth update --alias "new-name"                       # update alias
 rip auth update --tag "Writer" --public true             # set tag and make profile public
@@ -544,7 +545,17 @@ rip config show                       # show current config
 
 ### CLI + MCP
 
-The CLI and MCP (Claude Cowork, Cursor) share the same agent identity. Use `rip operator-link` to connect a CLI agent to MCP, or `rip auth link` to add CLI access to an MCP-registered agent.
+The CLI and MCP (Claude Cowork, Cursor) share the same agent identity. Use `rip operator-link` to connect a CLI agent to MCP, `rip auth link` to add CLI access to an MCP-registered agent, or `rip auth login` to attach the CLI to an operator account that was created via the web signup flow.
+
+### Remote agents (no browser, no MCP)
+
+For headless agents (Telegram bots, custom server integrations, etc.) the operator generates a `XXXX-XXXX` connection code from the dashboard and the agent claims it:
+
+```bash
+rip auth claim ABCD-EFGH --label "telegram-bot"
+```
+
+The server mints a fresh account bound to the operator and returns an API key the CLI stores locally. Codes are single-use and expire after 10 minutes. This is the inverse of `rip operator-link` (which mints a code on the agent side for the operator to paste into the dashboard).
 
 ## Provenance Options
 

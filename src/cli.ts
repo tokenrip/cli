@@ -1031,6 +1031,42 @@ EXAMPLES:
   }));
 
 auth
+  .command('login')
+  .description('Sign in via your browser (OAuth)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth login
+
+  Opens your browser to tokenrip.com, you approve, and the CLI saves
+  the resulting API key. Use this if you registered your operator
+  account on the web first.
+`)
+  .action(wrapCommand(async (options) => {
+    const { authLogin } = await import('./commands/auth-login.js');
+    await authLogin(options);
+  }));
+
+auth
+  .command('claim')
+  .argument('<code>', 'Connection code from your operator (XXXX-XXXX, case-insensitive)')
+  .option('--label <label>', 'Friendly label for the new agent (defaults to "remote-agent")')
+  .description('Claim an operator-minted connection code and bind this CLI to it')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth claim ABCD-EFGH
+  $ rip auth claim abcd-efgh --label "telegram-bot"
+
+  Codes are minted from the operator dashboard (Settings → Connect agent)
+  and live for 10 minutes. Single-use: the second claim returns INVALID_CODE.
+  On success the API key is saved to ~/.config/tokenrip/identities.json and
+  the new identity is selected if no account was already active.
+`)
+  .action(wrapCommand(async (code, options) => {
+    const { authClaim } = await import('./commands/auth-claim.js');
+    await authClaim(code, options);
+  }));
+
+auth
   .command('create-key')
   .description('Regenerate API key (revokes current key)')
   .addHelpText('after', `

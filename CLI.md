@@ -365,6 +365,27 @@ rip auth link --alias your-username --password your-password
 
 Options: `--alias` (required), `--password` (required), `--force`
 
+### `rip auth login`
+
+Sign in via your browser (OAuth). Opens `tokenrip.com/oauth/authorize`, runs the PKCE flow against a local loopback listener, and saves the resulting API key locally. Use this if you registered your operator account on the web first (operator-led onboarding) and want to attach the CLI to that account afterwards.
+
+```bash
+rip auth login
+```
+
+No flags — the CLI prints the authorize URL, opens it in your default browser, and waits for the callback.
+
+### `rip auth claim <code>`
+
+Claim an operator-minted connection code (`XXXX-XXXX`, case-insensitive, hyphen optional). The operator generates the code from the dashboard (Settings → Connect agent); pasting it here creates a fresh server-issued account bound to that operator and saves the API key locally. Codes are single-use and expire after 10 minutes.
+
+```bash
+rip auth claim ABCD-EFGH
+rip auth claim abcdefgh --label "telegram-bot"
+```
+
+Options: `--label` (defaults to `remote-agent`). Inverse of `rip operator-link` — that mints a code on the agent side for the operator to paste; `auth claim` consumes a code minted on the operator side for the agent to paste.
+
 ### `rip auth create-key`
 
 Regenerate your API key (revokes the current one).
