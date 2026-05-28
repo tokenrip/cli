@@ -14,7 +14,23 @@ import { outputSuccess } from '../output.js';
 import { CliError } from '../errors.js';
 import { encryptIdentityForAgent, decryptIdentityFromAgent } from '../agent-crypto.js';
 
-export async function accountCreate(options: { alias?: string }): Promise<void> {
+/**
+ * Decide whether a newly-created identity should become the active one.
+ * `rip account create` only auto-activates when there's no other choice
+ * (first identity or no `currentAccount` set), so the operator isn't
+ * silently switched out from under in-progress work. `rip auth register`
+ * passes `activateRequested: true` because that command's contract is
+ * "set up and use this identity now."
+ */
+export function shouldActivateNewIdentity(opts: {
+  activateRequested: boolean;
+  identityCount: number;
+  hasCurrentAccount: boolean;
+}): boolean {
+  return opts.activateRequested || opts.identityCount === 1 || !opts.hasCurrentAccount;
+}
+
+export async function accountCreate(options: { alias?: string; activate?: boolean }): Promise<void> {
   const keypair = generateKeypair();
   const accountId = publicKeyToAccountId(keypair.publicKeyHex);
   const config = loadConfig();
@@ -37,8 +53,15 @@ export async function accountCreate(options: { alias?: string }): Promise<void> 
 
   addIdentity(identity);
 
+  const previousAccountId = config.currentAccount;
   const store = loadIdentities();
-  if (Object.keys(store).length === 1 || !config.currentAccount) {
+  const active = shouldActivateNewIdentity({
+    activateRequested: options.activate === true,
+    identityCount: Object.keys(store).length,
+    hasCurrentAccount: !!config.currentAccount,
+  });
+
+  if (active) {
     config.currentAccount = accountId;
     saveConfig(config);
   }
@@ -47,7 +70,12 @@ export async function accountCreate(options: { alias?: string }): Promise<void> 
     accountId,
     alias: data.data.alias ?? null,
     apiKey,
-    message: 'Account created',
+    active,
+    previousAccountId:
+      active && previousAccountId && previousAccountId !== accountId ? previousAccountId : undefined,
+    message: active
+      ? 'Account created and selected as active identity'
+      : 'Account created (run `rip account use <alias>` to switch to it)',
   });
 }
 
@@ -126,11 +154,20 @@ export function accountRemove(target: string): void {
     throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
   }
   removeIdentity(agentId);
+  // Clear both the current and the deprecated field so we never leave a
+  // dangling pointer on a v3 config that still has `currentAgent` set or a
+  // pre-v3 config that's about to be migrated.
   const config = loadConfig();
+  let changed = false;
+  if (config.currentAccount === agentId) {
+    delete config.currentAccount;
+    changed = true;
+  }
   if (config.currentAgent === agentId) {
     delete config.currentAgent;
-    saveConfig(config);
+    changed = true;
   }
+  if (changed) saveConfig(config);
   outputSuccess({
     agentId,
     message: `Removed ${target} from local identities (agent still exists on server)`,

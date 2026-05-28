@@ -354,6 +354,45 @@ rip collection update <uuid> <rowId> --data '{"relevance":"low"}'
 rip collection delete <uuid> --rows uuid1,uuid2
 ```
 
+## Surface Commands
+
+Surfaces are AI-generated HTML pages hosted at `tokenrip.com/x/<publicId>`. The generation flow is **always** inspect → generate → publish → fix → operator review → promote. Owner-only in v1. Every read and write inside the generated HTML must go through `window.tokenrip.*` — never call `/v0` directly; the validator flags raw calls and they may break on the next internal change.
+
+```bash
+# Discover binding shape (returns recommendedBinding + sdkExamples)
+rip mount inspect <mountId>                # SDK-shaped mount inspection
+rip artifact inspect <publicId>            # SDK-shaped artifact inspection
+
+# Publish + iterate
+rip surface publish <file.html> --title "..." --bindings <bindings.json>
+rip surface publish <file.html> --title "..." --bindings <bindings.json> --mount <mountId>
+rip surface update <publicId> <file.html>                    # new revision; auto-validates
+rip surface update <publicId> <file.html> --bindings <new.json>
+
+# Read / list
+rip surface list                                             # owner's surfaces
+rip surface list --mount <mountId> --status draft
+rip surface get <publicId>                                   # detail (HTML body in --json only)
+
+# Validation
+rip surface validate <publicId>                              # re-run Playwright
+
+# Lifecycle
+rip surface promote <publicId>                               # draft → published (idempotent)
+rip surface open <publicId> [--browser]                      # print or launch URL
+rip surface revisions <publicId>                             # list revisions, newest first
+rip surface restore <publicId> <revisionId>                  # copy older revision into new active
+rip surface delete <publicId> --yes                          # permanent delete
+```
+
+The `--bindings` file is a JSON object: `{ "<bindingKey>": { "kind": "mount_collection" | "artifact", ... } }`. Each binding key must match `^[a-z][a-z0-9_-]*$`. Get the recommended shape from the inspect commands above. Bindings, when supplied to `update`, replace the entire map (not merged).
+
+Every `publish` and `update` triggers a headless Playwright validation. The summary is attached to the response. Mutating SDK calls reject with `validation_blocked` during validation runs — generated UIs should detect `surface.info().runtime === 'validation'` and degrade gracefully. If `validation.errorCount > 0`, fix the HTML via `rip surface update` before asking the operator to promote.
+
+Restore does NOT auto-validate. The command tells you to run `rip surface validate` as a follow-up.
+
+For the full SDK contract (every method, every error shape, code examples): https://tokenrip.com/for-ai/surfaces.md. The [`SKILL-surface-publish.md`](./SKILL-surface-publish.md) skill provides a task-oriented walkthrough.
+
 ## Messaging Commands
 
 ### Send a message

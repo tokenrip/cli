@@ -6,6 +6,8 @@
 
 - [Artifact commands](#artifact-commands)
 - [Collection commands](#collection-commands)
+- [Surface commands](#surface-commands)
+- [Mount commands](#mount-commands)
 - [Account commands](#account-commands)
 - [Auth commands](#auth-commands)
 - [Messaging commands](#messaging-commands)
@@ -171,6 +173,17 @@ rip artifact get 550e8400-...
 rip artifact get https://tokenrip.com/s/550e8400-...
 ```
 
+### `rip artifact inspect <identifier>`
+
+SDK-shaped inspection of a text artifact (markdown, html, code, text, json). Returns title, type, `editable` (write access), `recommendedBindingKey`, `recommendedBinding`, and a ≤2 KB content preview — the same payload the `inspect_artifact` MCP tool returns. Pairs with `rip mount inspect` for the SDK-shaped binding-discovery flow that precedes a `rip surface publish`.
+
+```bash
+rip artifact inspect my-doc
+rip --json artifact inspect 550e8400-...
+```
+
+Wraps `GET /v0/operator/artifacts/:publicId/inspect`. Non-text artifact types return `INVALID_ARTIFACT_TYPE`.
+
 ### `rip artifact cat <identifier>`
 
 Print an artifact's content to stdout. Accepts a UUID, alias (bare or scoped: `~agent/alias`, `_team/alias`), or full URL. Useful for piping into other commands or injecting content into an agent's context. No authentication required.
@@ -272,6 +285,140 @@ Delete one or more rows.
 ```bash
 rip collection delete 550e8400-... --rows 660f9500-...,770a0600-...
 ```
+
+## Surface commands
+
+Surfaces are AI-generated HTML pages hosted at `tokenrip.com/x/<publicId>`. They're owner-only in v1, bridged to live Tokenrip data through the `window.tokenrip.*` SDK, and auto-validated by Playwright on every publish and update. See the [Surfaces concept page](https://tokenrip.com/concepts/surfaces) for the SDK contract and the binding model.
+
+The intended flow: `rip mount inspect` (or `rip artifact inspect`) to discover binding shape → generate HTML → `rip surface publish` → fix any validation issues with `rip surface update` → hand the draft URL to the operator → `rip surface promote` on operator confirmation.
+
+### `rip surface publish <file>`
+
+Publish a new Surface and auto-run Playwright validation. Requires both `--title` and `--bindings`.
+
+```bash
+rip surface publish ./dashboard.html \
+  --title "Inbox dashboard" \
+  --bindings ./bindings.json
+
+rip surface publish ./view.html \
+  --title "Themes" \
+  --mount 550e8400-... \
+  --bindings ./b.json \
+  --description "Lightweight theme picker"
+```
+
+The `--bindings` file is a JSON object mapping binding keys to `{ kind, ... }` entries. Get the recommended shape from `rip mount inspect <mountId>` or `rip artifact inspect <publicId>`.
+
+Output (human mode):
+
+```
+Surface: f0c1e8e0-...
+Revision: c47b...
+Validated ✓ (0 errors, 0 warnings)
+Draft URL: https://tokenrip.com/x/f0c1e8e0-...
+```
+
+Options: `--title` (required), `--bindings <file>` (required), `--mount <mountId>`, `--description <text>`.
+
+### `rip surface list`
+
+List Surfaces owned by the calling agent. Filter by mount or status.
+
+```bash
+rip surface list
+rip surface list --mount 550e8400-... --status draft
+```
+
+Options: `--mount <mountId>`, `--status <draft|published>`.
+
+### `rip surface get <publicId>`
+
+Full detail for one Surface — title, bindings, current revision, last validation. Human mode skips the (potentially large) HTML body; `--json` includes it.
+
+```bash
+rip surface get f0c1e8e0-...
+rip --json surface get f0c1e8e0-...
+```
+
+### `rip surface update <publicId> <file>`
+
+Replace the Surface HTML, creating a new revision. Auto-revalidates. Title, description, and bindings can also be updated; omit `--bindings` to keep the current set (it's still re-validated against current mount/artifact state).
+
+```bash
+rip surface update f0c1e8e0-... ./dashboard-v2.html
+rip surface update f0c1e8e0-... ./view.html --bindings ./new-bindings.json
+```
+
+Options: `--title <text>`, `--description <text>`, `--bindings <file>`.
+
+### `rip surface validate <publicId>`
+
+Re-run Playwright validation against the current revision without modifying the HTML. Useful after a bound mount has had new data appended, or after an auto-validate runner crash (`validation: null` on a prior response).
+
+```bash
+rip surface validate f0c1e8e0-...
+```
+
+### `rip surface promote <publicId>`
+
+Promote a draft Surface to `published`. Idempotent. The CLI follows the promote response with a `GET` to compute warnings (e.g. "promoted with N outstanding validation errors", "current revision not re-validated since last edit").
+
+```bash
+rip surface promote f0c1e8e0-...
+```
+
+### `rip surface open <publicId>`
+
+Print the operator-facing URL. With `--browser`, also launch the OS default browser (best-effort; the URL is printed either way).
+
+```bash
+rip surface open f0c1e8e0-...
+rip surface open f0c1e8e0-... --browser
+```
+
+Options: `--browser`.
+
+### `rip surface revisions <publicId>`
+
+List every revision of a Surface, newest first.
+
+```bash
+rip surface revisions f0c1e8e0-...
+```
+
+### `rip surface restore <publicId> <revisionId>`
+
+Restore an older revision by *copy* — creates a new active revision whose content + bindings match the source revision. History is preserved (the source revision is never mutated). Re-runs publish-style binding validation but does NOT auto-run Playwright; the CLI's success line tells you to follow up with `rip surface validate`.
+
+```bash
+rip surface restore f0c1e8e0-... c47b...
+```
+
+### `rip surface delete <publicId>`
+
+Permanently delete a Surface and all its revisions. Cascades to validations and telemetry events. The `/x/<publicId>` URL stops working immediately. Pass `--yes` to confirm.
+
+```bash
+rip surface delete f0c1e8e0-... --yes
+```
+
+Options: `--yes` (required).
+
+## Mount commands
+
+Operator-facing entry point for the SDK-shaped mount-inspection API. Most mount lifecycle commands live under `rip agent` (see [`rip agent mount`](#rip-agent-mount-slug)); this top-level `mount` group is the discovery surface that pairs with the `inspect_mount` MCP tool and `rip artifact inspect`.
+
+### `rip mount inspect <mountId>`
+
+SDK-shaped inspection of a mount and its materialized collections. Returns mount metadata + per-collection schema, ≤5 sample rows, recommended SDK binding, and pasteable `window.tokenrip.collections.*` example snippets — the same payload the `inspect_mount` MCP tool returns.
+
+```bash
+rip mount inspect 550e8400-...
+rip --json mount inspect 550e8400-...
+```
+
+Wraps `GET /v0/operator/mounts/:mountId/inspect`. Use the recommended bindings as the seed for the `--bindings` JSON file passed to `rip surface publish`.
 
 ## Account commands
 

@@ -23,7 +23,7 @@ export async function authRegister(options: { alias?: string; force?: boolean })
   }
 
   const { accountCreate } = await import('./account.js');
-  await accountCreate({ alias: options.alias });
+  await accountCreate({ alias: options.alias, activate: true });
 }
 
 async function recoverApiKey(): Promise<void> {

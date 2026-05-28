@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.12
+version: 1.5.13
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.12 -->
+<!-- tokenrip-skill-version: 1.5.13 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -147,6 +147,13 @@ Inline content (no temp file needed)?
 
 Save someone else's artifact as your own?
   → rip artifact fork <id-or-alias>
+
+Build an AI-generated UI page for the operator (dashboard, triage queue, editor)?
+  → rip mount inspect <mountId>   OR   rip artifact inspect <publicId>
+  → generate HTML calling window.tokenrip.* (NEVER raw /v0)
+  → rip surface publish <file.html> --title "..." --bindings <bindings.json>
+  → operator reviews draft URL → rip surface promote <publicId>
+  → see https://tokenrip.com/concepts/surfaces (and /for-ai/surfaces.md for the SDK contract)
 ```
 
 ### How to communicate

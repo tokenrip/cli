@@ -14,6 +14,9 @@ import { deleteVersion } from './commands/delete-version.js';
 import { stats } from './commands/stats.js';
 import { share } from './commands/share.js';
 import { artifactGet } from './commands/artifact-get.js';
+import { artifactInspect } from './commands/artifact-inspect.js';
+import { mountInspect } from './commands/mount-inspect.js';
+import { surfacePublish, surfaceUpdate, surfaceList, surfaceGet, surfaceValidate, surfacePromote, surfaceOpen, surfaceRevisions, surfaceRestore, surfaceDelete } from './commands/surface.js';
 import { artifactDownload } from './commands/artifact-download.js';
 import { artifactCat } from './commands/artifact-cat.js';
 import { artifactVersions } from './commands/artifact-versions.js';
@@ -308,6 +311,26 @@ EXAMPLES:
   .action(wrapCommand(artifactGet));
 
 artifact
+  .command('inspect')
+  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
+  .description('SDK-shaped inspection of a text artifact (drives Surface authoring)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact inspect 550e8400-e29b-41d4-a716-446655440000
+  $ rip artifact inspect my-doc
+  $ rip --json artifact inspect my-doc
+
+NOTES:
+  Wraps GET /v0/operator/artifacts/:publicId/inspect — the same payload the
+  inspect_artifact MCP tool returns. Pairs with rip mount inspect for the
+  full SDK-shaped surface needed to draft a tokenrip Surface (no raw
+  /v0/... URLs surface to the caller).
+  Only valid for text-supporting types (markdown, html, code, text, json);
+  other types return INVALID_ARTIFACT_TYPE.
+`)
+  .action(wrapCommand(artifactInspect));
+
+artifact
   .command('download')
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
@@ -528,6 +551,122 @@ EXAMPLES:
     const { collectionDelete } = await import('./commands/collection.js');
     await collectionDelete(uuid, options);
   }));
+
+// ── mount commands (top-level discovery surface) ────────────────────
+//
+// Operator-facing entry point for the SDK-shaped mount inspection API. Most
+// mount lifecycle commands live under `rip agent` (mount/mounts/unmount); this
+// top-level `mount` group is for the discovery surface that pairs with the
+// `inspect_mount` MCP tool and `rip artifact inspect`.
+const mount = program
+  .command('mount')
+  .description('Inspect mounts (discovery surface for Surface authoring)');
+
+mount
+  .command('inspect')
+  .argument('<mountId>', 'Mount ID returned by `rip agent mount` or `rip agent mounts`')
+  .description('SDK-shaped inspection of a mount and its collections')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip mount inspect 550e8400-e29b-41d4-a716-446655440000
+  $ rip --json mount inspect 550e8400-...
+
+NOTES:
+  Wraps GET /v0/operator/mounts/:mountId/inspect — the same payload the
+  inspect_mount MCP tool returns. Returns mount metadata + per-collection
+  schema, ≤5 sample rows, recommended SDK binding, and
+  window.tokenrip.collections example snippets. Pairs with
+  rip artifact inspect for artifact-backed Surfaces.
+`)
+  .action(wrapCommand(mountInspect));
+
+// ── surface commands (Surface substrate) ─────────────────────────────
+//
+// Surfaces are self-contained HTML pages hosted at `/x/<publicId>` that
+// call the Tokenrip SDK (`window.tokenrip.surface.*`) to read and write
+// bound data sources. All endpoints are owner-only — `requireAuthClient`
+// fails fast on missing identity. Pairs with `rip mount inspect` and
+// `rip artifact inspect` for the SDK-shaped binding discovery flow.
+const surface = program
+  .command('surface')
+  .description('Publish and manage Surfaces (HTML pages hosted at /x/<publicId>)');
+
+surface
+  .command('publish')
+  .argument('<file>', 'Path to the Surface HTML file')
+  .requiredOption('--title <title>', 'Human-readable surface title')
+  .requiredOption('--bindings <file>', 'Path to a JSON file mapping binding keys to { kind, ... }')
+  .option('--mount <mountId>', 'Optional mount UUID this surface belongs to')
+  .option('--description <text>', 'Optional summary shown in the dashboard')
+  .description('Publish a new Surface (auto-validates via Playwright)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip surface publish ./dashboard.html --title "Inbox dashboard" --bindings ./bindings.json
+  $ rip surface publish ./view.html --title "Themes" --mount 550e8400-... --bindings ./b.json
+`)
+  .action(wrapCommand(surfacePublish));
+
+surface
+  .command('list')
+  .option('--mount <mountId>', 'Filter surfaces bound to a mount')
+  .option('--status <status>', 'Filter by status: draft or published')
+  .description('List surfaces owned by the calling agent')
+  .action(wrapCommand(surfaceList));
+
+surface
+  .command('get')
+  .argument('<publicId>', 'Surface public ID')
+  .description('Get full detail for one surface (skips HTML body in human mode)')
+  .action(wrapCommand(surfaceGet));
+
+surface
+  .command('update')
+  .argument('<publicId>', 'Surface public ID')
+  .argument('<file>', 'Path to the new Surface HTML file')
+  .option('--title <title>', 'New human-readable surface title')
+  .option('--description <text>', 'New summary')
+  .option('--bindings <file>', 'Path to a JSON file mapping binding keys (omit to keep current)')
+  .description('Update an existing Surface — creates a new revision and auto-validates')
+  .action(wrapCommand(surfaceUpdate));
+
+surface
+  .command('validate')
+  .argument('<publicId>', 'Surface public ID')
+  .description("Re-run Playwright validation against the surface's current revision")
+  .action(wrapCommand(surfaceValidate));
+
+surface
+  .command('promote')
+  .argument('<publicId>', 'Surface public ID')
+  .description('Promote a draft surface to published. Idempotent.')
+  .action(wrapCommand(surfacePromote));
+
+surface
+  .command('open')
+  .argument('<publicId>', 'Surface public ID')
+  .option('--browser', 'Launch the URL in the OS default browser (best-effort)')
+  .description('Print the operator-facing URL for a surface')
+  .action(wrapCommand(surfaceOpen));
+
+surface
+  .command('revisions')
+  .argument('<publicId>', 'Surface public ID')
+  .description('List revisions for a surface, newest first')
+  .action(wrapCommand(surfaceRevisions));
+
+surface
+  .command('restore')
+  .argument('<publicId>', 'Surface public ID')
+  .argument('<revisionId>', 'Revision id to restore (copies into a new active revision)')
+  .description('Restore an older revision (creates a NEW active revision; history preserved)')
+  .action(wrapCommand(surfaceRestore));
+
+surface
+  .command('delete')
+  .argument('<publicId>', 'Surface public ID')
+  .option('--yes', 'Confirm deletion (required)')
+  .description('Permanently delete a surface and all its revisions')
+  .action(wrapCommand(surfaceDelete));
 
 // ── agent commands ───────────────────────────────────────────────────
 const mountedagent = program
