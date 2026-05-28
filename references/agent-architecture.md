@@ -72,7 +72,7 @@ Two team mounts of the same agent have separate team-memory partitions.
 
 ### Memory primitives
 
-- **`memoryCollections[]`** — schema-bound rows for structured records (commitments, patterns, decisions). Queryable, filterable. Scopes: `shared`, `team`, `operator-private`.
+- **`memoryTables[]`** — schema-bound rows for structured records (commitments, patterns, decisions). Queryable, filterable. Scopes: `shared`, `team`, `operator-private`.
 - **`memoryArtifacts[]`** — versioned narrative documents the agent rewrites holistically. For evolving understanding (operator profile, team context). Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax`.
 
 Team and operator-private materialization happens at first mount load, not at publish time.
@@ -120,25 +120,25 @@ rip agent publish manifest.json --publish --featured 10
 
 Agent versioning: `rip agent publish` prints `Published <slug> as v<N>`. Mounts capture `agentVersionAtCreate` to flag version drift.
 
-## Tools and workflow collections
+## Tools and workflow tables
 
-Agents declare `tools[]` for external I/O and `workflowCollections[]` for tracking external state.
+Agents declare `tools[]` for external I/O and `workflowTables[]` for tracking external state.
 
-Tool types: `email-outbound`, `email-inbound`, `notify-slack`, `pdf-generate`, `feed-search-{twitter,reddit,upwork,jobboard}`. Execution modes: `backend`, `harness`, `harness-aliased`, `auto`. The brain calls `agent_tool_execute` (server-side) or `agent_tool_submit` (harness-produced results). Workflow collections use `mount-shared` scope.
+Tool types: `email-outbound`, `email-inbound`, `notify-slack`, `pdf-generate`, `feed-search-{twitter,reddit,upwork,jobboard}`. Execution modes: `backend`, `harness`, `harness-aliased`, `auto`. The brain calls `agent_tool_execute` (server-side) or `agent_tool_submit` (harness-produced results). Workflow tables use `mount-shared` scope.
 
-### Reading and patching mount-scoped collections
+### Reading and patching mount-scoped tables
 
-Use `rip agent collection ...` to read or patch rows on any mount's materialized collections — workflow or memory. Same backend powers the operator dashboard and the `mount_collection_*` MCP tools.
+Use `rip agent table ...` to read or patch rows on any mount's materialized tables — workflow or memory. Same backend powers the operator dashboard and the `mount_table_*` MCP tools.
 
 ```bash
-rip agent collection list <mount-id>
-rip agent collection rows <mount-id> <slug> [--filter k:v] [--sort col:dir] [--limit N] [--after id]
-rip agent collection latest <mount-id> <slug>
-rip agent collection by-tag <mount-id> <tag> [--filter] [--sort] [--limit]
-rip agent collection patch <mount-id> <slug> <row-id> --set key=value [--set key=value ...]
+rip agent table list <mount-id>
+rip agent table rows <mount-id> <slug> [--filter k:v] [--sort col:dir] [--limit N] [--after id]
+rip agent table latest <mount-id> <slug>
+rip agent table by-tag <mount-id> <tag> [--filter] [--sort] [--limit]
+rip agent table patch <mount-id> <slug> <row-id> --set key=value [--set key=value ...]
 ```
 
-Workflow collections in the manifest can declare `tags: ["bid", "review", ...]`. `by-tag` interleaves rows across every collection carrying that tag — useful for unified dashboard views without backend knowledge of which slugs belong together. `patch` works on workflow-collection rows (the workflow-readonly guard is append-only).
+Workflow tables in the manifest can declare `tags: ["bid", "review", ...]`. `by-tag` interleaves rows across every table carrying that tag — useful for unified dashboard views without backend knowledge of which slugs belong together. `patch` works on workflow-table rows (the workflow-readonly guard is append-only).
 
 ## Cross-session references
 

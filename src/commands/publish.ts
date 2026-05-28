@@ -8,7 +8,7 @@ import { parseJsonOption, parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
 
-const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'collection', 'csv'] as const;
+const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'table', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
 
 export async function publish(
@@ -52,7 +52,7 @@ export async function publish(
   }
 
   // Inline content path: skip all filesystem reads and send the string directly.
-  // Collections / CSV import still need a file, so this branch is text-like types only.
+  // Tables / CSV import still need a file, so this branch is text-like types only.
   if (hasContent) {
     if (!options.title) {
       throw new CliError('INVALID_ARGS', '--title is required when using --content.');
@@ -104,8 +104,8 @@ export async function publish(
     return;
   }
 
-  // Collection → CSV import path: single-command creation of a collection from a CSV file
-  if (options.type === 'collection' && options.fromCsv) {
+  // Table → CSV import path: single-command creation of a table from a CSV file
+  if (options.type === 'table' && options.fromCsv) {
     const absPath = path.resolve(filePath!);
     if (!fs.existsSync(absPath)) {
       throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
@@ -114,12 +114,12 @@ export async function publish(
     const title = options.title || path.basename(absPath, path.extname(absPath));
 
     if (options.dryRun) {
-      outputSuccess({ dryRun: true, action: 'would create collection from csv', title, rows: content.split('\n').length }, formatArtifactCreated);
+      outputSuccess({ dryRun: true, action: 'would create table from csv', title, rows: content.split('\n').length }, formatArtifactCreated);
       return;
     }
 
     const body: Record<string, unknown> = {
-      type: 'collection',
+      type: 'table',
       from_csv: true,
       content,
       title,
@@ -150,8 +150,8 @@ export async function publish(
     return;
   }
 
-  // Collection schema-only path
-  if (options.type === 'collection') {
+  // Table schema-only path
+  if (options.type === 'table') {
     let schema: unknown;
     if (options.schema) {
       schema = parseJsonOption(options.schema, '--schema');
@@ -163,15 +163,15 @@ export async function publish(
       schema = parseJsonOption(fs.readFileSync(absPath, 'utf-8'), filePath!);
     }
 
-    const title = options.title || 'Untitled Collection';
+    const title = options.title || 'Untitled Table';
 
     if (options.dryRun) {
-      outputSuccess({ dryRun: true, action: 'would create collection', title, schema }, formatArtifactCreated);
+      outputSuccess({ dryRun: true, action: 'would create table', title, schema }, formatArtifactCreated);
       return;
     }
 
     const { client, config } = requireAuthClient();
-    const body: Record<string, unknown> = { type: 'collection', title, schema };
+    const body: Record<string, unknown> = { type: 'table', title, schema };
     if (options.alias) body.alias = options.alias;
     if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;

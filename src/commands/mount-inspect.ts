@@ -5,8 +5,8 @@ import { outputSuccess } from '../output.js';
  * `rip mount inspect <mountId>` — SDK-shaped discovery surface for a mount.
  *
  * Wraps `GET /v0/operator/mounts/:mountId/inspect`. Returns the same payload
- * served to the `inspect_mount` MCP tool: mount metadata + per-collection
- * schema, ≤5 sample rows, recommended binding, and `window.tokenrip.collections`
+ * served to the `inspect_mount` MCP tool: mount metadata + per-table
+ * schema, ≤5 sample rows, recommended binding, and `window.tokenrip.tables`
  * SDK examples — no raw `/v0/...` URLs surface to the caller.
  *
  * Output: JSON in `--json` mode (pass-through `{ ok, data }` envelope); in
@@ -28,7 +28,7 @@ interface InspectField {
   values?: string[];
 }
 
-interface InspectCollection {
+interface InspectTable {
   slug: string;
   title?: string;
   scope: 'workflow' | 'memory';
@@ -40,7 +40,7 @@ interface InspectCollection {
 
 interface InspectMountPayload {
   mount: { id: string; slug?: string; title: string; imprintSlug: string };
-  collections: InspectCollection[];
+  tables: InspectTable[];
 }
 
 function formatMountInspection(raw: Record<string, unknown>): string {
@@ -51,12 +51,12 @@ function formatMountInspection(raw: Record<string, unknown>): string {
   lines.push(`ID: ${m.id}`);
   if (m.slug) lines.push(`Name: ${m.slug}`);
   lines.push('');
-  if (!inspection.collections || inspection.collections.length === 0) {
-    lines.push('(no collections)');
+  if (!inspection.tables || inspection.tables.length === 0) {
+    lines.push('(no tables)');
     return lines.join('\n');
   }
-  lines.push(`Collections (${inspection.collections.length}):`);
-  for (const c of inspection.collections) {
+  lines.push(`Tables (${inspection.tables.length}):`);
+  for (const c of inspection.tables) {
     const tagPart = c.tags && c.tags.length > 0 ? `  tags: ${c.tags.join(', ')}` : '';
     lines.push('');
     lines.push(`  ${c.slug}  [${c.scope}]${tagPart}`);

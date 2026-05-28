@@ -5,7 +5,7 @@
 ## Contents
 
 - [Artifact commands](#artifact-commands)
-- [Collection commands](#collection-commands)
+- [Table commands](#table-commands)
 - [Surface commands](#surface-commands)
 - [Mount commands](#mount-commands)
 - [Account commands](#account-commands)
@@ -47,7 +47,7 @@ Options: `--title`, `--parent`, `--context`, `--refs`, `--dry-run`
 
 Publish structured content for rich rendering in the browser. The `file` argument is optional — pass `--content <string>` instead to publish inline content without creating a temp file.
 
-Types: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `collection`
+Types: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table`
 
 ```bash
 rip artifact publish notes.md --type markdown
@@ -58,7 +58,7 @@ Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--co
 
 Pass `--star` to star the new artifact for the publishing agent immediately after creation.
 
-**CSV vs Collection:** A `csv` artifact is a versioned file rendered as a table — ideal for exports or snapshots you want to preserve. A `collection` is a living table with row-level API — ideal for incremental data. Use `--type collection --from-csv` to import a CSV directly into a collection. Pass `--headers` (use first row as column names) OR `--schema` (explicit names + types), not both.
+**CSV vs Table:** A `csv` artifact is a versioned file rendered as a table — ideal for exports or snapshots you want to preserve. A `table` is a living table with row-level API — ideal for incremental data. Use `--type table --from-csv` to import a CSV directly into a table. Pass `--headers` (use first row as column names) OR `--schema` (explicit names + types), not both.
 
 ### `rip artifact list`
 
@@ -220,7 +220,7 @@ Options: `--version`
 
 ### `rip artifact diff <identifier>`
 
-Show what changed in a version compared to the version immediately before it. Word-level diff for text artifacts (markdown, html, code, text, json), row-level diff for CSV. Defaults to the current version; the earliest version and non-diffable types (chart, file, collection) report no diff.
+Show what changed in a version compared to the version immediately before it. Word-level diff for text artifacts (markdown, html, code, text, json), row-level diff for CSV. Defaults to the current version; the earliest version and non-diffable types (chart, file, table) report no diff.
 
 ```bash
 rip artifact diff 550e8400-...                  # current version vs. previous
@@ -248,42 +248,42 @@ Storage usage (count + bytes by type).
 rip artifact stats
 ```
 
-## Collection commands
+## Table commands
 
-### `rip collection append <uuid>`
+### `rip table append <uuid>`
 
-Append rows to a collection. Maximum 1000 rows per call — for larger datasets, split into multiple calls.
+Append rows to a table. Maximum 1000 rows per call — for larger datasets, split into multiple calls.
 
 ```bash
-rip collection append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
+rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
 ```
 
 Options: `--data`, `--file`
 
-### `rip collection rows <uuid>`
+### `rip table rows <uuid>`
 
 List rows with pagination, sorting, filtering.
 
 ```bash
-rip collection rows 550e8400-... --filter ignored=false --sort-by discovered_at --sort-order desc
+rip table rows 550e8400-... --filter ignored=false --sort-by discovered_at --sort-order desc
 ```
 
 Options: `--limit`, `--after`, `--sort-by`, `--sort-order`, `--filter`
 
-### `rip collection update <uuid> <rowId>`
+### `rip table update <uuid> <rowId>`
 
 Update a single row.
 
 ```bash
-rip collection update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
+rip table update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
 ```
 
-### `rip collection delete <uuid>`
+### `rip table delete <uuid>`
 
 Delete one or more rows.
 
 ```bash
-rip collection delete 550e8400-... --rows 660f9500-...,770a0600-...
+rip table delete 550e8400-... --rows 660f9500-...,770a0600-...
 ```
 
 ## Surface commands
@@ -411,7 +411,7 @@ Operator-facing entry point for the SDK-shaped mount-inspection API. Most mount 
 
 ### `rip mount inspect <mountId>`
 
-SDK-shaped inspection of a mount and its materialized collections. Returns mount metadata + per-collection schema, ≤5 sample rows, recommended SDK binding, and pasteable `window.tokenrip.collections.*` example snippets — the same payload the `inspect_mount` MCP tool returns.
+SDK-shaped inspection of a mount and its materialized tables. Returns mount metadata + per-table schema, ≤5 sample rows, recommended SDK binding, and pasteable `window.tokenrip.tables.*` example snippets — the same payload the `inspect_mount` MCP tool returns.
 
 ```bash
 rip mount inspect 550e8400-...
@@ -1004,7 +1004,7 @@ List or inspect agents owned by the active account. `show` reports the brain ali
 
 ### `rip agent artifacts <slug>`
 
-List every artifact referenced by an owned agent — brain artifacts, shared collections, shared memory artifacts, the `mountIntake` starter (if any), and sample sessions. Pipeable into `rip artifact update` to edit them.
+List every artifact referenced by an owned agent — brain artifacts, shared tables, shared memory artifacts, the `mountIntake` starter (if any), and sample sessions. Pipeable into `rip artifact update` to edit them.
 
 ### `rip agent mount <slug>`
 
@@ -1050,58 +1050,58 @@ Rename a mount. Personal: only the owner. Team: any current member.
 
 Destroy a mount and its mount-owned memory + context artifact (cascade). Irreversible. Historical sessions and artifacts remain for audit.
 
-### Mount collections (`rip agent collection ...`)
+### Mount tables (`rip agent table ...`)
 
-Generic read/patch surface over any mount's materialized collections — workflow or memory. Same backend that powers the operator dashboard and the `mount_collection_*` MCP tool family.
+Generic read/patch surface over any mount's materialized tables — workflow or memory. Same backend that powers the operator dashboard and the `mount_table_*` MCP tool family.
 
-#### `rip agent collection list <mount-id>`
+#### `rip agent table list <mount-id>`
 
-List the mount's materialized collections with manifest metadata (kind, tags).
+List the mount's materialized tables with manifest metadata (kind, tags).
 
 ```bash
-rip agent collection list <mount-id>
+rip agent table list <mount-id>
 ```
 
-#### `rip agent collection rows <mount-id> <slug>`
+#### `rip agent table rows <mount-id> <slug>`
 
-Paginated rows on a named collection. Type-aware sort, equality filters, cursor pagination.
+Paginated rows on a named table. Type-aware sort, equality filters, cursor pagination.
 
 ```bash
-rip agent collection rows <mount-id> upwork-leads \
+rip agent table rows <mount-id> upwork-leads \
   --filter status:new --sort composite_score:desc --limit 15
 ```
 
 Flags: `--filter key:value` (repeatable), `--sort col:asc|desc`, `--limit N` (default 100, max 500), `--after <rowId>`.
 
-#### `rip agent collection latest <mount-id> <slug>`
+#### `rip agent table latest <mount-id> <slug>`
 
-Single most-recent row on a collection. 404s if the collection is empty.
-
-```bash
-rip agent collection latest <mount-id> activity
-```
-
-#### `rip agent collection by-tag <mount-id> <tag>`
-
-Interleaved rows across every workflow collection on the mount whose manifest declares the tag in its `tags` array. One call instead of fan-out.
+Single most-recent row on a table. 404s if the table is empty.
 
 ```bash
-rip agent collection by-tag <mount-id> bid --sort composite_score:desc --limit 15
+rip agent table latest <mount-id> activity
 ```
 
-Each row in the response carries its source `collectionSlug`.
+#### `rip agent table by-tag <mount-id> <tag>`
 
-#### `rip agent collection patch <mount-id> <slug> <row-id>`
+Interleaved rows across every workflow table on the mount whose manifest declares the tag in its `tags` array. One call instead of fan-out.
+
+```bash
+rip agent table by-tag <mount-id> bid --sort composite_score:desc --limit 15
+```
+
+Each row in the response carries its source `tableSlug`.
+
+#### `rip agent table patch <mount-id> <slug> <row-id>`
 
 Partial-merge update to a single row's `data` field. Validated against the declared schema.
 
 ```bash
-rip agent collection patch <mount-id> upwork-leads <row-id> --set status=seen
-rip agent collection patch <mount-id> flags <flag-id> \
+rip agent table patch <mount-id> upwork-leads <row-id> --set status=seen
+rip agent table patch <mount-id> flags <flag-id> \
   --set resolved_at=2026-05-20T11:00:00Z --set resolution_note=operator_approved
 ```
 
-`--set key=value` is repeatable. Workflow-collection PATCH is allowed (workflow-readonly guard is append-only).
+`--set key=value` is repeatable. Workflow-table PATCH is allowed (workflow-readonly guard is append-only).
 
 ### Session lifecycle (`rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end`)
 
@@ -1126,11 +1126,11 @@ Returns `{ sessionToken, expiresAt, compiledAt, mount, manifest, mountContext?, 
 
 #### `rip agent record <session-token>`
 
-Record a memory row to the session's collection.
+Record a memory row to the session's table.
 
 ```bash
 rip --json agent record <token> \
-  --collection patterns \
+  --table patterns \
   --row '{"pattern":"...","recommendation":"..."}'
 
 rip --json agent record <token> --row-file ./row.json
@@ -1138,7 +1138,7 @@ rip --json agent record <token> --row-file ./row.json
 
 Options:
 
-- `--collection <slug>` — logical collection slug from `manifest.memoryCollections[].slug`. Defaults to the manifest's default collection.
+- `--table <slug>` — logical table slug from `manifest.memoryTables[].slug`. Defaults to the manifest's default table.
 - `--row '<json>'` — inline JSON object payload.
 - `--row-file <file>` — read the JSON payload from a file. Mutually exclusive with `--row`.
 
@@ -1453,7 +1453,7 @@ All commands output human-readable text to stdout by default. Use `--json` or se
 | `IDENTITY_NOT_FOUND` | `--agent` name doesn't match any local account |
 | `LAST_IDENTITY` | Cannot remove the only remaining account |
 | `FILE_NOT_FOUND` | Input file does not exist |
-| `INVALID_TYPE` | Publish type not one of: markdown, html, chart, code, text, json, csv, collection |
+| `INVALID_TYPE` | Publish type not one of: markdown, html, chart, code, text, json, csv, table |
 | `UNAUTHORIZED` | API key expired or revoked — run `rip auth register` to recover |
 | `TIMEOUT` | Request timed out |
 | `NETWORK_ERROR` | Cannot reach the API server |

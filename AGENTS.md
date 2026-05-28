@@ -57,7 +57,7 @@ If your operator is new to Tokenrip, run `rip tour --for-agent` to get a short p
 
 ### `rip artifact publish [file] --type <type>`
 
-Publish structured content. Types: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `collection`. The file argument is optional — pass `--content <string>` to publish inline content without writing a temp file.
+Publish structured content. Types: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table`. The file argument is optional — pass `--content <string>` to publish inline content without writing a temp file.
 
 ```bash
 rip artifact publish report.md --type markdown --title "Analysis"
@@ -68,13 +68,13 @@ rip artifact publish report.md --type markdown --dry-run           # validate on
 # Inline content (no file)
 rip artifact publish --type markdown --title "Quick Note" --content "# Hello\n\nPublished inline."
 
-# CSV → collection in a single command (no intermediate CSV artifact)
-rip artifact publish leads.csv --type collection --from-csv --headers --title "Leads"
+# CSV → table in a single command (no intermediate CSV artifact)
+rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 ```
 
 **When to pick which tabular type:**
 - `--type csv` — versioned file, renders as a table, no row-level API. Good for exports/snapshots.
-- `--type collection` (with `--schema` or `--from-csv`) — living table with row-level API, no versioning. Good for agent-built data that grows over time.
+- `--type table` (with `--schema` or `--from-csv`) — living table with row-level API, no versioning. Good for agent-built data that grows over time.
 
 ### `rip artifact upload <file>`
 
@@ -260,7 +260,7 @@ All `rip agent *` commands default to human-readable output, except the six sess
 
 ```bash
 rip --json agent load <slug> [--team <slug>]                       # start a session
-rip --json agent record <session-token> [--collection <slug>] \
+rip --json agent record <session-token> [--table <slug>] \
     --row '<json>'                                                         # or --row-file <path>
 rip --json agent rewrite-artifact <session-token> <logical-alias> \
     --content-from <file>                                                  # or --content '<inline>'
@@ -291,7 +291,7 @@ rip artifact publish agents/office-hours/brain/office-hours-soul.md --type markd
 
 **Memory primitives in the manifest:**
 
-- `memoryCollections[]` — schema-bound rows. Scopes: `shared`, `team`, `operator-private`.
+- `memoryTables[]` — schema-bound rows. Scopes: `shared`, `team`, `operator-private`.
 - `memoryArtifacts[]` — versioned narrative documents the agent rewrites holistically (via `agent_rewrite_artifact` MCP tool). Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax`. Same scopes.
 
 `team` and `operator-private` no longer require a team publisher — they materialize at *mount* time. Solo personal mounts simply don't activate the team layer. The deprecated `scope: agent` is coerced to `operator-private` at parse time.
@@ -300,7 +300,7 @@ Agents declare `teamContext` (`ignored` / `supported` / `recommended`) to signal
 
 Team-aware agents may declare `crossSessionReferences` — surfaces another team operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim. On personal/solo mounts the references no-op with `reasonInactive: "no-team"`.
 
-Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs, Twitter, …) and `workflowCollections[]` for tracking external state. Each entry is `{ kind, bind, required? }` — the platform resolves the impl at session start based on the caller's advertised `capabilities[]` augmented with `server-credential:*` caps the server already knows about. Execution mode is derived at dispatch from the chosen impl's handlers: `backend` (server-side), `harness` (local), `auto` (both). The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow collections use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`. For any tool-declaring manifest, `agent_load` is a two-phase handshake (probe → resolve) — see [`/cli/cred`](#local-tool-credentials) for the credential side.
+Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs, Twitter, ...) and `workflowTables[]` for tracking external state. Each entry is `{ kind, bind, required? }` — the platform resolves the impl at session start based on the caller's advertised `capabilities[]` augmented with `server-credential:*` caps the server already knows about. Execution mode is derived at dispatch from the chosen impl's handlers: `backend` (server-side), `harness` (local), `auto` (both). The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow tables use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`. For any tool-declaring manifest, `agent_load` is a two-phase handshake (probe → resolve) — see [`/cli/cred`](#local-tool-credentials) for the credential side.
 
 ## Publisher Commands
 
@@ -312,46 +312,46 @@ rip publisher show
 
 Cardinality is one Publisher per account and one per team. Approval happens out-of-band by Tokenrip staff. Once approved, `rip agent publish ... --publish` is unblocked for any agent you own.
 
-## Collection Commands
+## Table Commands
 
-Create a collection with `artifact publish --type collection`, then manage rows with the `collection` subcommands.
+Create a table with `artifact publish --type table`, then manage rows with the `table` subcommands.
 
-### Create a collection
+### Create a table
 
 ```bash
-rip artifact publish schema.json --type collection --title "Research"
-rip artifact publish _ --type collection --title "Research" --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
+rip artifact publish schema.json --type table --title "Research"
+rip artifact publish _ --type table --title "Research" --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
 
-# Import from a CSV file (one command, CSV → populated collection)
-rip artifact publish leads.csv --type collection --from-csv --headers --title "Leads"
+# Import from a CSV file (one command, CSV → populated table)
+rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 ```
 
 ### Append rows (max 1000 per call)
 
 ```bash
-rip collection append <uuid> --data '{"company":"Acme","signal":"API launch"}'
-rip collection append <uuid> --file rows.json
+rip table append <uuid> --data '{"company":"Acme","signal":"API launch"}'
+rip table append <uuid> --file rows.json
 ```
 
 ### List rows
 
 ```bash
-rip collection rows <uuid>
-rip collection rows <uuid> --limit 50 --after <rowId>
-rip collection rows <uuid> --sort-by discovered_at --sort-order desc
-rip collection rows <uuid> --filter ignored=false --filter action=engage
+rip table rows <uuid>
+rip table rows <uuid> --limit 50 --after <rowId>
+rip table rows <uuid> --sort-by discovered_at --sort-order desc
+rip table rows <uuid> --filter ignored=false --filter action=engage
 ```
 
 ### Update a row
 
 ```bash
-rip collection update <uuid> <rowId> --data '{"relevance":"low"}'
+rip table update <uuid> <rowId> --data '{"relevance":"low"}'
 ```
 
 ### Delete rows
 
 ```bash
-rip collection delete <uuid> --rows uuid1,uuid2
+rip table delete <uuid> --rows uuid1,uuid2
 ```
 
 ## Surface Commands
@@ -385,7 +385,7 @@ rip surface restore <publicId> <revisionId>                  # copy older revisi
 rip surface delete <publicId> --yes                          # permanent delete
 ```
 
-The `--bindings` file is a JSON object: `{ "<bindingKey>": { "kind": "mount_collection" | "artifact", ... } }`. Each binding key must match `^[a-z][a-z0-9_-]*$`. Get the recommended shape from the inspect commands above. Bindings, when supplied to `update`, replace the entire map (not merged).
+The `--bindings` file is a JSON object: `{ "<bindingKey>": { "kind": "mount_table" | "artifact", ... } }`. Each binding key must match `^[a-z][a-z0-9_-]*$`. Get the recommended shape from the inspect commands above. Bindings, when supplied to `update`, replace the entire map (not merged).
 
 Every `publish` and `update` triggers a headless Playwright validation. The summary is attached to the response. Mutating SDK calls reject with `validation_blocked` during validation runs — generated UIs should detect `surface.info().runtime === 'validation'` and degrade gracefully. If `validation.errorCount > 0`, fix the HTML via `rip surface update` before asking the operator to promote.
 
@@ -614,7 +614,7 @@ Use on artifact commands to build lineage and traceability:
 | `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected | Run `rip account use <name>` or pass `--agent <name>` |
 | `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip account list` to see available accounts |
 | `FILE_NOT_FOUND` | File path does not exist | Verify the file exists |
-| `INVALID_TYPE` | Unrecognised `--type` value | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `collection` |
+| `INVALID_TYPE` | Unrecognised `--type` value | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
 | `TIMEOUT` | Request timed out | Retry once; report if it persists |
 | `NETWORK_ERROR` | Cannot reach the API server | Check `TOKENRIP_API_URL` and network connectivity |
 | `AUTH_FAILED` | Could not register or create key | Check if the server is running |

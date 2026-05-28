@@ -3,10 +3,10 @@ import path from 'node:path';
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatCollectionRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
+import { formatTableRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
 import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
 
-export async function collectionAppend(
+export async function tableAppend(
   uuid: string,
   options: { data?: string; file?: string },
 ): Promise<void> {
@@ -29,7 +29,7 @@ export async function collectionAppend(
   outputSuccess({ rows: data.data, count: data.data.length }, formatRowsAppended);
 }
 
-export async function collectionRows(
+export async function tableRows(
   uuid: string,
   options: { limit?: string; after?: string; sortBy?: string; sortOrder?: string; filter?: string[] },
 ): Promise<void> {
@@ -47,10 +47,10 @@ export async function collectionRows(
   }
 
   const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params });
-  outputSuccess(data.data, formatCollectionRows);
+  outputSuccess(data.data, formatTableRows);
 }
 
-export async function collectionUpdate(
+export async function tableUpdate(
   uuid: string,
   rowId: string,
   options: { data: string },
@@ -61,7 +61,7 @@ export async function collectionUpdate(
   outputSuccess(data.data, formatRowUpdated);
 }
 
-export async function collectionDelete(
+export async function tableDelete(
   uuid: string,
   options: { rows: string },
 ): Promise<void> {

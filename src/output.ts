@@ -65,7 +65,7 @@ const ERROR_HINTS: Record<string, string> = {
   NETWORK_ERROR: 'Check your connection. Run `rip config show` to verify the API URL.',
   TIMEOUT: 'The server did not respond in time. Try again or check your connection.',
   FILE_NOT_FOUND: 'Check the file path and try again.',
-  INVALID_TYPE: 'Valid types depend on the command; for artifacts they include markdown, html, chart, code, text, json, csv, and collection.',
+  INVALID_TYPE: 'Valid types depend on the command; for artifacts they include markdown, html, chart, code, text, json, csv, and table.',
   INVALID_JSON: 'Check quoting and make sure the value is valid JSON.',
   INVALID_DURATION: 'Use formats like 30m, 1h, or 7d.',
   INVALID_REF: 'Use a full URL or an artifact UUID.',

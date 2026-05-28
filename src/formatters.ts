@@ -403,7 +403,7 @@ export const formatProfileUpdated: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatCollectionRows: Formatter = (data) => {
+export const formatTableRows: Formatter = (data) => {
   const rows = (data as any).rows ?? [];
   const nextCursor = (data as any).nextCursor;
   if (!Array.isArray(rows) || rows.length === 0) return 'No rows.';
@@ -620,9 +620,9 @@ export const formatAgentDryRun: Formatter = (data) => {
   const resolved = data.resolved as
     | {
         brainArtifacts?: Array<{ alias: string; publicId: string }>;
-        memoryCollectionsCount?: number;
+        memoryTablesCount?: number;
         memoryArtifactsCount?: number;
-        workflowCollectionsCount?: number;
+        workflowTablesCount?: number;
       }
     | undefined;
 
@@ -644,9 +644,9 @@ export const formatAgentDryRun: Formatter = (data) => {
     }
   }
   const counts: Array<[string, number | undefined]> = [
-    ['Memory collections', resolved?.memoryCollectionsCount],
+    ['Memory tables', resolved?.memoryTablesCount],
     ['Memory artifacts', resolved?.memoryArtifactsCount],
-    ['Workflow collections', resolved?.workflowCollectionsCount],
+    ['Workflow tables', resolved?.workflowTablesCount],
   ];
   const nonZero = counts.filter(([, n]) => typeof n === 'number' && n > 0);
   if (nonZero.length > 0) {
@@ -778,9 +778,9 @@ function formatArtifactRows(rows: Array<Record<string, unknown>>, label: string)
 
 function countLayer(layer: any): string {
   if (!layer) return '0';
-  const collections = Array.isArray(layer.collections) ? layer.collections.length : 0;
+  const tables = Array.isArray(layer.tables) ? layer.tables.length : 0;
   const memoryArtifacts = Array.isArray(layer.memoryArtifacts) ? layer.memoryArtifacts.length : 0;
-  return String(collections + memoryArtifacts);
+  return String(tables + memoryArtifacts);
 }
 
 function formatBytes(bytes: number): string {

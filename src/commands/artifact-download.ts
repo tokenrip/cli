@@ -24,7 +24,7 @@ export async function artifactDownload(
   const { data: artifactRes } = await client.get(`/v0/artifacts/${uuid}`);
   const artifact = artifactRes.data;
 
-  if (artifact.type !== 'collection') {
+  if (artifact.type !== 'table') {
     const endpoint = options.version
       ? `/v0/artifacts/${uuid}/versions/${options.version}/content`
       : `/v0/artifacts/${uuid}/content`;

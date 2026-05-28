@@ -336,11 +336,11 @@ export async function agentLoad(
 
 export async function agentRecord(
   sessionToken: string,
-  options: { collection?: string; row?: string; rowFile?: string },
+  options: { table?: string; row?: string; rowFile?: string },
 ): Promise<void> {
   const payload = readJsonOption(options.row, options.rowFile, '--row / --row-file');
   const body: Record<string, unknown> = { payload };
-  if (options.collection) body.collection = options.collection;
+  if (options.table) body.table = options.table;
   const { client } = requireAuthClient();
   const { data } = await client.post(
     `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/rows`,

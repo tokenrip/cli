@@ -22,7 +22,7 @@ interface PatchOptions {
  * Number-looking values stay strings on this path — agents that need typed
  * values should pass a JSON object via `--data-json` (future). For v1 the
  * schema validator on the backend coerces strings to enums/numbers as
- * declared in the collection schema.
+ * declared in the table schema.
  */
 function parseSetPairs(pairs: string[] | undefined): Record<string, unknown> {
   if (!pairs || pairs.length === 0) return {};
@@ -43,11 +43,11 @@ function joinFilters(filters: string[] | undefined): string | undefined {
   return filters.join(',');
 }
 
-export async function mountCollectionList(mountId: string, _options: ListOptions): Promise<void> {
+export async function mountTableList(mountId: string, _options: ListOptions): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/operator/mounts/${encodeURIComponent(mountId)}/collections`);
+  const { data } = await client.get(`/v0/operator/mounts/${encodeURIComponent(mountId)}/tables`);
   outputSuccess(data.data, (rows) => {
-    if (!Array.isArray(rows) || rows.length === 0) return '(no collections)';
+    if (!Array.isArray(rows) || rows.length === 0) return '(no tables)';
     const lines = ['slug                            kind                tags'];
     for (const r of rows as Array<Record<string, unknown>>) {
       const slug = String(r.slug ?? '').padEnd(30);
@@ -59,7 +59,7 @@ export async function mountCollectionList(mountId: string, _options: ListOptions
   });
 }
 
-export async function mountCollectionRows(
+export async function mountTableRows(
   mountId: string,
   slug: string,
   options: RowsOptions,
@@ -72,21 +72,21 @@ export async function mountCollectionRows(
   if (options.limit) params.limit = options.limit;
   if (options.after) params.after = options.after;
   const { data } = await client.get(
-    `/v0/operator/mounts/${encodeURIComponent(mountId)}/collections/${encodeURIComponent(slug)}/rows`,
+    `/v0/operator/mounts/${encodeURIComponent(mountId)}/tables/${encodeURIComponent(slug)}/rows`,
     { params },
   );
   outputSuccess(data, () => JSON.stringify(data, null, 2));
 }
 
-export async function mountCollectionLatest(mountId: string, slug: string): Promise<void> {
+export async function mountTableLatest(mountId: string, slug: string): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(
-    `/v0/operator/mounts/${encodeURIComponent(mountId)}/collections/${encodeURIComponent(slug)}/rows/latest`,
+    `/v0/operator/mounts/${encodeURIComponent(mountId)}/tables/${encodeURIComponent(slug)}/rows/latest`,
   );
   outputSuccess(data.data, () => JSON.stringify(data.data, null, 2));
 }
 
-export async function mountCollectionByTag(
+export async function mountTableByTag(
   mountId: string,
   tag: string,
   options: RowsOptions,
@@ -98,13 +98,13 @@ export async function mountCollectionByTag(
   if (options.sort) params.sort = options.sort;
   if (options.limit) params.limit = options.limit;
   const { data } = await client.get(
-    `/v0/operator/mounts/${encodeURIComponent(mountId)}/collections-by-tag/${encodeURIComponent(tag)}/rows`,
+    `/v0/operator/mounts/${encodeURIComponent(mountId)}/tables-by-tag/${encodeURIComponent(tag)}/rows`,
     { params },
   );
   outputSuccess(data, () => JSON.stringify(data, null, 2));
 }
 
-export async function mountCollectionPatch(
+export async function mountTablePatch(
   mountId: string,
   slug: string,
   rowId: string,
@@ -116,7 +116,7 @@ export async function mountCollectionPatch(
   }
   const { client } = requireAuthClient();
   const { data } = await client.patch(
-    `/v0/operator/mounts/${encodeURIComponent(mountId)}/collections/${encodeURIComponent(slug)}/rows/${encodeURIComponent(rowId)}`,
+    `/v0/operator/mounts/${encodeURIComponent(mountId)}/tables/${encodeURIComponent(slug)}/rows/${encodeURIComponent(rowId)}`,
     { data: dataPatch },
   );
   outputSuccess(data.data, () => JSON.stringify(data.data, null, 2));

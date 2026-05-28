@@ -24,7 +24,7 @@ import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
 import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
-import { mountCollectionList, mountCollectionRows, mountCollectionLatest, mountCollectionByTag, mountCollectionPatch } from './commands/mount-collection.js';
+import { mountTableList, mountTableRows, mountTableLatest, mountTableByTag, mountTablePatch } from './commands/mount-table.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
@@ -79,16 +79,16 @@ EXAMPLES:
 artifact
   .command('publish')
   .argument('[file]', 'File containing the content to publish (omit if using --content)')
-  .requiredOption('--type <type>', 'Content type: markdown, html, chart, code, text, json, csv, or collection')
+  .requiredOption('--type <type>', 'Content type: markdown, html, chart, code, text, json, csv, or table')
   .option('--title <title>', 'Display title for the artifact')
   .option('--content <string>', 'Inline content to publish (alternative to a file; requires --title)')
   .option('--alias <alias>', 'Human-readable alias for the artifact URL')
   .option('--parent <uuid>', 'Parent artifact ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
-  .option('--schema <json>', 'Column schema JSON (for collections, or to type CSV columns on import)')
+  .option('--schema <json>', 'Column schema JSON (for tables, or to type CSV columns on import)')
   .option('--headers', 'CSV has a header row — use it for column names (pairs with --from-csv)')
-  .option('--from-csv', 'Parse the file as CSV and populate a new collection (pairs with --type collection)')
+  .option('--from-csv', 'Parse the file as CSV and populate a new table (pairs with --type table)')
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
   .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
@@ -104,17 +104,17 @@ CONTENT TYPES:
   text       - Plain text
   json       - Interactive JSON viewer with collapse/expand
   csv        - Versioned CSV file, rendered as a table
-  collection - Structured data table with row-level API (requires --schema or --from-csv)
+  table      - Structured data table with row-level API (requires --schema or --from-csv)
 
 EXAMPLES:
   $ rip artifact publish analysis.md --type markdown --title "Summary"
   $ rip artifact publish data.json --type chart \\
     --context "Data viz agent" --refs "https://api.example.com"
   $ rip artifact publish data.csv --type csv --title "Q1 leads"
-  $ rip artifact publish schema.json --type collection --title "Research"
-  $ rip artifact publish _ --type collection --title "Research" \\
+  $ rip artifact publish schema.json --type table --title "Research"
+  $ rip artifact publish _ --type table --title "Research" \\
     --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
-  $ rip artifact publish leads.csv --type collection --from-csv --headers \\
+  $ rip artifact publish leads.csv --type table --from-csv --headers \\
     --title "Leads from CSV"
 `)
   .action(wrapCommand(publish));
@@ -335,7 +335,7 @@ artifact
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
   .option('--version <versionId>', 'Download a specific version')
-  .option('--format <format>', 'Export format for collections: csv or json (default: csv)')
+  .option('--format <format>', 'Export format for tables: csv or json (default: csv)')
   .description('Download artifact content to a local file')
   .addHelpText('after', `
 EXAMPLES:
@@ -479,77 +479,77 @@ EXAMPLES:
 `)
   .action(wrapCommand(patch));
 
-// ── collection commands ─────────────────────────────────────────────
-const collection = program
-  .command('collection')
-  .description('Manage collection rows (append, list, update, delete)');
+// ── table commands ──────────────────────────────────────────────────
+const table = program
+  .command('table')
+  .description('Manage table rows (append, list, update, delete)');
 
-collection
+table
   .command('append')
-  .argument('<uuid>', 'Collection artifact public ID')
+  .argument('<uuid>', 'Table artifact public ID')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
-  .description('Append one or more rows to a collection (max 1000 per call)')
+  .description('Append one or more rows to a table (max 1000 per call)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip collection append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
-  $ rip collection append 550e8400-... --file rows.json
+  $ rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
+  $ rip table append 550e8400-... --file rows.json
 
 NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
 `)
   .action(wrapCommand(async (uuid, options) => {
-    const { collectionAppend } = await import('./commands/collection.js');
-    await collectionAppend(uuid, options);
+    const { tableAppend } = await import('./commands/table.js');
+    await tableAppend(uuid, options);
   }));
 
-collection
+table
   .command('rows')
-  .argument('<uuid>', 'Collection artifact public ID')
+  .argument('<uuid>', 'Table artifact public ID')
   .option('--limit <n>', 'Max rows to return (default: 100, max: 500)')
   .option('--after <rowId>', 'Cursor: show rows after this row ID')
   .option('--sort-by <column>', 'Sort by column name')
   .option('--sort-order <order>', 'Sort direction: asc or desc (default: asc)')
   .option('--filter <key=value...>', 'Filter rows by column value (repeatable)')
-  .description('List rows in a collection')
+  .description('List rows in a table')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip collection rows 550e8400-...
-  $ rip collection rows 550e8400-... --limit 50
-  $ rip collection rows 550e8400-... --sort-by discovered_at --sort-order desc
-  $ rip collection rows 550e8400-... --filter ignored=false --filter action=engage
+  $ rip table rows 550e8400-...
+  $ rip table rows 550e8400-... --limit 50
+  $ rip table rows 550e8400-... --sort-by discovered_at --sort-order desc
+  $ rip table rows 550e8400-... --filter ignored=false --filter action=engage
 `)
   .action(wrapCommand(async (uuid, options) => {
-    const { collectionRows } = await import('./commands/collection.js');
-    await collectionRows(uuid, options);
+    const { tableRows } = await import('./commands/table.js');
+    await tableRows(uuid, options);
   }));
 
-collection
+table
   .command('update')
-  .argument('<uuid>', 'Collection artifact public ID')
+  .argument('<uuid>', 'Table artifact public ID')
   .argument('<rowId>', 'Row ID to update')
   .requiredOption('--data <json>', 'Fields to update as JSON (partial merge)')
-  .description('Update a single row in a collection')
+  .description('Update a single row in a table')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip collection update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
+  $ rip table update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
 `)
   .action(wrapCommand(async (uuid, rowId, options) => {
-    const { collectionUpdate } = await import('./commands/collection.js');
-    await collectionUpdate(uuid, rowId, options);
+    const { tableUpdate } = await import('./commands/table.js');
+    await tableUpdate(uuid, rowId, options);
   }));
 
-collection
+table
   .command('delete')
-  .argument('<uuid>', 'Collection artifact public ID')
+  .argument('<uuid>', 'Table artifact public ID')
   .requiredOption('--rows <ids>', 'Comma-separated row IDs to delete')
-  .description('Delete rows from a collection')
+  .description('Delete rows from a table')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip collection delete 550e8400-... --rows uuid1,uuid2
+  $ rip table delete 550e8400-... --rows uuid1,uuid2
 `)
   .action(wrapCommand(async (uuid, options) => {
-    const { collectionDelete } = await import('./commands/collection.js');
-    await collectionDelete(uuid, options);
+    const { tableDelete } = await import('./commands/table.js');
+    await tableDelete(uuid, options);
   }));
 
 // ── mount commands (top-level discovery surface) ────────────────────
@@ -565,7 +565,7 @@ const mount = program
 mount
   .command('inspect')
   .argument('<mountId>', 'Mount ID returned by `rip agent mount` or `rip agent mounts`')
-  .description('SDK-shaped inspection of a mount and its collections')
+  .description('SDK-shaped inspection of a mount and its tables')
   .addHelpText('after', `
 EXAMPLES:
   $ rip mount inspect 550e8400-e29b-41d4-a716-446655440000
@@ -573,9 +573,9 @@ EXAMPLES:
 
 NOTES:
   Wraps GET /v0/operator/mounts/:mountId/inspect — the same payload the
-  inspect_mount MCP tool returns. Returns mount metadata + per-collection
+  inspect_mount MCP tool returns. Returns mount metadata + per-table
   schema, ≤5 sample rows, recommended SDK binding, and
-  window.tokenrip.collections example snippets. Pairs with
+  window.tokenrip.tables example snippets. Pairs with
   rip artifact inspect for artifact-backed Surfaces.
 `)
   .action(wrapCommand(mountInspect));
@@ -691,7 +691,7 @@ EXAMPLES:
 
 NOTES:
   Brain artifact aliases referenced by the manifest must already be published
-  by the active agent identity. Shared memory collections are created or
+  by the active agent identity. Shared memory tables are created or
   updated from the manifest during publish. Claude Code invocation surfaces
   should point at the generated bootloader URL, which installs as
   .claude/commands/<slug>.md and fetches brain artifacts at runtime.
@@ -703,7 +703,7 @@ NOTES:
   --dry-run runs every validator (Zod schema, semantic validator,
   brain-artifact existence + ownership, mount-intake + themes starter,
   Publisher gate when --publish is set) and prints a structured result
-  without persisting. No Agent row, no folder, no collection artifacts
+  without persisting. No Agent row, no folder, no table artifacts
   get written. Exits 1 if validation fails. Prefer 'rip agent validate'
   for a dedicated validation entry point.
 
@@ -726,7 +726,7 @@ NOTES:
   Runs every validator the publish path runs (Zod schema, semantic validator,
   brain-artifact existence + ownership, mount-intake + themes starter, etc.)
   and prints a structured result without persisting. No Agent row, no folder,
-  no collection artifacts get written.
+  no table artifacts get written.
 
   Exit code 0 = validation passed; exit code 1 = validation failed (errors in
   output). Suitable for pre-commit hooks and CI gates.
@@ -846,59 +846,59 @@ mountedagent
   .description('Print or update the mount context artifact')
   .action(wrapCommand(agentMountContext));
 
-// ── mount-scoped collection access (generic surface) ────────────────
+// ── mount-scoped table access (generic surface) ────────────────
 //
-// Reads and patches against any mount's materialized collections via the
-// generic `/v0/operator/mounts/:mountId/collections/*` endpoints. Pairs with
-// MCP `mount_collection_*` and the operator dashboard's lib functions —
-// triple-surface parity. See `docs/architecture/mount-collections.md`.
+// Reads and patches against any mount's materialized tables via the
+// generic `/v0/operator/mounts/:mountId/tables/*` endpoints. Pairs with
+// MCP `mount_table_*` and the operator dashboard's lib functions —
+// triple-surface parity. See `docs/architecture/mount-tables.md`.
 
-const mountedagentCollection = mountedagent
-  .command('collection')
-  .description('Read or patch rows on a mount\'s materialized collections');
+const mountedagentTable = mountedagent
+  .command('table')
+  .description('Read or patch rows on a mount\'s materialized tables');
 
-mountedagentCollection
+mountedagentTable
   .command('list')
   .argument('<mount-id>', 'Mount ID')
-  .description('List the mount\'s materialized collections (slug, kind, tags)')
-  .action(wrapCommand(mountCollectionList));
+  .description('List the mount\'s materialized tables (slug, kind, tags)')
+  .action(wrapCommand(mountTableList));
 
-mountedagentCollection
+mountedagentTable
   .command('rows')
   .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Collection slug (e.g. "upwork-leads", "pipeline")')
+  .argument('<slug>', 'Table slug (e.g. "upwork-leads", "pipeline")')
   .option('--filter <key:value...>', 'Equality filter on a JSONB column (repeatable)')
   .option('--sort <col:dir>', 'Sort by column (e.g. composite_score:desc)')
   .option('--limit <n>', 'Max rows (default 100, max 500)')
   .option('--after <id>', 'Cursor: row UUID to start after')
-  .description('Paginated rows on a named collection')
-  .action(wrapCommand(mountCollectionRows));
+  .description('Paginated rows on a named table')
+  .action(wrapCommand(mountTableRows));
 
-mountedagentCollection
+mountedagentTable
   .command('latest')
   .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Collection slug')
-  .description('Most-recent single row on a named collection')
-  .action(wrapCommand(mountCollectionLatest));
+  .argument('<slug>', 'Table slug')
+  .description('Most-recent single row on a named table')
+  .action(wrapCommand(mountTableLatest));
 
-mountedagentCollection
+mountedagentTable
   .command('by-tag')
   .argument('<mount-id>', 'Mount ID')
-  .argument('<tag>', 'Tag declared on one or more workflowCollections in the imprint manifest')
+  .argument('<tag>', 'Tag declared on one or more workflowTables in the imprint manifest')
   .option('--filter <key:value...>', 'Equality filter on a JSONB column (repeatable)')
   .option('--sort <col:dir>', 'Sort by column (e.g. composite_score:desc)')
-  .option('--limit <n>', 'Per-collection cap (default 100, max 500)')
-  .description('Interleaved rows across every collection tagged with <tag>')
-  .action(wrapCommand(mountCollectionByTag));
+  .option('--limit <n>', 'Per-table cap (default 100, max 500)')
+  .description('Interleaved rows across every table tagged with <tag>')
+  .action(wrapCommand(mountTableByTag));
 
-mountedagentCollection
+mountedagentTable
   .command('patch')
   .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Collection slug')
+  .argument('<slug>', 'Table slug')
   .argument('<row-id>', 'Row UUID')
   .option('--set <key=value...>', 'Field to set (repeatable), e.g. --set status=seen --set owner=alice')
-  .description('Partial update to a row\'s data (validated against the collection schema)')
-  .action(wrapCommand(mountCollectionPatch));
+  .description('Partial update to a row\'s data (validated against the table schema)')
+  .action(wrapCommand(mountTablePatch));
 
 mountedagent
   .command('unmount')
@@ -947,13 +947,13 @@ NOTES:
 mountedagent
   .command('record')
   .argument('<session-token>', 'Token returned by `agent load`')
-  .option('--collection <slug>', 'Logical collection slug (defaults to the manifest default)')
+  .option('--table <slug>', 'Logical table slug (defaults to the manifest default)')
   .option('--row <json>', 'Inline JSON object payload')
   .option('--row-file <file>', 'Read the JSON payload from a file')
-  .description("Record a memory row to the session's collection")
+  .description("Record a memory row to the session's table")
   .addHelpText('after', `
 EXAMPLES:
-  $ rip --json agent record <token> --collection patterns \\
+  $ rip --json agent record <token> --table patterns \\
       --row '{"pattern":"...","recommendation":"..."}'
 `)
   .action(wrapCommand(agentRecord));
@@ -1368,7 +1368,7 @@ program
   .option('--state <state>', 'Thread state: open or closed')
   .option('--intent <intent>', 'Filter by last message intent')
   .option('--ref <uuid>', 'Filter threads referencing this artifact')
-  .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, collection')
+  .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table')
   .option('--archived', 'Search only archived artifacts')
   .option('--include-archived', 'Include archived artifacts in search results')
   .addHelpText('after', `

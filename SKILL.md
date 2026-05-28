@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.13
+version: 1.5.14
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.13 -->
+<!-- tokenrip-skill-version: 1.5.14 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -136,11 +136,11 @@ CSV snapshot (versioned file, won't mutate)?
   → rip artifact publish data.csv --type csv --title "..."
 
 CSV → living table (import rows, then append more over time)?
-  → rip artifact publish data.csv --type collection --from-csv --headers --title "..."
+  → rip artifact publish data.csv --type table --from-csv --headers --title "..."
 
 Structured table (built row by row from scratch)?
-  → rip artifact publish _ --type collection --title "..." --schema '[{"name":"col","type":"text"}]'
-  → then: rip collection append <uuid> --data '{"col":"value"}'
+  → rip artifact publish _ --type table --title "..." --schema '[{"name":"col","type":"text"}]'
+  → then: rip table append <uuid> --data '{"col":"value"}'
 
 Inline content (no temp file needed)?
   → rip artifact publish --type markdown --title "..." --content "# Hello\n\nContent here."
@@ -291,11 +291,11 @@ rip msg list --thread <thread-id>
 rip artifact update 550e8400-... analysis-v2.md --type markdown --label "incorporated review feedback"
 ```
 
-### Example 2: Build a living collection and track data over time
+### Example 2: Build a living table and track data over time
 
 ```bash
-# 1. Create a collection with a schema
-rip artifact publish _ --type collection \
+# 1. Create a table with a schema
+rip artifact publish _ --type table \
   --title "Lead Tracker" \
   --team sales-team \
   --folder pipeline \
@@ -304,17 +304,17 @@ rip artifact publish _ --type collection \
 # Output: Published! URL: https://tokenrip.com/s/660f9500-...
 
 # 2. Append rows as you discover leads
-rip collection append 660f9500-... --data '{"company":"Acme","signal":"API launch","status":"new"}'
-rip collection append 660f9500-... --data '{"company":"Initech","signal":"Hiring ML engineers","status":"new"}'
+rip table append 660f9500-... --data '{"company":"Acme","signal":"API launch","status":"new"}'
+rip table append 660f9500-... --data '{"company":"Initech","signal":"Hiring ML engineers","status":"new"}'
 
 # 3. Query and filter
-rip collection rows 660f9500-... --filter status=new --sort-by company
+rip table rows 660f9500-... --filter status=new --sort-by company
 
 # 4. Update a row
-rip collection update 660f9500-... <row-id> --data '{"status":"contacted"}'
+rip table update 660f9500-... <row-id> --data '{"status":"contacted"}'
 
 # 5. Import from CSV (alternative start — import existing data)
-rip artifact publish leads.csv --type collection --from-csv --headers --title "Imported Leads"
+rip artifact publish leads.csv --type table --from-csv --headers --title "Imported Leads"
 ```
 
 ### Local tool credentials (`rip cred`)
@@ -348,7 +348,7 @@ For JSON output format, provenance flags, or `--json` details, read `references/
 | `TEAM_NOT_FOUND` | Run `rip team list` to sync local cache |
 | `CONTACT_NOT_FOUND` | Run `rip contacts list` to see contacts |
 | `FILE_NOT_FOUND` | Verify file exists before running command |
-| `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `collection` |
+| `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
 | `PUBLISHER_REQUIRED` | Run `rip publisher apply`; await approval |
 | `MOUNT_NAME_TAKEN` | Pick a different `--name` |
 | `IMPRINT_NOT_LOADABLE` | Verify agent ownership or team membership |
