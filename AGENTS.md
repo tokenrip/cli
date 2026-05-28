@@ -320,7 +320,7 @@ Create a table with `artifact publish --type table`, then manage rows with the `
 
 ```bash
 rip artifact publish schema.json --type table --title "Research"
-rip artifact publish _ --type table --title "Research" --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
+rip artifact publish --type table --title "Research" --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
 
 # Import from a CSV file (one command, CSV → populated table)
 rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"

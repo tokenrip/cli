@@ -47,7 +47,8 @@ export async function publish(
   if (hasFile && hasContent) {
     throw new CliError('INVALID_ARGS', 'Provide either a file or --content, not both.');
   }
-  if (!hasFile && !hasContent) {
+  const isSchemaOnlyTable = options.type === 'table' && options.schema && !options.fromCsv;
+  if (!hasFile && !hasContent && !isSchemaOnlyTable) {
     throw new CliError('INVALID_ARGS', 'Provide either a file or --content.');
   }
 

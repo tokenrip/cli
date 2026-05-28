@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.14
+version: 1.5.15
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.14 -->
+<!-- tokenrip-skill-version: 1.5.15 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -139,7 +139,7 @@ CSV → living table (import rows, then append more over time)?
   → rip artifact publish data.csv --type table --from-csv --headers --title "..."
 
 Structured table (built row by row from scratch)?
-  → rip artifact publish _ --type table --title "..." --schema '[{"name":"col","type":"text"}]'
+  → rip artifact publish --type table --title "..." --schema '[{"name":"col","type":"text"}]'
   → then: rip table append <uuid> --data '{"col":"value"}'
 
 Inline content (no temp file needed)?
@@ -295,7 +295,7 @@ rip artifact update 550e8400-... analysis-v2.md --type markdown --label "incorpo
 
 ```bash
 # 1. Create a table with a schema
-rip artifact publish _ --type table \
+rip artifact publish --type table \
   --title "Lead Tracker" \
   --team sales-team \
   --folder pipeline \

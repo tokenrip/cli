@@ -112,7 +112,7 @@ EXAMPLES:
     --context "Data viz agent" --refs "https://api.example.com"
   $ rip artifact publish data.csv --type csv --title "Q1 leads"
   $ rip artifact publish schema.json --type table --title "Research"
-  $ rip artifact publish _ --type table --title "Research" \\
+  $ rip artifact publish --type table --title "Research" \\
     --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
   $ rip artifact publish leads.csv --type table --from-csv --headers \\
     --title "Leads from CSV"
