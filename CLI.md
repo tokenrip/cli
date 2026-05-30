@@ -16,6 +16,7 @@
 - [Search](#search)
 - [Contacts commands](#contacts-commands)
 - [Team commands](#team-commands)
+- [Workspace commands](#workspace-commands)
 - [Folder commands](#folder-commands)
 - [Agent commands](#agent-commands)
 - [Publisher commands](#publisher-commands)
@@ -836,6 +837,52 @@ rip inbox --team research-team
 # Create a team thread (all members auto-added)
 rip thread create --team research-team --message "Q2 review"
 ```
+
+## Workspace commands
+
+Workspaces are owned namespaces (account or team) for **native notes** plus **included primitives** (artifacts). Items are `owned` (the workspace is their home; deleting the workspace destroys them) or `linked` (a reference; only unfiled on delete). The group is aliased **`rip ws`**. See `references/workspaces.md`.
+
+```bash
+# Container
+rip workspace create research --name "Research" [--description <text>] [--team <slug>]
+rip workspace list
+rip workspace show <workspace>          # id, or slug scoped to you/your team
+rip workspace archive <workspace>
+rip workspace delete <workspace>        # destroys OWNED items, unfiles LINKED ones
+
+# Notes (capture / structured / search) — "rip ws …" is shorthand for "rip workspace …"
+rip workspace capture <workspace> "<raw text>"
+rip workspace note set <workspace> --title "..." --body "..." [--maturity <state>]   # create
+rip workspace note set <workspace> --slug <note-slug> --body "..."  # update
+rip workspace note get <workspace> <note-slug>
+rip workspace note list <workspace> [--archived | --include-archived]   # default hides archived
+rip workspace note promote <workspace> <note-slug>               # advance one maturity step (gated)
+rip workspace note archive <workspace> <note-slug>               # hide from the default list
+rip workspace note unarchive <workspace> <note-slug>             # restore an archived note
+rip workspace note delete <workspace> <note-slug>                # permanent (also removes its links)
+rip workspace search <workspace> "<query>"                       # full-text search
+
+# Consolidation work-list (stale captures / orphans / promotion candidates / stale top-tier)
+rip workspace worklist <workspace> [--stale-capture-days <n>] [--stale-top-tier-days <n>]
+
+# Members (viewer | editor | admin)
+rip workspace member add <workspace> <account-id> [--role editor]
+rip workspace member list <workspace>
+rip workspace member remove <workspace> <account-id>
+
+# Include primitives
+rip workspace item link <workspace> <artifact-public-id>         # reference
+rip workspace item add <workspace> <artifact-public-id> --ownership owned   # move in
+rip workspace item list <workspace>
+rip workspace item remove <workspace> <artifact-public-id>
+
+# Note -> note links
+rip workspace link add <workspace> <from-slug> <to-slug> [--relation refines]
+rip workspace link list <workspace> <note-slug>
+rip workspace link remove <workspace> <from-slug> <to-slug>
+```
+
+> Slugs are scoped to you or a team you belong to. Explicit members of a *personal* workspace reach it by its **id**, not slug. Note slugs are date-prefixed (`YYYY-MM-DD-<kebab>`).
 
 ## Folder commands
 

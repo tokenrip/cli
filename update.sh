@@ -57,7 +57,7 @@ REMOTE_VER=$(curl -fsSL "$BASE/manifest.json" 2>/dev/null | grep -o '"version":"
 rip update >/dev/null 2>&1
 curl -fsSL "$BASE/SKILL.md" -o "$SKILL_DIR/SKILL.md" 2>/dev/null
 mkdir -p "$SKILL_DIR/references"
-for ref in setup-and-identity agent-architecture output-and-provenance; do
+for ref in setup-and-identity agent-architecture workspaces surfaces output-and-provenance; do
   curl -fsSL "$BASE/references/${ref}.md" -o "$SKILL_DIR/references/${ref}.md" 2>/dev/null
 done
 

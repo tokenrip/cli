@@ -930,12 +930,14 @@ mountedagent
   .argument('<slug>', 'Agent slug to load (scoped form ~owner/slug or _team/slug when ambiguous)')
   .option('--team <slug>', 'Bind to a team mount (caller must be a current team member)')
   .option('--personal', 'Force a private personal mount of a team-owned agent')
+  .option('--command <name>', 'Playbook command to run (swaps the command flow into the brain, tags the session)')
   .description('Start a session against a published agent (lazy-creates the caller\'s default mount)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip --json agent load office-hours
   $ rip --json agent load chief-of-staff --team acme
   $ rip --json agent load meeting-prep --personal
+  $ rip --json agent load research-agent --command consolidate
 
 NOTES:
   Returns the session token, the compiled brain envelope, the layer map,
@@ -2027,6 +2029,270 @@ EXAMPLES:
   .action(wrapCommand(async () => {
     const { teamSync } = await import('./commands/team.js');
     await teamSync();
+  }));
+
+// ── workspace commands ──────────────────────────────────────────────
+const workspace = program
+  .command('workspace')
+  .alias('ws')
+  .description('Workspaces — owned namespaces for notes + included primitives');
+
+workspace
+  .command('create')
+  .argument('<slug>', 'Workspace slug (unique within your account or team)')
+  .option('--name <name>', 'Display name (defaults to slug)')
+  .option('--description <text>', 'Workspace description')
+  .option('--team <slug>', 'Make this a team-owned workspace')
+  .description('Create a workspace')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip workspace create research --name "Research"
+  $ rip workspace create roadmap --team acme
+`)
+  .action(wrapCommand(async (slug, options) => {
+    const { workspaceCreate } = await import('./commands/workspace.js');
+    await workspaceCreate(slug, options);
+  }));
+
+workspace
+  .command('list')
+  .description('List the workspaces you can access')
+  .action(wrapCommand(async () => {
+    const { workspaceList } = await import('./commands/workspace.js');
+    await workspaceList();
+  }));
+
+workspace
+  .command('show')
+  .argument('<workspace>', 'Workspace id or slug')
+  .description('Show a workspace')
+  .action(wrapCommand(async (ws) => {
+    const { workspaceShow } = await import('./commands/workspace.js');
+    await workspaceShow(ws);
+  }));
+
+workspace
+  .command('archive')
+  .argument('<workspace>', 'Workspace id or slug')
+  .description('Archive a workspace')
+  .action(wrapCommand(async (ws) => {
+    const { workspaceArchive } = await import('./commands/workspace.js');
+    await workspaceArchive(ws);
+  }));
+
+workspace
+  .command('delete')
+  .argument('<workspace>', 'Workspace id or slug')
+  .description('Delete a workspace (destroys owned items; unfiles linked ones)')
+  .action(wrapCommand(async (ws) => {
+    const { workspaceDelete } = await import('./commands/workspace.js');
+    await workspaceDelete(ws);
+  }));
+
+workspace
+  .command('capture')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<text>', 'Raw note text')
+  .description('Drop a zero-friction capture note into a workspace')
+  .action(wrapCommand(async (ws, text) => {
+    const { workspaceCapture } = await import('./commands/workspace.js');
+    await workspaceCapture(ws, text);
+  }));
+
+workspace
+  .command('search')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<query>', 'Full-text search query')
+  .description('Full-text search notes in a workspace')
+  .action(wrapCommand(async (ws, query) => {
+    const { workspaceSearch } = await import('./commands/workspace.js');
+    await workspaceSearch(ws, query);
+  }));
+
+workspace
+  .command('worklist')
+  .argument('<workspace>', 'Workspace id or slug')
+  .option('--stale-capture-days <n>', 'Captures older than N days count as stale (default 7)')
+  .option('--stale-top-tier-days <n>', 'Top-tier notes untouched > N days count as stale (default 30)')
+  .description('Consolidation work-list: stale captures, orphans, promotion candidates, stale top-tier')
+  .action(wrapCommand(async (ws, options) => {
+    const { workspaceWorklist } = await import('./commands/workspace.js');
+    await workspaceWorklist(ws, { staleCaptureDays: options.staleCaptureDays, staleTopTierDays: options.staleTopTierDays });
+  }));
+
+// workspace member subgroup
+const workspaceMember = workspace.command('member').description('Manage workspace members');
+workspaceMember
+  .command('add')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<account>', 'Account id to add')
+  .option('--role <role>', 'viewer | editor | admin (default editor)')
+  .description('Add a member to a workspace')
+  .action(wrapCommand(async (ws, account, options) => {
+    const { workspaceMemberAdd } = await import('./commands/workspace.js');
+    await workspaceMemberAdd(ws, account, options);
+  }));
+workspaceMember
+  .command('remove')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<account>', 'Account id to remove')
+  .description('Remove a member from a workspace')
+  .action(wrapCommand(async (ws, account) => {
+    const { workspaceMemberRemove } = await import('./commands/workspace.js');
+    await workspaceMemberRemove(ws, account);
+  }));
+workspaceMember
+  .command('list')
+  .argument('<workspace>', 'Workspace id or slug')
+  .description('List workspace members')
+  .action(wrapCommand(async (ws) => {
+    const { workspaceMemberList } = await import('./commands/workspace.js');
+    await workspaceMemberList(ws);
+  }));
+
+// workspace item subgroup
+const workspaceItem = workspace.command('item').description('Include primitives in a workspace');
+workspaceItem
+  .command('add')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<item>', 'Artifact public id')
+  .option('--ownership <ownership>', 'owned | linked (default linked)')
+  .option('--kind <kind>', 'Item kind (default artifact)')
+  .description('Include an item in a workspace')
+  .action(wrapCommand(async (ws, item, options) => {
+    const { workspaceItemAdd } = await import('./commands/workspace.js');
+    await workspaceItemAdd(ws, item, options);
+  }));
+workspaceItem
+  .command('link')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<item>', 'Artifact public id')
+  .option('--kind <kind>', 'Item kind (default artifact)')
+  .description('Link (reference) an item into a workspace')
+  .action(wrapCommand(async (ws, item, options) => {
+    const { workspaceItemAdd } = await import('./commands/workspace.js');
+    await workspaceItemAdd(ws, item, { ...options, ownership: 'linked' });
+  }));
+workspaceItem
+  .command('list')
+  .argument('<workspace>', 'Workspace id or slug')
+  .description('List items in a workspace')
+  .action(wrapCommand(async (ws) => {
+    const { workspaceItemList } = await import('./commands/workspace.js');
+    await workspaceItemList(ws);
+  }));
+workspaceItem
+  .command('remove')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<item>', 'Artifact public id')
+  .option('--kind <kind>', 'Item kind (default artifact)')
+  .description('Remove an item from a workspace')
+  .action(wrapCommand(async (ws, item, options) => {
+    const { workspaceItemRemove } = await import('./commands/workspace.js');
+    await workspaceItemRemove(ws, item, options);
+  }));
+
+// workspace note subgroup
+const workspaceNote = workspace.command('note').description('Manage native notes');
+workspaceNote
+  .command('set')
+  .argument('<workspace>', 'Workspace id or slug')
+  .option('--title <title>', 'Note title')
+  .option('--body <body>', 'Note body')
+  .option('--slug <slug>', 'Existing note slug to update (omit to create)')
+  .option('--maturity <state>', 'Set the note maturity (must be in the workspace ladder)')
+  .description('Create or update a note')
+  .action(wrapCommand(async (ws, options) => {
+    const { workspaceNoteSet } = await import('./commands/workspace.js');
+    await workspaceNoteSet(ws, options);
+  }));
+workspaceNote
+  .command('get')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<slug>', 'Note slug')
+  .description('Get a note')
+  .action(wrapCommand(async (ws, slug) => {
+    const { workspaceNoteGet } = await import('./commands/workspace.js');
+    await workspaceNoteGet(ws, slug);
+  }));
+workspaceNote
+  .command('list')
+  .argument('<workspace>', 'Workspace id or slug')
+  .option('--archived', 'List only archived notes')
+  .option('--include-archived', 'Include archived notes alongside active ones')
+  .description('List notes in a workspace')
+  .action(wrapCommand(async (ws, options) => {
+    const { workspaceNoteList } = await import('./commands/workspace.js');
+    await workspaceNoteList(ws, { archived: options.archived, includeArchived: options.includeArchived });
+  }));
+workspaceNote
+  .command('promote')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<slug>', 'Note slug')
+  .description('Promote a note one maturity step (gated by the workspace promotion rule)')
+  .action(wrapCommand(async (ws, slug) => {
+    const { workspaceNotePromote } = await import('./commands/workspace.js');
+    await workspaceNotePromote(ws, slug);
+  }));
+workspaceNote
+  .command('archive')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<slug>', 'Note slug')
+  .description('Archive a note (hide it from the default list; restore with unarchive)')
+  .action(wrapCommand(async (ws, slug) => {
+    const { workspaceNoteArchive } = await import('./commands/workspace.js');
+    await workspaceNoteArchive(ws, slug);
+  }));
+workspaceNote
+  .command('unarchive')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<slug>', 'Note slug')
+  .description('Restore an archived note')
+  .action(wrapCommand(async (ws, slug) => {
+    const { workspaceNoteUnarchive } = await import('./commands/workspace.js');
+    await workspaceNoteUnarchive(ws, slug);
+  }));
+workspaceNote
+  .command('delete')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<slug>', 'Note slug')
+  .description('Permanently delete a note (also removes its links)')
+  .action(wrapCommand(async (ws, slug) => {
+    const { workspaceNoteDelete } = await import('./commands/workspace.js');
+    await workspaceNoteDelete(ws, slug);
+  }));
+
+// workspace link subgroup
+const workspaceLinkGroup = workspace.command('link').description('Manage note -> note links');
+workspaceLinkGroup
+  .command('add')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<from>', 'Source note slug')
+  .argument('<to>', 'Target note slug')
+  .option('--relation <relation>', 'Relation label')
+  .description('Link one note to another')
+  .action(wrapCommand(async (ws, from, to, options) => {
+    const { workspaceLink } = await import('./commands/workspace.js');
+    await workspaceLink(ws, from, to, options);
+  }));
+workspaceLinkGroup
+  .command('remove')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<from>', 'Source note slug')
+  .argument('<to>', 'Target note slug')
+  .description('Remove a note -> note link')
+  .action(wrapCommand(async (ws, from, to) => {
+    const { workspaceUnlink } = await import('./commands/workspace.js');
+    await workspaceUnlink(ws, from, to);
+  }));
+workspaceLinkGroup
+  .command('list')
+  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<slug>', 'Note slug')
+  .description('List inbound and outbound links for a note')
+  .action(wrapCommand(async (ws, slug) => {
+    const { workspaceLinks } = await import('./commands/workspace.js');
+    await workspaceLinks(ws, slug);
   }));
 
 // ── folder commands ─────────────────────────────────────────────────

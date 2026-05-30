@@ -320,12 +320,13 @@ function readManifest(path: string): unknown {
 
 export async function agentLoad(
   slug: string,
-  options: { team?: string; personal?: boolean },
+  options: { team?: string; personal?: boolean; command?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = {};
   if (options.team) body.team = options.team;
   if (options.personal) body.personal = true;
+  if (options.command) body.command = options.command;
   const { data } = await client.post(
     `/v0/agents/${encodeURIComponent(slug)}/sessions`,
     body,

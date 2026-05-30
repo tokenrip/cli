@@ -391,7 +391,7 @@ Every `publish` and `update` triggers a headless Playwright validation. The summ
 
 Restore does NOT auto-validate. The command tells you to run `rip surface validate` as a follow-up.
 
-For the full SDK contract (every method, every error shape, code examples): https://tokenrip.com/for-ai/surfaces.md. The [`SKILL-surface-publish.md`](./SKILL-surface-publish.md) skill provides a task-oriented walkthrough.
+For the full SDK contract (every method, every error shape, code examples): https://tokenrip.com/for-ai/surfaces.md. The [`references/surfaces.md`](./references/surfaces.md) deep-dive provides a task-oriented walkthrough.
 
 ## Messaging Commands
 

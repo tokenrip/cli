@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.5.15
+version: 1.6.0
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.5.15 -->
+<!-- tokenrip-skill-version: 1.6.0 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -107,6 +107,7 @@ Before acting, gather context. Run these commands and extract what you need:
 | Teams | `rip team list` | Team slugs — needed for `--team` flags |
 | Folders | `rip folder list` | Folder slugs — needed for `--folder` flags |
 | Recent work | `rip artifact list --limit 5` | Recent artifacts — avoid duplicate publishes |
+| Workspaces | `rip workspace list` | Workspace slugs — for notes + included primitives (see `references/workspaces.md`) |
 | Search | `rip search "<query>"` | Find existing artifacts/threads before creating new ones |
 
 ## Choosing What to Do
@@ -153,7 +154,30 @@ Build an AI-generated UI page for the operator (dashboard, triage queue, editor)
   → generate HTML calling window.tokenrip.* (NEVER raw /v0)
   → rip surface publish <file.html> --title "..." --bindings <bindings.json>
   → operator reviews draft URL → rip surface promote <publicId>
-  → see https://tokenrip.com/concepts/surfaces (and /for-ai/surfaces.md for the SDK contract)
+  → see references/surfaces.md for the full flow (and /for-ai/surfaces.md for the SDK contract)
+```
+
+### Capturing & organizing (workspaces)
+
+A **workspace** is an owned namespace for native **notes** plus **included primitives** (artifacts — a table is an artifact). See `references/workspaces.md`.
+
+```
+Drop a quick idea / note?
+  → rip workspace capture <workspace> "raw text"
+
+Write or update a structured note?
+  → rip workspace note set <workspace> --title "..." --body "..."
+
+Find a note?
+  → rip workspace search <workspace> "<query>"
+
+Group existing artifacts into a workspace?
+  → rip workspace item link <workspace> <artifact-id>            # reference
+  → rip workspace item add <workspace> <artifact-id> --ownership owned   # move in
+
+Connect two notes / see what should be consolidated?
+  → rip workspace link add <workspace> <from-slug> <to-slug>
+  → rip workspace worklist <workspace>      # stale captures, orphans, promotion candidates
 ```
 
 ### How to communicate
@@ -335,6 +359,10 @@ Example: `rip cred set twitter --consumer-key=ck_... --access-token=at_...`. The
 For first-time setup, multiple accounts, MCP linking, or operator onboarding, read `references/setup-and-identity.md`.
 
 For agent publishing, mounts, memory layers, sessions, tool dispatch (`agent tool-execute` / `tool-submit`), or the bootloader, read `references/agent-architecture.md`.
+
+For capturing notes, organizing them in a workspace (own/link artifacts, links, members, maturity, consolidation work-lists), read `references/workspaces.md`.
+
+For building a custom HTML dashboard / editor / workflow trigger on top of your data (a Surface), read `references/surfaces.md`.
 
 For JSON output format, provenance flags, or `--json` details, read `references/output-and-provenance.md`.
 

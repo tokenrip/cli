@@ -1,0 +1,91 @@
+# Surfaces
+
+Build, publish, validate, and promote a Tokenrip **Surface** — a single-file HTML UI hosted at `https://tokenrip.com/x/<publicId>` that reads and writes Tokenrip data through the `window.tokenrip.*` SDK. Use the `rip surface` command group (or the matching MCP tools). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
+
+Use a Surface for "build me a dashboard / editor / review queue / workflow trigger on top of my Tokenrip data." Do **not** use it for non-Tokenrip UIs, backend code, or editing an artifact's content directly (use `rip artifact update` for that).
+
+> **Canonical spec.** The full SDK contract — error codes, CDN allowlist, ES5 rules, three worked examples — lives at `https://tokenrip.com/for-ai/surfaces.md`. **Read it before generating non-trivial code.** This reference is the flow; that doc is the spec.
+
+## The flow: inspect → generate → publish → fix → present → promote
+
+### 1. Inspect (get the binding — don't hand-craft it)
+
+```bash
+rip mount inspect <mountId>        # table schemas, ≤5 sample rows each, recommendedBindingKey + recommendedBinding
+rip artifact inspect <alias-or-id> # type, editability, content preview, recommendedBinding
+```
+
+Use the returned `recommendedBindingKey` + `recommendedBinding` **verbatim** in publish. The validator rejects hand-rolled binding maps built from raw `/v0` URLs.
+
+### 2. Generate a single HTML file
+
+| Constraint | Why |
+|---|---|
+| Single file, served verbatim at `/x/<publicId>` | No build step, no assets |
+| Read/write via `window.tokenrip.*` only — never `fetch('/v0/...')` | Validator flags raw calls; the SDK is auth-aware |
+| ES5 outside JSX (`var`, function expressions; no arrow-destructuring / optional chaining in `<script>`) | Runtime is Babel-standalone; modern syntax breaks silently |
+| CDN allowlist: `unpkg.com`, `cdn.jsdelivr.net`, `esm.sh`, `cdn.tailwindcss.com` | Anything else is CSP-blocked at render |
+| Wrap every SDK call in `try/catch`; handle `VALIDATION_BLOCKED` gracefully | Validation runs with a write-blocking token — uncaught throws fail it |
+| No `localStorage`/`IndexedDB` as primary storage; no `tokenrip.connectors.*` | Cleared between sessions / namespace doesn't exist in v1 |
+
+Copy the matching skeleton from `/for-ai/surfaces.md`: §5A row editor, §5B artifact document editor, §5C control-row workflow trigger.
+
+### 3. Publish
+
+```bash
+rip surface publish <file.html> --title "..." --bindings <bindings.json> [--mount <mountId>]
+```
+
+Response includes `publicId`, `currentRevisionId`, `draftUrl`, and a `validation` report. If `validation.ok === false` or `errorCount > 0` → fix; else → present.
+
+### 4. Fix validation
+
+Read `validation.errors` + `validation.operations`:
+
+| Symptom | Fix |
+|---|---|
+| Uncaught error / unhandled rejection | Find the JS bug; add `try/catch` around the SDK call |
+| Blocked non-allowlisted CDN | Switch to an allowed CDN or drop the dependency |
+| `BINDINGS_REQUIRED` / `BINDING_RESOURCE_NOT_FOUND` / `BINDING_DENIED` | Re-`inspect`; copy `recommendedBinding` verbatim |
+| Validator timed out | Remove animations, polling, long-running mount effects |
+| `validation_blocked` in `operations[]` | **Expected** — the validator exercises write paths without committing. Don't "fix" it. |
+
+```bash
+rip surface update <publicId> --html <file.html>   # new revision + auto-validate
+```
+
+Repeat until clean (hard cap ~5 iterations; if stuck, show the operator the error and ask).
+
+### 5. Present, then 6. Promote (only on confirmation)
+
+```bash
+rip surface promote <publicId>   # flip draft → published; unlocks the operator-shareable URL
+```
+
+Never promote without explicit operator confirmation ("looks good" / "ship it"). Always show the full `publicId` and URL — don't truncate.
+
+## CLI ↔ MCP quick reference
+
+| MCP tool | CLI | Purpose |
+|---|---|---|
+| `inspect_mount` / `inspect_artifact` | `rip mount inspect` / `rip artifact inspect` | Discover tables + recommended bindings |
+| `publish_surface` | `rip surface publish` | Create + auto-validate |
+| `update_surface` | `rip surface update` | New revision + auto-validate |
+| `validate_surface` | `rip surface validate` | Re-run validation |
+| `promote_surface` | `rip surface promote` | Flip draft → published |
+| `list_surfaces` / `get_surface` | `rip surface list` / `rip surface get` | List / detail |
+| `restore_surface_revision` | `rip surface restore <id> <revId>` | Roll back |
+| `delete_surface` | `rip surface delete` | Permanent delete (confirm first) |
+
+## Anti-patterns
+
+- Raw `fetch('/v0/...')` from generated code — use the SDK.
+- Hand-writing binding maps — use `recommendedBinding` from `inspect_*`.
+- Promoting without operator confirmation.
+- CDNs outside the allowlist; `tokenrip.connectors.*`; modern JS sugar in `<script>` blocks.
+- "Fixing" `validation_blocked` operations — they're a feature, not a bug.
+
+## See also
+
+- `https://tokenrip.com/for-ai/surfaces.md` — full SDK contract + worked examples.
+- `rip surface --help` — every flag.
