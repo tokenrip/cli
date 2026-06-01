@@ -82,15 +82,19 @@ Team and operator-private materialization happens at first mount load, not at pu
 Drive a tracked session against a published agent (used by the `/tokenrip` bootloader):
 
 ```bash
-rip --json agent load <slug> [--team <slug>]              # start session → token + brain envelope
-rip --json agent record <token> --row '<json>'            # record a memory row
+rip --json agent load <slug> [--team <slug>] [--command <name>]          # start session → token + brain envelope
+rip --json agent load <slug> --capabilities '<json>' [--probed-at fresh]  # advance past a probeManifest (tool-declaring agents)
+rip --json agent record <token> --row '<json>' [--table <slug>]          # record a memory row
 rip --json agent rewrite-artifact <token> <alias> --content-from <file>  # rewrite memory artifact
 rip --json agent tool-execute <token> <bind> --args '<json>'             # dispatch a backend-mode tool
 rip --json agent tool-submit <token> <bind> --payload '<json>' --provenance-nonce <n>  # submit harness result
+rip --json agent theme upsert <token> <slug> --summary "..." [--name <n>] [--current]  # upsert a theme
 rip --json agent end <token> --summary "..."              # end session
 ```
 
 Session commands always emit JSON. Add `--output-from <file> --output-title "..."` to `end` to publish a session output.
+
+**Two-phase load for tool-declaring agents.** If an agent's manifest declares `tools[]`, the first `agent load` returns a `{ probeManifest }` instead of a session. Probe each candidate's `requires` (a `Capability[]`) locally, then re-invoke with `--capabilities '<json-capability-array>'` (use `'[]'` when nothing is required). `server-credential` capabilities are resolved server-side — never advertise them. The `/tokenrip-bootloader` slash command does this probe automatically.
 
 ### Tool dispatch from a session
 
@@ -136,9 +140,23 @@ rip agent table rows <mount-id> <slug> [--filter k:v] [--sort col:dir] [--limit 
 rip agent table latest <mount-id> <slug>
 rip agent table by-tag <mount-id> <tag> [--filter] [--sort] [--limit]
 rip agent table patch <mount-id> <slug> <row-id> --set key=value [--set key=value ...]
+rip agent table append <mount-id> <slug> --rows '[{"status":"queued"}]'   # operator control-row write
 ```
 
-Workflow tables in the manifest can declare `tags: ["bid", "review", ...]`. `by-tag` interleaves rows across every table carrying that tag — useful for unified dashboard views without backend knowledge of which slugs belong together. `patch` works on workflow-table rows (the workflow-readonly guard is append-only).
+Workflow tables in the manifest can declare `tags: ["bid", "review", ...]`. `by-tag` interleaves rows across every table carrying that tag — useful for unified dashboard views without backend knowledge of which slugs belong together. `patch` works on workflow-table rows (the workflow-readonly guard is append-only). `append` is the operator control-row write path and accepts workflow tables (the artifact-rows route rejects them with `WORKFLOW_TABLE_READONLY`).
+
+### Themes and per-mount config
+
+```bash
+rip agent theme list <mount-id> [--include-archived]      # list a mount's themes
+rip agent theme show <mount-id> <slug>                     # theme state artifact id + content
+rip agent theme upsert <token> <slug> --summary "..." [--name <n>] [--current]  # needs a session token
+rip mount inspect <mount-id>           # SDK-shaped table schema + samples (inspect_mount surface)
+rip agent mount-config <mount-id> --imprint-config '<json|null>'    # set imprint-specific config
+rip agent mount-grants <mount-id> --connections '["gmail","slack"]'  # set granted connection names
+```
+
+Themes are durable cross-session working clusters; `upsert` requires an active session (it tags `AgentSession.theme_id` when `--current`). `rip mount inspect` wraps the `inspect_mount` discovery surface.
 
 ## Cross-session references
 

@@ -259,7 +259,9 @@ All `rip agent *` commands default to human-readable output, except the six sess
 **Session lifecycle (no MCP needed):**
 
 ```bash
-rip --json agent load <slug> [--team <slug>]                       # start a session
+rip --json agent load <slug> [--team <slug>] [--command <name>]    # start a session
+rip --json agent load <slug> --capabilities '<json>' [--probed-at fresh]  # advance past a probeManifest (tool-declaring agents)
+rip --json agent theme upsert <session-token> <slug> --summary "..." [--name <n>] [--current]  # upsert a theme
 rip --json agent record <session-token> [--table <slug>] \
     --row '<json>'                                                         # or --row-file <path>
 rip --json agent rewrite-artifact <session-token> <logical-alias> \

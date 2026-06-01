@@ -121,3 +121,30 @@ export async function mountTablePatch(
   );
   outputSuccess(data.data, () => JSON.stringify(data.data, null, 2));
 }
+
+export async function mountTableAppend(
+  mountId: string,
+  slug: string,
+  options: { rows?: string },
+): Promise<void> {
+  if (!options.rows) {
+    throw new CliError('INVALID_ROWS', 'Provide --rows <json> (a JSON array of row objects)');
+  }
+  let rows: unknown;
+  try {
+    rows = JSON.parse(options.rows);
+  } catch (err) {
+    throw new CliError('INVALID_JSON', `--rows is not valid JSON: ${(err as Error).message}`);
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new CliError('INVALID_ROWS', '--rows must be a non-empty JSON array of row objects');
+  }
+  const { client } = requireAuthClient();
+  // Operator control-row append — accepts workflow tables (unlike the artifact
+  // rows route, which rejects them with WORKFLOW_TABLE_READONLY).
+  const { data } = await client.post(
+    `/v0/operator/mounts/${encodeURIComponent(mountId)}/tables/${encodeURIComponent(slug)}/rows`,
+    { rows },
+  );
+  outputSuccess(data.data, () => JSON.stringify(data.data, null, 2));
+}

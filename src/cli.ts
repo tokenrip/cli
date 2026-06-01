@@ -23,8 +23,8 @@ import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountContext, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
-import { mountTableList, mountTableRows, mountTableLatest, mountTableByTag, mountTablePatch } from './commands/mount-table.js';
+import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountConfig, agentMountContext, agentMountGrants, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentThemeList, agentThemeShow, agentThemeUpsert, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
+import { mountTableList, mountTableRows, mountTableLatest, mountTableByTag, mountTablePatch, mountTableAppend } from './commands/mount-table.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
@@ -827,6 +827,20 @@ EXAMPLES:
   .action(wrapCommand(agentMountRename));
 
 mountedagent
+  .command('mount-config')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .requiredOption('--imprint-config <json>', 'JSON object of imprint-specific config (or null to clear)')
+  .description('Set the mount\'s imprint-specific config block')
+  .action(wrapCommand(agentMountConfig));
+
+mountedagent
+  .command('mount-grants')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .requiredOption('--connections <json>', 'JSON array of connection names to grant (\'[]\' to clear)')
+  .description('Set the mount\'s granted connection names (must resolve to the creator\'s Connection rows)')
+  .action(wrapCommand(agentMountGrants));
+
+mountedagent
   .command('show-mount')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
   .description('Show mount context, agent version, and materialized layers')
@@ -900,6 +914,43 @@ mountedagentTable
   .description('Partial update to a row\'s data (validated against the table schema)')
   .action(wrapCommand(mountTablePatch));
 
+mountedagentTable
+  .command('append')
+  .argument('<mount-id>', 'Mount ID')
+  .argument('<slug>', 'Table slug')
+  .requiredOption('--rows <json>', 'JSON array of row objects, e.g. \'[{"status":"queued"}]\'')
+  .description('Append rows to a mount table (operator control-row path — accepts workflow tables)')
+  .action(wrapCommand(mountTableAppend));
+
+// ── themes: durable cross-session working clusters on a mount ─────────
+const mountedagentTheme = mountedagent
+  .command('theme')
+  .description('Manage a mount\'s themes (durable cross-session working clusters)');
+
+mountedagentTheme
+  .command('upsert')
+  .argument('<session-token>', 'Token returned by `agent load`')
+  .argument('<slug>', 'Theme slug')
+  .requiredOption('--summary <text>', 'Theme state body (markdown)')
+  .option('--name <name>', 'Human-readable theme name')
+  .option('--current', 'Pin this theme as the session\'s current theme')
+  .description('Create or update a theme on the active session\'s mount')
+  .action(wrapCommand(agentThemeUpsert));
+
+mountedagentTheme
+  .command('list')
+  .argument('<mount-id>', 'Mount ID')
+  .option('--include-archived', 'Include archived themes')
+  .description('List the mount\'s themes')
+  .action(wrapCommand(agentThemeList));
+
+mountedagentTheme
+  .command('show')
+  .argument('<mount-id>', 'Mount ID')
+  .argument('<slug>', 'Theme slug')
+  .description('Show a theme\'s state artifact id + content')
+  .action(wrapCommand(agentThemeShow));
+
 mountedagent
   .command('unmount')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
@@ -931,6 +982,8 @@ mountedagent
   .option('--team <slug>', 'Bind to a team mount (caller must be a current team member)')
   .option('--personal', 'Force a private personal mount of a team-owned agent')
   .option('--command <name>', 'Playbook command to run (swaps the command flow into the brain, tags the session)')
+  .option('--capabilities <json>', 'JSON array of resolved Capability objects (e.g. \'[{"type":"local-cli","name":"tw"}]\' or \'[]\') — advances past a probeManifest for tool-declaring agents')
+  .option('--probed-at <when>', '"fresh" to bust the 1h probe cache, or an ISO-8601 timestamp')
   .description('Start a session against a published agent (lazy-creates the caller\'s default mount)')
   .addHelpText('after', `
 EXAMPLES:
@@ -938,11 +991,17 @@ EXAMPLES:
   $ rip --json agent load chief-of-staff --team acme
   $ rip --json agent load meeting-prep --personal
   $ rip --json agent load research-agent --command consolidate
+  $ rip --json agent load moa --capabilities '[]'
 
 NOTES:
   Returns the session token, the compiled brain envelope, the layer map,
   and (when present) the mount-context block. Persist the session token —
   every record / rewrite-artifact / end call needs it.
+
+  Agents that declare tools[] return a { probeManifest } instead of a session
+  on the first load. Probe each candidate's required capabilities locally,
+  then re-invoke with --capabilities '<json>'. server-credential caps are
+  resolved server-side and do not need to be advertised.
 `)
   .action(wrapCommand(agentLoad));
 

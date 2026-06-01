@@ -1150,6 +1150,37 @@ rip agent table patch <mount-id> flags <flag-id> \
 
 `--set key=value` is repeatable. Workflow-table PATCH is allowed (workflow-readonly guard is append-only).
 
+#### `rip agent table append <mount-id> <slug>`
+
+Append rows to a mount table via the operator control-row path. Unlike the artifact-rows route, this **accepts workflow tables** (the control-row pattern the dashboard uses to trigger agent work).
+
+```bash
+rip agent table append <mount-id> pipeline --rows '[{"status":"queued"},{"status":"queued"}]'
+```
+
+`--rows` is a required JSON array of row objects.
+
+### Themes (`rip agent theme ...`)
+
+Durable cross-session working clusters on a mount. `upsert` needs an active session token; `list`/`show` read by mount id.
+
+```bash
+rip agent theme list <mount-id> [--include-archived]   # list themes
+rip agent theme show <mount-id> <slug>                  # state artifact id + content
+rip --json agent theme upsert <token> <slug> --summary "..." [--name <n>] [--current]
+```
+
+`upsert` writes the theme's state body (`--summary`) and, with `--current`, pins it as the session's current theme (`AgentSession.theme_id`). Mirrors MCP `agent_theme_upsert`.
+
+### Per-mount config (`rip agent mount-config|mount-grants`)
+
+```bash
+rip agent mount-config <mount-id> --imprint-config '{"tone":"terse"}'   # or 'null' to clear
+rip agent mount-grants <mount-id> --connections '["gmail","slack"]'     # '[]' to clear
+```
+
+`mount-config` PUTs the mount's imprint-specific config block; `mount-grants` sets the granted connection names (each must resolve to one of the mount creator's active `Connection` rows).
+
 ### Session lifecycle (`rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end`)
 
 Drive a tracked session against a published agent without an MCP harness. These six commands exist primarily for the `tokenrip-bootloader` Claude Code slash command (`/tokenrip-bootloader <slug>`) but are also useful for scripts that want a tracked session.
@@ -1168,8 +1199,14 @@ rip --json agent load chief-of-staff --team acme
 Options:
 
 - `--team <slug>` — bind to a team mount. The caller must be a current member.
+- `--personal` — force a private personal mount of a team-owned agent.
+- `--command <name>` — load a specific command's playbook as the brain's `flow` block (spine agents).
+- `--capabilities <json>` — a JSON `Capability[]` (e.g. `'[{"type":"local-cli","name":"tw"}]'`, or `'[]'`). Required to advance past a `probeManifest` for agents that declare `tools[]`.
+- `--probed-at <fresh|iso>` — `fresh` busts the 1h probe cache.
 
 Returns `{ sessionToken, expiresAt, compiledAt, mount, manifest, mountContext?, brain[], layers, crossSessionReferences }`. Mirror of MCP `agent_load`.
+
+**Two-phase load.** When the manifest declares `tools[]` and no `capabilities` are advertised, this returns `{ probeManifest }` instead of a session. Probe each candidate's `requires` locally, then re-invoke with `--capabilities '<json>'`. `server-credential` caps are resolved server-side. The `/tokenrip-bootloader` slash command performs this probe automatically.
 
 #### `rip agent record <session-token>`
 

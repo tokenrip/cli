@@ -17,6 +17,8 @@ import {
   formatAgentPublished,
   formatAgentScaffold,
   formatUnmounted,
+  formatTheme,
+  formatThemeList,
 } from '../formatters.js';
 import { outputSuccess } from '../output.js';
 
@@ -320,19 +322,159 @@ function readManifest(path: string): unknown {
 
 export async function agentLoad(
   slug: string,
-  options: { team?: string; personal?: boolean; command?: string },
+  options: {
+    team?: string;
+    personal?: boolean;
+    command?: string;
+    capabilities?: string;
+    probedAt?: string;
+  },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = {};
   if (options.team) body.team = options.team;
   if (options.personal) body.personal = true;
   if (options.command) body.command = options.command;
+  if (options.capabilities !== undefined) {
+    body.capabilities = parseCapabilitiesOption(options.capabilities);
+  }
+  if (options.probedAt) body.probedAt = options.probedAt;
   const { data } = await client.post(
     `/v0/agents/${encodeURIComponent(slug)}/sessions`,
     body,
   );
   // No human formatter — load output is structured for programmatic use only.
   outputSuccess(data.data);
+  // Two-phase handshake: a probeManifest (not a session) comes back when the
+  // imprint declares tools[] and no capabilities were advertised. Nudge the
+  // caller to re-invoke with --capabilities. TTY-gated so JSON stays clean.
+  if (
+    data.data &&
+    typeof data.data === 'object' &&
+    'probeManifest' in data.data &&
+    process.stderr.isTTY
+  ) {
+    console.error(
+      'Hint: this agent declares tools and needs a capability probe. Probe each ' +
+        "candidate's `requires` locally, then re-run with --capabilities " +
+        '\'[{"type":"local-cli","name":"<name>"}, ...]\' (use \'[]\' if nothing is ' +
+        'required). server-credential caps are added server-side — skip them.',
+    );
+  }
+}
+
+/** Parse the `--capabilities` JSON flag into a Capability[] for the load body. */
+function parseCapabilitiesOption(raw: string): unknown[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new CliError(
+      'INVALID_JSON',
+      `--capabilities is not valid JSON: ${(err as Error).message}`,
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    throw new CliError(
+      'INVALID_CAPABILITIES',
+      '--capabilities must be a JSON array of Capability objects ' +
+        '(e.g. \'[{"type":"local-cli","name":"tw"}]\' or \'[]\')',
+    );
+  }
+  return parsed;
+}
+
+// ── themes ───────────────────────────────────────────────────────────
+// Durable cross-session working clusters on a mount. `upsert` needs an active
+// session token; `list`/`show` read by mount id.
+
+export async function agentThemeUpsert(
+  sessionToken: string,
+  slug: string,
+  options: { summary?: string; name?: string; current?: boolean },
+): Promise<void> {
+  if (!options.summary) {
+    throw new CliError('INVALID_THEME', 'Provide --summary <text> (the theme state body)');
+  }
+  const { client } = requireAuthClient();
+  const body: Record<string, unknown> = { slug, summary: options.summary };
+  if (options.name) body.name = options.name;
+  if (options.current) body.isCurrent = true;
+  const { data } = await client.post(
+    `/v0/agent-sessions/${encodeURIComponent(sessionToken)}/theme-upserts`,
+    body,
+  );
+  outputSuccess(data.data, formatTheme);
+}
+
+export async function agentThemeList(
+  mountId: string,
+  options: { includeArchived?: boolean },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const suffix = options.includeArchived ? '?includeArchived=true' : '';
+  const { data } = await client.get(
+    `/v0/mounts/${encodeURIComponent(mountId)}/themes${suffix}`,
+  );
+  outputSuccess(data.data, formatThemeList);
+}
+
+export async function agentThemeShow(mountId: string, slug: string): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.get(
+    `/v0/mounts/${encodeURIComponent(mountId)}/themes/${encodeURIComponent(slug)}`,
+  );
+  outputSuccess(data.data, formatTheme);
+}
+
+// ── per-mount config ─────────────────────────────────────────────────
+
+export async function agentMountConfig(
+  mountId: string,
+  options: { imprintConfig?: string },
+): Promise<void> {
+  if (options.imprintConfig === undefined) {
+    throw new CliError('INVALID_IMPRINT_CONFIG', 'Provide --imprint-config <json|null> (use null to clear)');
+  }
+  let imprintConfig: unknown;
+  try {
+    imprintConfig = JSON.parse(options.imprintConfig);
+  } catch (err) {
+    throw new CliError('INVALID_JSON', `--imprint-config is not valid JSON: ${(err as Error).message}`);
+  }
+  if (imprintConfig !== null && (typeof imprintConfig !== 'object' || Array.isArray(imprintConfig))) {
+    throw new CliError('INVALID_IMPRINT_CONFIG', '--imprint-config must be a JSON object or null');
+  }
+  const { client } = requireAuthClient();
+  const { data } = await client.put(
+    `/v0/mounts/${encodeURIComponent(mountId)}/imprint-config`,
+    { imprintConfig },
+  );
+  outputSuccess(data.data, formatMount);
+}
+
+export async function agentMountGrants(
+  mountId: string,
+  options: { connections?: string },
+): Promise<void> {
+  if (options.connections === undefined) {
+    throw new CliError('INVALID_GRANTS', 'Provide --connections <json> (a JSON array of connection names; [] to clear)');
+  }
+  let grantedConnections: unknown;
+  try {
+    grantedConnections = JSON.parse(options.connections);
+  } catch (err) {
+    throw new CliError('INVALID_JSON', `--connections is not valid JSON: ${(err as Error).message}`);
+  }
+  if (!Array.isArray(grantedConnections) || !grantedConnections.every((c) => typeof c === 'string')) {
+    throw new CliError('INVALID_GRANTS', '--connections must be a JSON array of connection-name strings');
+  }
+  const { client } = requireAuthClient();
+  const { data } = await client.put(
+    `/v0/mounts/${encodeURIComponent(mountId)}/granted-connections`,
+    { grantedConnections },
+  );
+  outputSuccess(data.data, formatMount);
 }
 
 export async function agentRecord(

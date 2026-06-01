@@ -745,6 +745,29 @@ export const formatMountContext: Formatter = (data) => {
   return String(data.content ?? '');
 };
 
+export const formatTheme: Formatter = (data) => {
+  const t = ((data as Record<string, unknown>).theme ?? data) as Record<string, unknown>;
+  const cur = t.isCurrent ? ' (current)' : '';
+  const lines = [`Theme: ${t.slug}${t.name ? ` — ${t.name}` : ''}${cur}`];
+  if (t.archivedAt) lines.push(`  archived: ${t.archivedAt}`);
+  if (t.stateArtifactPublicId) lines.push(`  state artifact: ${t.stateArtifactPublicId}`);
+  if (t.summary) lines.push(`\n${t.summary}`);
+  return lines.join('\n');
+};
+
+export const formatThemeList: Formatter = (data) => {
+  const themes = ((data as Record<string, unknown>).themes ?? []) as Record<string, unknown>[];
+  if (!Array.isArray(themes) || themes.length === 0) return 'No themes.';
+  const lines = [`${themes.length} theme(s):\n`];
+  for (const t of themes) {
+    const cur = t.isCurrent ? ' (current)' : '';
+    const arch = t.archivedAt ? ' [archived]' : '';
+    lines.push(`  ${String(t.slug).padEnd(24)}${t.name ? ` ${String(t.name)}` : ''}${cur}${arch}`);
+    if (t.stateArtifactPublicId) lines.push(`    state: ${t.stateArtifactPublicId}`);
+  }
+  return lines.join('\n');
+};
+
 export const formatPublisher: Formatter = (data) => {
   const lines = [`Publisher: ${data.displayName || '(unnamed)'}`];
   if (data.id) lines.push(`  ID:           ${data.id}`);
