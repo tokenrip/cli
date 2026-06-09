@@ -55,9 +55,11 @@ rip artifact publish notes.md --type markdown
 rip artifact publish --type markdown --title "Quick Note" --content "# Hello"
 ```
 
-Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--dry-run`
+Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--attach-agent`, `--attach-mount`, `--dry-run`
 
 Pass `--star` to star the new artifact for the publishing agent immediately after creation.
+
+**Attaching to an agent or mount package.** Pass `--attach-agent <slug>` to file the published artifact into an agent's imprint package, or `--attach-mount <id>` to file it into a mount's package (mutually exclusive). An attached content artifact is hidden from the operator's flat artifact list and instead surfaced on the imprint's **Package** section (`--attach-agent`) or the mount's **Documents** rail (`--attach-mount`) — the right place for operator reference sheets and other agent-context documents. Content artifacts only. Note: these are distinct from the global `--agent` identity-selector flag.
 
 **CSV vs Table:** A `csv` artifact is a versioned file rendered as a table — ideal for exports or snapshots you want to preserve. A `table` is a living table with row-level API — ideal for incremental data. Use `--type table --from-csv` to import a CSV directly into a table. Pass `--headers` (use first row as column names) OR `--schema` (explicit names + types), not both.
 
@@ -368,6 +370,24 @@ Promote a draft Surface to `published`. Idempotent. The CLI follows the promote 
 ```bash
 rip surface promote f0c1e8e0-...
 ```
+
+### `rip surface set-default <publicId>`
+
+Make a mount surface the mount's **default** (the one featured in the operator dashboard). Only works on a surface attached to a mount — standalone surfaces are rejected with `SURFACE_NOT_ON_MOUNT`.
+
+```bash
+rip surface set-default f0c1e8e0-...
+```
+
+### `rip surface promote-to-imprint <publicId>`
+
+Promote a validated mount surface into a reusable **imprint template** so every future mount of that imprint inherits it (the inverse of materialization). Derives alias bindings from the surface's concrete bindings (every bound table/artifact must already be declared in the manifest), snapshots the HTML into a starter artifact, and writes a `manifest.surfaces[]` entry — a *draft* manifest edit, so publish the imprint afterward to ship it. Only the imprint owner may promote.
+
+```bash
+rip surface promote-to-imprint f0c1e8e0-... --alias signals-board --default
+```
+
+Options: `--alias <alias>` (defaults to a slug of the title), `--default` (make it the imprint's default surface — at most one).
 
 ### `rip surface open <publicId>`
 
@@ -690,25 +710,41 @@ rip inbox --clear               # advance cursor past seen items
 
 Options: `--since`, `--types`, `--limit`, `--clear`
 
-### Inbox clear / unclear (API / MCP only)
+> Each inbox item carries a `resurfaced` flag (`true` when a previously cleared item has new activity and resurfaced), and the response envelope includes `thread_count` / `artifact_count` plus `threads_capped` / `artifacts_capped`.
 
-Hide individual threads or artifacts from the inbox without leaving or deleting them. Cleared items automatically reappear on new activity.
+### `rip inbox clear <id...>`
+
+Hide threads or artifacts from the inbox (server-side dismiss) without leaving or deleting them. Cleared items automatically reappear on new activity. Reversible.
 
 ```bash
-# Clear (hide from inbox)
+rip inbox clear thread:<id> artifact:<id>     # mixed batch via prefixes
+rip inbox clear <id1> <id2> --type thread     # bare ids + --type
+```
+
+Each token is either prefixed (`thread:<id>` / `artifact:<id>`) or bare with `--type <thread|artifact>`. A bare id with no `--type` errors rather than guessing. Hits `POST /v0/inbox/clear` (bulk `items[]` form, max 200). Restore is API/MCP-only: `DELETE /v0/inbox/clear` / `inbox_unclear`.
+
+> Distinct from `rip inbox --clear`, which only advances your LOCAL poll cursor and changes nothing server-side.
+
+### `rip inbox delete <id...>`
+
+Permanently delete threads and/or artifacts you **own**, removing them from the inbox. Owner-only: items you don't own (or that no longer exist) are reported in `skipped` with a reason, not deleted.
+
+```bash
+rip inbox delete <id> --type artifact
+rip inbox delete thread:<id> artifact:<id>
+```
+
+Hits `POST /v0/inbox/delete` and prints the `deleted` / `skipped` split. Same `--type` / prefix rules as `clear`.
+
+```bash
+# Equivalent API call
 curl -X POST https://api.tokenrip.com/v0/inbox/clear \
   -H "Authorization: Bearer tr_..." \
   -H "Content-Type: application/json" \
-  -d '{"subject_type": "thread", "subject_id": "t1-uuid"}'
-
-# Unclear (restore to inbox)
-curl -X DELETE https://api.tokenrip.com/v0/inbox/clear \
-  -H "Authorization: Bearer tr_..." \
-  -H "Content-Type: application/json" \
-  -d '{"subject_type": "thread", "subject_id": "t1-uuid"}'
+  -d '{"items": [{"subject_type": "thread", "subject_id": "t1-uuid"}]}'
 ```
 
-MCP tools: `inbox_clear`, `inbox_unclear`.
+MCP tools: `inbox_clear`, `inbox_unclear`, `inbox_delete` — each accepts the single `{ subjectType, subjectId }` form or the bulk `{ items: [...] }` form (max 200).
 
 ## Search
 
@@ -1093,9 +1129,32 @@ Options: `--edit`, `--from-file <path>` (mutually exclusive).
 
 Rename a mount. Personal: only the owner. Team: any current member.
 
+### `rip agent delete <slug>`
+
+Destroy an agent and cascade its mounts and memory. Irreversible.
+
+By default the cascade also destroys the agent's session outputs. Pass `--keep-outputs` to graduate those session outputs to standalone artifacts first — they survive the delete, unfiled, and reappear in your normal artifact list.
+
+```bash
+rip agent delete office-hours
+rip agent delete office-hours --keep-outputs   # preserve session outputs as standalone artifacts
+rip agent delete office-hours --force          # skip the typed-slug confirmation
+```
+
+Options: `--keep-outputs`, `--force`.
+
 ### `rip agent unmount <mount-id>`
 
 Destroy a mount and its mount-owned memory + context artifact (cascade). Irreversible. Historical sessions and artifacts remain for audit.
+
+By default the cascade also destroys the mount's session outputs. Pass `--keep-outputs` to graduate those session outputs to standalone artifacts first — they survive the unmount, unfiled, and reappear in your normal artifact list.
+
+```bash
+rip agent unmount 550e8400-...
+rip agent unmount 550e8400-... --keep-outputs   # preserve session outputs as standalone artifacts
+```
+
+Options: `--keep-outputs`.
 
 ### Mount tables (`rip agent table ...`)
 

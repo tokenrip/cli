@@ -219,9 +219,14 @@ export async function agentMountContext(
   outputSuccess(current, formatMountContext);
 }
 
-export async function agentUnmount(mountId: string): Promise<void> {
+export async function agentUnmount(
+  mountId: string,
+  options: { keepOutputs?: boolean } = {},
+): Promise<void> {
   const { client } = requireAuthClient();
-  await client.delete(`/v0/mounts/${encodeURIComponent(mountId)}`);
+  await client.delete(`/v0/mounts/${encodeURIComponent(mountId)}`, {
+    data: { keepOutputs: options.keepOutputs === true },
+  });
   outputSuccess({ id: mountId, unmounted: true }, formatUnmounted);
 }
 
@@ -275,7 +280,10 @@ export async function agentSetDisplay(
   outputSuccess(data.data, formatAgent);
 }
 
-export async function agentDelete(slug: string, options: { force?: boolean }): Promise<void> {
+export async function agentDelete(
+  slug: string,
+  options: { force?: boolean; keepOutputs?: boolean },
+): Promise<void> {
   if (!options.force) {
     if (!process.stdin.isTTY) {
       throw new CliError('CONFIRMATION_REQUIRED', 'Pass --force or run interactively');
@@ -287,7 +295,9 @@ export async function agentDelete(slug: string, options: { force?: boolean }): P
     }
   }
   const { client } = requireAuthClient();
-  await client.delete(`/v0/agents/${encodeURIComponent(slug)}`);
+  await client.delete(`/v0/agents/${encodeURIComponent(slug)}`, {
+    data: { keepOutputs: options.keepOutputs === true },
+  });
   outputSuccess({ slug, deleted: true });
 }
 

@@ -76,6 +76,13 @@ rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 - `--type csv` — versioned file, renders as a table, no row-level API. Good for exports/snapshots.
 - `--type table` (with `--schema` or `--from-csv`) — living table with row-level API, no versioning. Good for agent-built data that grows over time.
 
+**Attach to an agent / mount package.** Pass `--attach-agent <slug>` (or `--attach-mount <id>`, mutually exclusive) to file a published content artifact into an agent's imprint package or a mount's package instead of the operator's flat artifact list. Attached artifacts are hidden from `rip artifact list` and surfaced on the imprint **Package** section (`--attach-agent`) or the mount **Documents** rail (`--attach-mount`) — the home for operator reference sheets and other agent-context docs. Content artifacts only; not to be confused with the global `--agent` identity selector.
+
+```bash
+rip artifact publish reference-sheet.md --type markdown --title "Tone guide" --attach-agent chief-of-staff
+rip artifact publish runbook.md --type markdown --title "Mount runbook" --attach-mount 550e8400-...
+```
+
 ### `rip artifact upload <file>`
 
 Upload a binary file (PDF, image, etc.).
@@ -251,8 +258,15 @@ rip agent mount-context <mount-id>                   # print mount context conte
 rip agent mount-context <mount-id> --edit            # open in $EDITOR, republish on save
 rip agent mount-context <mount-id> --from-file <f>   # replace from a file
 rip agent mount-rename <mount-id> <new-name>
-rip agent unmount <mount-id>                         # cascade destroy (incl. context artifact)
+rip agent unmount <mount-id>                         # cascade destroy (incl. context artifact + session outputs)
+rip agent unmount <mount-id> --keep-outputs          # graduate session outputs to standalone artifacts first
+
+# Agent lifecycle
+rip agent delete <slug>                              # cascade destroy agent + mounts + memory + session outputs
+rip agent delete <slug> --keep-outputs               # graduate session outputs to standalone artifacts first
 ```
+
+By default `unmount` / `delete` destroy the mount's / agent's session outputs along with the cascade. Pass `--keep-outputs` to graduate those session outputs to standalone artifacts before the cascade — they survive, unfiled, and reappear in `rip artifact list`.
 
 All `rip agent *` commands default to human-readable output, except the six session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip agent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `agentVersionAtCreate` so the dashboard can flag drift.
 
@@ -381,6 +395,8 @@ rip surface validate <publicId>                              # re-run Playwright
 
 # Lifecycle
 rip surface promote <publicId>                               # draft → published (idempotent)
+rip surface set-default <publicId>                           # make this the mount's default surface
+rip surface promote-to-imprint <publicId> [--alias <a>] [--default]  # ship as an imprint template
 rip surface open <publicId> [--browser]                      # print or launch URL
 rip surface revisions <publicId>                             # list revisions, newest first
 rip surface restore <publicId> <revisionId>                  # copy older revision into new active
@@ -431,11 +447,21 @@ rip inbox --since 7                # last week
 rip inbox --clear                  # advance cursor after viewing
 ```
 
-### Inbox clear / unclear (MCP / API)
+### Inbox clear / delete
 
-Hide individual items from the inbox. Cleared items reappear on new activity.
+Hide or permanently delete inbox items. Cleared items reappear on new activity; deleted items are gone (owner-only).
 
-MCP tools: `inbox_clear({ subjectType: "thread", subjectId: "..." })`, `inbox_unclear({ subjectType: "thread", subjectId: "..." })`.
+```bash
+rip inbox clear thread:<id> artifact:<id>     # dismiss (reversible); mixed batch
+rip inbox clear <id1> <id2> --type thread     # bare ids + --type
+rip inbox delete <id> --type artifact         # owner-only permanent delete
+```
+
+`delete` prints a `deleted` / `skipped` split — items you don't own are skipped (`reason: not_owner`).
+
+MCP tools: `inbox_clear`, `inbox_unclear`, `inbox_delete` — each accepts a single `{ subjectType, subjectId }` or a bulk `{ items: [{ subjectType, subjectId }, ...] }` (max 200). `inbox_delete` returns `{ deleted, skipped }`.
+
+Each inbox item carries a `resurfaced` flag; the response envelope adds `thread_count` / `artifact_count` and `threads_capped` / `artifacts_capped`.
 
 ## Search
 

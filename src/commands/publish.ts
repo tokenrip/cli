@@ -29,10 +29,19 @@ export async function publish(
     folder?: string;
     metadata?: string;
     star?: boolean;
+    attachAgent?: string;
+    attachMount?: string;
   },
 ): Promise<void> {
   if (!VALID_TYPES.includes(options.type as ContentType)) {
     throw new CliError('INVALID_TYPE', `Type must be one of: ${VALID_TYPES.join(', ')}`);
+  }
+
+  // --attach-agent and --attach-mount are mutually exclusive package-attach
+  // targets. The server enforces this too, but a client-side guard gives a
+  // friendlier error.
+  if (options.attachAgent && options.attachMount) {
+    throw new CliError('INVALID_ARGS', 'Provide either --attach-agent or --attach-mount, not both.');
   }
 
   let parsedMetadata: Record<string, unknown> | undefined;
@@ -90,6 +99,8 @@ export async function publish(
     }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
+    if (options.attachAgent) body.agent = options.attachAgent;
+    if (options.attachMount) body.mount = options.attachMount;
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -138,6 +149,8 @@ export async function publish(
     }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
+    if (options.attachAgent) body.agent = options.attachAgent;
+    if (options.attachMount) body.mount = options.attachMount;
 
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/artifacts', body);
@@ -184,6 +197,8 @@ export async function publish(
     }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
+    if (options.attachAgent) body.agent = options.attachAgent;
+    if (options.attachMount) body.mount = options.attachMount;
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -228,6 +243,8 @@ export async function publish(
   }
   if (options.folder) body.folder = options.folder;
   if (parsedMetadata) body.metadata = parsedMetadata;
+  if (options.attachAgent) body.agent = options.attachAgent;
+  if (options.attachMount) body.mount = options.attachMount;
 
   const { data } = await client.post('/v0/artifacts', body);
 

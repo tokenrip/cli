@@ -16,7 +16,7 @@ import { share } from './commands/share.js';
 import { artifactGet } from './commands/artifact-get.js';
 import { artifactInspect } from './commands/artifact-inspect.js';
 import { mountInspect } from './commands/mount-inspect.js';
-import { surfacePublish, surfaceUpdate, surfaceList, surfaceGet, surfaceValidate, surfacePromote, surfaceOpen, surfaceRevisions, surfaceRestore, surfaceDelete } from './commands/surface.js';
+import { surfacePublish, surfaceUpdate, surfaceList, surfaceGet, surfaceValidate, surfacePromote, surfaceSetDefault, surfacePromoteToImprint, surfaceOpen, surfaceRevisions, surfaceRestore, surfaceDelete } from './commands/surface.js';
 import { artifactDownload } from './commands/artifact-download.js';
 import { artifactCat } from './commands/artifact-cat.js';
 import { artifactVersions } from './commands/artifact-versions.js';
@@ -92,6 +92,8 @@ artifact
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
   .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
+  .option('--attach-agent <slug>', 'Attach this artifact to an agent package — files it into the imprint, hides from the flat list')
+  .option('--attach-mount <id>', 'Attach this artifact to a mount package — files it into the mount folder, hides from the flat list')
   .option('--star', 'Star the artifact immediately after publishing')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
@@ -642,6 +644,20 @@ surface
   .action(wrapCommand(surfacePromote));
 
 surface
+  .command('set-default')
+  .argument('<publicId>', 'Surface public ID')
+  .description("Make this surface the default shown for its mount")
+  .action(wrapCommand(surfaceSetDefault));
+
+surface
+  .command('promote-to-imprint')
+  .argument('<publicId>', 'Surface public ID')
+  .option('--alias <alias>', 'Manifest alias for the template (defaults to a slug of the title)')
+  .option('--default', 'Make this the imprint default surface (at most one)')
+  .description('Promote a validated mount surface into a reusable imprint template')
+  .action(wrapCommand(surfacePromoteToImprint));
+
+surface
   .command('open')
   .argument('<publicId>', 'Surface public ID')
   .option('--browser', 'Launch the URL in the OS default browser (best-effort)')
@@ -954,6 +970,7 @@ mountedagentTheme
 mountedagent
   .command('unmount')
   .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .option('--keep-outputs', 'Keep session outputs as standalone artifacts instead of deleting them', false)
   .description('Destroy a mount and its mount-owned memory (irreversible)')
   .addHelpText('after', `
 EXAMPLES:
@@ -1134,6 +1151,7 @@ mountedagent
   .command('delete')
   .argument('<slug>', 'Agent slug')
   .option('--force', 'Skip typed-slug confirmation', false)
+  .option('--keep-outputs', 'Keep session outputs as standalone artifacts instead of deleting them', false)
   .description('Destroy an agent and cascade its mounts and memory (irreversible)')
   .action(wrapCommand(agentDelete));
 
@@ -1390,13 +1408,17 @@ agent
   }));
 
 // ── inbox command ──────────────────────────────────────────────────
-program
+// Parent command with a DEFAULT action (poll) plus `clear`/`delete`
+// subcommands. In Commander v12 a command's `.action()` runs as the default
+// when no subcommand is given, so `rip inbox` still polls while
+// `rip inbox clear`/`rip inbox delete` route to their subcommands.
+const inboxCommand = program
   .command('inbox')
   .description('Poll for new thread messages and artifact updates')
   .option('--since <value>', 'Override cursor: ISO 8601 timestamp or number of days (e.g. 1 = 24h, 7 = week)')
   .option('--types <types>', 'Filter: threads, artifacts, or both (comma-separated)')
   .option('--limit <n>', 'Max items per type (default: 50, max: 200)')
-  .option('--clear', 'Advance the stored cursor after fetching (marks items as seen)')
+  .option('--clear', 'Advance the stored LOCAL cursor after fetching (marks items as seen locally; does NOT clear server-side — use the `clear` subcommand for that)')
   .option('--team <slug>', 'Filter inbox to a specific team')
   .addHelpText('after', `
 EXAMPLES:
@@ -1406,15 +1428,63 @@ EXAMPLES:
   $ rip inbox --since 1                     # last 24 hours
   $ rip inbox --since 7                     # last week
   $ rip inbox --since 2026-04-01T00:00:00Z  # exact timestamp
-  $ rip inbox --clear                       # advance cursor
+  $ rip inbox --clear                       # advance LOCAL cursor
+
+SUBCOMMANDS:
+  $ rip inbox clear thread:<id> artifact:<id>   # server-side clear (dismiss)
+  $ rip inbox delete <id> --type thread         # owner-only permanent delete
 
   Shows new thread messages and artifact updates since your last check.
-  The cursor is NOT advanced unless --clear is passed.
+  The --clear FLAG only advances the local poll cursor (marks items seen on
+  this machine). The 'clear' SUBCOMMAND dismisses items server-side. They are
+  different operations.
   Use --since to look back without affecting the cursor.
 `)
   .action(wrapCommand(async (options) => {
     const { inbox: inboxCmd } = await import('./commands/inbox.js');
     await inboxCmd(options);
+  }));
+
+inboxCommand
+  .command('clear')
+  .argument('<id...>', 'One or more inbox subject ids (bare, or prefixed thread:<id> / artifact:<id>)')
+  .description('Dismiss inbox items server-side (clear). Reverses on new activity.')
+  .option('--type <thread|artifact>', 'Subject type for bare (unprefixed) ids')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip inbox clear thread:<id>
+  $ rip inbox clear artifact:<id> thread:<id>       # mixed batch via prefixes
+  $ rip inbox clear <id1> <id2> --type thread       # bare ids + --type
+
+  Each id is either prefixed (thread:<id> / artifact:<id>) or bare. Bare ids
+  use --type. If an id is bare and --type is not given, the command errors
+  rather than guessing the type. Hits the agent inbox endpoint (POST
+  /v0/inbox/clear). Clearing is reversible — items resurface on new activity.
+`)
+  .action(wrapCommand(async (ids: string[], options: { type?: string }) => {
+    const { inboxClear } = await import('./commands/inbox-clear.js');
+    await inboxClear(ids, options);
+  }));
+
+inboxCommand
+  .command('delete')
+  .argument('<id...>', 'One or more inbox subject ids (bare, or prefixed thread:<id> / artifact:<id>)')
+  .description('Permanently delete owned inbox items (owner-only). Non-owned items are skipped.')
+  .option('--type <thread|artifact>', 'Subject type for bare (unprefixed) ids')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip inbox delete thread:<id>
+  $ rip inbox delete artifact:<id> thread:<id>      # mixed batch via prefixes
+  $ rip inbox delete <id1> <id2> --type artifact    # bare ids + --type
+
+  Permanently destroys threads/artifacts you own. Items you do not own (or
+  that no longer exist) are reported as skipped, not deleted. Each id is either
+  prefixed (thread:<id> / artifact:<id>) or bare; bare ids use --type. Hits the
+  agent inbox endpoint (POST /v0/inbox/delete).
+`)
+  .action(wrapCommand(async (ids: string[], options: { type?: string }) => {
+    const { inboxDelete } = await import('./commands/inbox-delete.js');
+    await inboxDelete(ids, options);
   }));
 
 // ── search command ────────────────────────────────────────────────

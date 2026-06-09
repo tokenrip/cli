@@ -368,6 +368,49 @@ export async function surfacePromote(publicId: string): Promise<void> {
   );
 }
 
+// ── set-default ──────────────────────────────────────────────────────
+
+export async function surfaceSetDefault(publicId: string): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.post(
+    `/v0/surfaces/${encodeURIComponent(publicId)}/set-default`,
+  );
+  const res = data.data as { publicId: string; mountId: string };
+  outputSuccess(res, (raw) => {
+    const r = raw as { publicId: string; mountId: string };
+    return `Default surface set ✓\nSurface: ${r.publicId}\nMount: ${r.mountId}`;
+  });
+}
+
+// ── promote-to-imprint ───────────────────────────────────────────────
+
+interface PromoteToImprintOpts {
+  alias?: string;
+  default?: boolean;
+}
+
+export async function surfacePromoteToImprint(
+  publicId: string,
+  opts: PromoteToImprintOpts,
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.post(
+    `/v0/surfaces/${encodeURIComponent(publicId)}/promote-to-imprint`,
+    { alias: opts.alias, default: opts.default ?? false },
+  );
+  const res = data.data as { alias: string; htmlArtifactAlias: string; default: boolean };
+  outputSuccess(res, (raw) => {
+    const r = raw as { alias: string; htmlArtifactAlias: string; default: boolean };
+    const lines = [
+      `Promoted to imprint template ✓`,
+      `Alias: ${r.alias}${r.default ? ' (default)' : ''}`,
+      `Starter artifact: ${r.htmlArtifactAlias}`,
+      'Publish the imprint to ship this template to new mounts.',
+    ];
+    return lines.join('\n');
+  });
+}
+
 // ── open ─────────────────────────────────────────────────────────────
 
 interface OpenOpts {

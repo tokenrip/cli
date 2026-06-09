@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.6.1
+version: 1.6.3
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.6.1 -->
+<!-- tokenrip-skill-version: 1.6.3 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -149,6 +149,11 @@ Inline content (no temp file needed)?
 Save someone else's artifact as your own?
   → rip artifact fork <id-or-alias>
 
+Agent-context doc (operator reference sheet) that belongs to an agent / mount, not the flat list?
+  → rip artifact publish <file> --type markdown --title "..." --attach-agent <slug>
+  → rip artifact publish <file> --type markdown --title "..." --attach-mount <mount-id>
+  → (filed into the package, hidden from `rip artifact list`, shown on the imprint Package section / mount Documents rail; content artifacts only; NOT the global --agent identity flag)
+
 Build an AI-generated UI page for the operator (dashboard, triage queue, editor)?
   → rip mount inspect <mountId>   OR   rip artifact inspect <publicId>
   → generate HTML calling window.tokenrip.* (NEVER raw /v0)
@@ -202,6 +207,13 @@ Comment on an artifact?
 Check what's new?
   → rip inbox
   → rip inbox --since 7  (last week)
+
+Dismiss inbox items (reversible — they resurface on new activity)?
+  → rip inbox clear thread:<id> artifact:<id>   (mixed batch)
+  → rip inbox clear <id1> <id2> --type thread
+
+Permanently delete items you own (owner-only; non-owned are skipped)?
+  → rip inbox delete <id> --type artifact
 ```
 
 ### Personal vs team
@@ -232,8 +244,11 @@ Team inbox?
 (`kind='agent'` for an agent's package, `kind='mount'` for a mount's
 materialized artifacts and themes). `rip folder rename`, `rip folder delete`,
 and `rip artifact move` into or out of those folders return `FOLDER_LOCKED`
-(HTTP 409). Use the agent lifecycle instead — delete the agent or `rip agent
-unmount` to remove the folder; both cascade to the filed artifacts.
+(HTTP 409). Use the agent lifecycle instead — `rip agent delete <slug>` or `rip
+agent unmount <mount-id>` to remove the folder; both cascade to the filed
+artifacts and to the agent/mount's session outputs. Pass `--keep-outputs` on
+either to graduate those session outputs to standalone artifacts first — they
+survive the cascade, unfiled, and reappear in `rip artifact list`.
 
 ### Updating vs versioning
 

@@ -28,7 +28,9 @@ Use the returned `recommendedBindingKey` + `recommendedBinding` **verbatim** in 
 | Wrap every SDK call in `try/catch`; handle `VALIDATION_BLOCKED` gracefully | Validation runs with a write-blocking token — uncaught throws fail it |
 | No `localStorage`/`IndexedDB` as primary storage; no `tokenrip.connectors.*` | Cleared between sessions / namespace doesn't exist in v1 |
 
-Copy the matching skeleton from `/for-ai/surfaces.md`: §5A row editor, §5B artifact document editor, §5C control-row workflow trigger.
+**Use the sync helpers, not hand-rolled plumbing.** The SDK ships `tokenrip.useTable(key, opts)` / `tokenrip.useArtifact(key, opts)` / `tokenrip.useStore(store)` (React) and headless `tokenrip.store.table/artifact` (vanilla) that own load, poll, optimistic patch + rollback, debounced writes, draft/dirty tracking, `validationBlocked`, and `staleVersion`. Build data-backed surfaces on these; drop to raw `tokenrip.tables`/`artifacts` only for cases the store doesn't model. The `/for-ai/surfaces.md` "State & sync helpers" section is the spec.
+
+Copy the matching skeleton from `/for-ai/surfaces.md`: §6A row editor (`useTable`), §6B artifact document editor (`useArtifact`), §6C control-row workflow trigger.
 
 ### 3. Publish
 
@@ -51,7 +53,7 @@ Read `validation.errors` + `validation.operations`:
 | `validation_blocked` in `operations[]` | **Expected** — the validator exercises write paths without committing. Don't "fix" it. |
 
 ```bash
-rip surface update <publicId> --html <file.html>   # new revision + auto-validate
+rip surface update <publicId> <file.html>   # new revision + auto-validate (file path is positional)
 ```
 
 Repeat until clean (hard cap ~5 iterations; if stuck, show the operator the error and ask).
@@ -64,6 +66,8 @@ rip surface promote <publicId>   # flip draft → published; unlocks the operato
 
 Never promote without explicit operator confirmation ("looks good" / "ship it"). Always show the full `publicId` and URL — don't truncate.
 
+**Shipping a surface with an imprint.** If you built the surface on a mount of an imprint you own and want every future mounter to inherit it, after it validates `ok` run `rip surface promote-to-imprint <publicId> [--alias <a>] [--default]`. This derives alias bindings (every bound table/artifact must be declared in the manifest), snapshots the HTML into a starter artifact, and writes a `manifest.surfaces[]` entry — a draft edit, so `rip agent publish` afterward to ship it. To repoint which surface a mount features by default, `rip surface set-default <publicId>`.
+
 ## CLI ↔ MCP quick reference
 
 | MCP tool | CLI | Purpose |
@@ -73,6 +77,8 @@ Never promote without explicit operator confirmation ("looks good" / "ship it").
 | `update_surface` | `rip surface update` | New revision + auto-validate |
 | `validate_surface` | `rip surface validate` | Re-run validation |
 | `promote_surface` | `rip surface promote` | Flip draft → published |
+| `set_default_surface` | `rip surface set-default` | Make a mount surface the mount default |
+| `promote_surface_to_imprint` | `rip surface promote-to-imprint` | Ship a mount surface as an imprint template |
 | `list_surfaces` / `get_surface` | `rip surface list` / `rip surface get` | List / detail |
 | `restore_surface_revision` | `rip surface restore <id> <revId>` | Roll back |
 | `delete_surface` | `rip surface delete` | Permanent delete (confirm first) |

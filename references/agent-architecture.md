@@ -21,8 +21,24 @@ rip agent mounts                                          # list your mounts
 rip agent show-mount <mount-id>                           # inspect: agent version, context, layers
 rip agent mount-artifacts <mount-id>                      # every artifact the mount touches
 rip agent mount-rename <mount-id> <new-name>              # rename
-rip agent unmount <mount-id>                              # destroy mount + memory (irreversible)
+rip agent unmount <mount-id>                              # destroy mount + memory + session outputs (irreversible)
+rip agent unmount <mount-id> --keep-outputs              # graduate session outputs to standalone artifacts first
+rip agent delete <slug>                                  # destroy agent + mounts + memory + session outputs
+rip agent delete <slug> --keep-outputs                   # graduate session outputs to standalone artifacts first
 ```
+
+By default `unmount` / `delete` cascade-destroy the mount's / agent's session outputs. `--keep-outputs` graduates those session outputs to standalone artifacts before the cascade — they survive, unfiled, and reappear in `rip artifact list`.
+
+## Agent / mount package documents
+
+Publish a content artifact (markdown, html, code, text, json) straight into an agent's or mount's package instead of the operator's flat artifact list:
+
+```bash
+rip artifact publish reference-sheet.md --type markdown --title "Tone guide" --attach-agent <slug>     # imprint package
+rip artifact publish runbook.md --type markdown --title "Mount runbook" --attach-mount <mount-id>       # mount package
+```
+
+`--attach-agent` and `--attach-mount` are mutually exclusive. An attached artifact is filed into the package folder, hidden from `rip artifact list`, and surfaced on the imprint's **Package** section (`--attach-agent`) or the mount's **Documents** rail (`--attach-mount`) — the home for operator reference sheets and other agent-context docs. These are distinct from the global `--agent` identity-selector flag.
 
 ## Template agents (per-mount context)
 
