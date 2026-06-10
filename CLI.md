@@ -1097,9 +1097,10 @@ Create an explicit mount of an agent. Personal by default; `--team` makes it col
 rip agent mount chief-of-staff
 rip agent mount chief-of-staff --team acme --name engineering
 rip agent mount blog-writing --name flowers --context-from ./flowers.md
+rip agent mount blog-writer --workspace research=demand-hub
 ```
 
-Options: `--team <slug>`, `--name <label>`, `--context-from <file>`.
+Options: `--team <slug>`, `--name <label>`, `--context-from <file>`, `--workspace <slot>=<ref>` (repeatable — bind a manifest workspace-binding slot to a workspace id or slug at mount time).
 
 ### `rip agent mounts`
 
@@ -1128,6 +1129,17 @@ Options: `--edit`, `--from-file <path>` (mutually exclusive).
 ### `rip agent mount-rename <mount-id> <new-name>`
 
 Rename a mount. Personal: only the owner. Team: any current member.
+
+### `rip agent mount-workspace <mount-id> [<slot>=<ref>] [--unbind <slot>]`
+
+Bind or unbind one of the mount's manifest **workspace-binding slots** (`workspaceBindings[]`) — named handles for shared workspaces the agent consumes (`read`) or produces (`read-write`).
+
+```bash
+rip agent mount-workspace <mount-id> research=demand-hub   # bind (or re-bind)
+rip agent mount-workspace <mount-id> --unbind research     # unbind
+```
+
+Binding requires ≥ viewer on the target workspace for `read` slots, ≥ editor for `read-write`. Cross-account, bind by workspace **id** (slugs don't resolve without membership) after the owner grants membership via `rip workspace member add`. Unbinding never touches the workspace itself.
 
 ### `rip agent delete <slug>`
 

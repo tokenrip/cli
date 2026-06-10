@@ -23,7 +23,7 @@ import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountConfig, agentMountContext, agentMountGrants, agentMountRename, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentThemeList, agentThemeShow, agentThemeUpsert, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
+import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountConfig, agentMountContext, agentMountGrants, agentMountRename, agentMountWorkspace, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentThemeList, agentThemeShow, agentThemeUpsert, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
 import { mountTableList, mountTableRows, mountTableLatest, mountTableByTag, mountTablePatch, mountTableAppend } from './commands/mount-table.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
@@ -807,12 +807,14 @@ mountedagent
   .option('--team <slug>', 'Bind the mount to a team (collaborative)')
   .option('--name <label>', 'Friendly mount name (required for a second mount of the same agent)')
   .option('--context-from <file>', 'Seed the mount context artifact from a markdown file')
+  .option('--workspace <name=ref...>', 'Bind a manifest workspace-binding slot to a workspace id or slug (repeatable)')
   .description('Create a deployment of an agent (personal by default; --team makes it collaborative)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip agent mount chief-of-staff
   $ rip agent mount chief-of-staff --team acme --name engineering
   $ rip agent mount blog-writing --name flowers --context-from ./flowers-context.md
+  $ rip agent mount blog-writer --workspace research=demand-hub
 
 NOTES:
   Creates a system-managed team mount folder (and a personal mount folder
@@ -855,6 +857,19 @@ mountedagent
   .requiredOption('--connections <json>', 'JSON array of connection names to grant (\'[]\' to clear)')
   .description('Set the mount\'s granted connection names (must resolve to the creator\'s Connection rows)')
   .action(wrapCommand(agentMountGrants));
+
+mountedagent
+  .command('mount-workspace')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .argument('[binding]', 'name=<workspace id or slug> to bind a slot')
+  .option('--unbind <name>', 'Unbind a slot (never touches the workspace itself)')
+  .description("Bind or unbind one of the mount's manifest workspace-binding slots")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip agent mount-workspace <mount-id> research=demand-hub
+  $ rip agent mount-workspace <mount-id> --unbind research
+`)
+  .action(wrapCommand(agentMountWorkspace));
 
 mountedagent
   .command('show-mount')

@@ -17,7 +17,10 @@ A *mount* is one deployment of an agent. Personal mounts are owned by one operat
 rip agent mount <slug>                                    # personal mount
 rip agent mount <slug> --team <slug> --name engineering   # team mount with name
 rip agent mount <slug> --context-from ./context.md        # mount with initial context
+rip agent mount <slug> --workspace research=demand-hub    # bind a workspace-binding slot at mount time (repeatable)
 rip agent mounts                                          # list your mounts
+rip agent mount-workspace <mount-id> research=demand-hub  # bind/re-bind a slot post-mount
+rip agent mount-workspace <mount-id> --unbind research    # unbind a slot (workspace untouched)
 rip agent show-mount <mount-id>                           # inspect: agent version, context, layers
 rip agent mount-artifacts <mount-id>                      # every artifact the mount touches
 rip agent mount-rename <mount-id> <new-name>              # rename

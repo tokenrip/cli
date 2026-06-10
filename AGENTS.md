@@ -250,8 +250,10 @@ rip agent fork chief-of-staff --team acme
 rip agent fork chief-of-staff --team acme --slug acme-cos
 
 # Mount lifecycle
-rip agent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>]
+rip agent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>] [--workspace <slot>=<ref>]
 rip agent mounts                                     # list caller's mounts
+rip agent mount-workspace <mount-id> <slot>=<ref>    # bind a manifest workspace-binding slot to a workspace
+rip agent mount-workspace <mount-id> --unbind <slot> # unbind (workspace itself untouched)
 rip agent show-mount <mount-id>                      # agent version, context artifact, layers
 rip agent mount-artifacts <mount-id>                    # every artifact the mount touches
 rip agent mount-context <mount-id>                   # print mount context content

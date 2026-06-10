@@ -68,6 +68,8 @@ rip workspace member list research
 rip workspace member remove research rip1<account-id>
 ```
 
+The member argument accepts an account id, an alias, or one of your saved contact labels.
+
 | Role | Can |
 |---|---|
 | `viewer` | Read and search notes and items |
@@ -101,6 +103,18 @@ Deleting a workspace is one clean operation: owned items are destroyed (storage 
 ## Agent memory (imprint authors)
 
 An imprint manifest can declare a `workspace` block and bind a workspace to a mount as the agent's **living memory** — auto-provisioned on first load, surfaced in `agent_load` as an eager working-set plus a lazy index, with the maturity ladder and `worklist` driving a scheduled consolidation ritual. That binding is opt-in and changes nothing about the direct CLI usage above. See `docs/architecture/workspaces.md` for the full model.
+
+## Sharing between agents (workspace bindings)
+
+An imprint can also declare named `workspaceBindings[]` slots for **shared** workspaces it consumes (`access: read`) or produces (`access: read-write`) — the cross-agent pipeline primitive. The operator wires each slot to a concrete workspace per mount:
+
+```bash
+rip workspace create demand-hub --name "Demand Hub"          # the shared hub (outlives every mount)
+rip agent mount researcher --workspace output=demand-hub     # producer binds at mount time
+rip agent mount-workspace <mount-id> research=demand-hub     # consumer binds post-mount
+```
+
+On load the agent gets an index of each bound workspace (no bodies — fetch via `workspace note get`/`search`) and a report of unbound/broken slots. Cross-account: the hub owner grants membership first (`rip workspace member add … --role viewer|editor`), then the consumer binds by workspace **id**. During a session, always pass the session token on workspace writes — `read` slots reject the agent's own session writes (`WORKSPACE_BINDING_READ_ONLY`). Notes written in a session carry provenance (`sourceImprintSlug`, `sourceMountId`).
 
 ## Notes
 

@@ -135,15 +135,50 @@ export async function agentFork(
 
 export async function agentMount(
   imprintSlug: string,
-  options: { team?: string; name?: string; contextFrom?: string },
+  options: { team?: string; name?: string; contextFrom?: string; workspace?: string[] },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = { imprintSlug };
   if (options.team) body.teamSlug = options.team;
   if (options.name) body.name = options.name;
   if (options.contextFrom) body.contextMd = readFileSync(options.contextFrom, 'utf-8');
+  if (options.workspace?.length) body.workspaceBindings = parseBindingPairs(options.workspace);
   const { data } = await client.post('/v0/mounts', body);
   outputSuccess(data.data, formatMount);
+}
+
+/** Parse repeatable `name=<workspace id or slug>` pairs. */
+function parseBindingPairs(pairs: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const pair of pairs) {
+    const idx = pair.indexOf('=');
+    if (idx <= 0 || idx === pair.length - 1) {
+      throw new CliError('INVALID_WORKSPACE_BINDING', `Expected name=<workspace>, got '${pair}'`);
+    }
+    out[pair.slice(0, idx)] = pair.slice(idx + 1);
+  }
+  return out;
+}
+
+export async function agentMountWorkspace(
+  mountId: string,
+  binding: string | undefined,
+  options: { unbind?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  if (options.unbind) {
+    await client.delete(`/v0/mounts/${encodeURIComponent(mountId)}/workspace-bindings/${encodeURIComponent(options.unbind)}`);
+    outputSuccess({ mountId, unbound: options.unbind });
+    return;
+  }
+  if (!binding) throw new CliError('INVALID_WORKSPACE_BINDING', 'Pass name=<workspace> or --unbind <name>');
+  const pairs = parseBindingPairs([binding]);
+  const [name, ref] = Object.entries(pairs)[0];
+  const { data } = await client.put(
+    `/v0/mounts/${encodeURIComponent(mountId)}/workspace-bindings/${encodeURIComponent(name)}`,
+    { workspace: ref },
+  );
+  outputSuccess(data.data);
 }
 
 export async function agentMounts(): Promise<void> {
