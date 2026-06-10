@@ -6,6 +6,31 @@ import { fetchManifest, getCurrentVersion } from '../update-check.js';
 import { outputSuccess } from '../output.js';
 import { formatSelfUpdate } from '../formatters.js';
 
+function findColocatedNpm(): string {
+  try {
+    // Walk up from the running script to find the enclosing node_modules directory.
+    // Handles any depth (scoped packages, flat layouts, etc.) without hardcoding levels.
+    let dir = path.dirname(process.argv[1]);
+    for (let i = 0; i < 10; i++) {
+      dir = path.dirname(dir);
+      if (path.basename(dir) === 'node_modules') {
+        // Unix: <prefix>/lib/node_modules  → npm at <prefix>/bin/npm
+        // Win:  <prefix>/node_modules      → npm at <prefix>/npm.cmd or npm
+        const isUnixLayout = path.basename(path.dirname(dir)) === 'lib';
+        const prefix = isUnixLayout ? path.dirname(path.dirname(dir)) : path.dirname(dir);
+        const candidates = process.platform === 'win32'
+          ? [path.join(prefix, 'npm.cmd'), path.join(prefix, 'npm')]
+          : [path.join(prefix, 'bin', 'npm')];
+        for (const c of candidates) {
+          if (fs.existsSync(c)) return c;
+        }
+        break;
+      }
+    }
+  } catch {}
+  return 'npm';
+}
+
 async function saveSkillFile(skillUrl: string): Promise<{ path: string; changed: boolean } | null> {
   try {
     const res = await fetch(skillUrl);
@@ -59,8 +84,15 @@ export async function selfUpdate(): Promise<void> {
 
   const targetVersion = manifest.version;
 
+  // Find the npm binary that installs into the same prefix as this rip binary.
+  // Walk up from the running script until we find the enclosing node_modules dir,
+  // then detect the platform convention for where npm lives relative to it.
+  //   Unix:    <prefix>/lib/node_modules  → npm at <prefix>/bin/npm
+  //   Windows: <prefix>/node_modules      → npm at <prefix>/npm.cmd
+  const npmBin = findColocatedNpm();
+
   try {
-    execFileSync('npm', ['install', '-g', `@tokenrip/cli@${targetVersion}`], { stdio: 'inherit' });
+    execFileSync(npmBin, ['install', '-g', `@tokenrip/cli@${targetVersion}`], { stdio: 'inherit' });
   } catch {
     outputSuccess({
       status: 'failed',
