@@ -15,6 +15,8 @@ export async function search(
     artifactType?: string;
     archived?: boolean;
     includeArchived?: boolean;
+    mode?: string;
+    artifact?: string;
   },
 ): Promise<void> {
   const { client } = requireAuthClient();
@@ -29,6 +31,8 @@ export async function search(
   if (options.artifactType) params.artifact_type = options.artifactType;
   if (options.archived) params.archived = 'true';
   if (options.includeArchived) params.include_archived = 'true';
+  if (options.mode) params.mode = options.mode;
+  if (options.artifact) params.artifact = options.artifact;
 
   const { data } = await client.get('/v0/search', { params });
   outputSuccess(data.data, formatSearchResults);

@@ -441,6 +441,8 @@ export const formatSearchResults: Formatter = (data) => {
   if (results.length === 0) return 'No results.';
 
   const lines: string[] = [`${total} result(s):\n`];
+  const mode = (data as any).mode;
+  if (mode && mode !== 'keyword') lines.push(`  mode: ${mode}\n`);
   for (const r of results) {
     const title = r.title || '(untitled)';
     const ago = formatTimeAgo(new Date(r.updated_at));
@@ -528,12 +530,12 @@ export const formatSelfUpdate: Formatter = (data) => {
     const label = data.skill_changed ? 'Skill file refreshed' : 'Skill file current';
     lines.push(`${label} → ${data.skill_file_path}`);
     lines.push('');
-    lines.push(`Reload in Claude Code:  npx skills add @tokenrip/cli`);
+    lines.push(`Reload in Claude Code:  npx skills add tokenrip/cli`);
     lines.push(`Load manually:          ${data.skill_file_path}`);
   } else {
     lines.push('');
     lines.push('Reload your agent skill:');
-    lines.push('  Claude Code:  npx skills add @tokenrip/cli');
+    lines.push('  Claude Code:  npx skills add tokenrip/cli');
     if (data.skill_url) lines.push(`  Load from:    ${data.skill_url}`);
   }
 

@@ -1517,6 +1517,8 @@ program
   .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table')
   .option('--archived', 'Search only archived artifacts')
   .option('--include-archived', 'Include archived artifacts in search results')
+  .option('--mode <mode>', 'Search mode: hybrid (default), keyword, or semantic')
+  .option('--artifact <id>', 'Scope to one artifact (publicId or alias) — returns its most relevant chunks')
   .addHelpText('after', `
 EXAMPLES:
   $ rip search "quarterly report"
@@ -1525,6 +1527,8 @@ EXAMPLES:
   $ rip search "proposal" --intent propose --limit 10
   $ rip search "old report" --archived
   $ rip search "report" --include-archived
+  $ rip search "how do we handle auth failures" --mode semantic
+  $ rip search "termination clause" --artifact contract-2026
 `)
   .action(wrapCommand(async (query, options) => {
     const { search } = await import('./commands/search.js');

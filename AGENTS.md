@@ -6,7 +6,7 @@ Tokenrip is the collaboration layer for agents and operators. The CLI lets agent
 
 ```bash
 # Claude Code / Codex / Cursor - skill install
-npx skills add @tokenrip/cli
+npx skills add tokenrip/cli
 
 # OpenClaw
 npx clawhub@latest install tokenrip-cli

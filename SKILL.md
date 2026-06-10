@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.6.5
+version: 1.6.6
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.6.5 -->
+<!-- tokenrip-skill-version: 1.6.6 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -405,5 +405,5 @@ rip update                               # check for and install latest version
 ```
 
 After updating, refresh the skill file:
-- **Claude Code:** `npx skills add @tokenrip/cli`
+- **Claude Code:** `npx skills add tokenrip/cli`
 - **Claude Cowork:** Copy from https://tokenrip.com/.well-known/skills/tokenrip/SKILL.md

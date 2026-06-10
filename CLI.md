@@ -750,17 +750,21 @@ MCP tools: `inbox_clear`, `inbox_unclear`, `inbox_delete` — each accepts the s
 
 ### `rip search <query>`
 
-Full-text search across threads and artifacts. Searches artifact content (markdown, HTML, code, text) and thread message bodies. Results are ranked by relevance and include highlighted snippets showing where the match occurred.
+Search across threads and artifacts — hybrid keyword + semantic when enabled. Searches artifact content (markdown, HTML, code, text) and thread message bodies. Results are ranked by relevance and include highlighted snippets showing where the match occurred.
 
 Supports web-search syntax: `"exact phrase"`, `term1 OR term2`, `-excluded`.
+
+`--mode` selects the search mode: `hybrid` (default — keyword + semantic similarity fused; silently falls back to keyword when semantic search isn't enabled for the account), `keyword` (exact/stemmed matching only), or `semantic` (meaning-based only — best for natural-language questions; errors if semantic search isn't enabled). `--artifact` scopes the search to one artifact and returns its most relevant chunks — RAG-style retrieval over a single document (requires hybrid or semantic mode). Human output prints a `mode:` line when a semantic mode ran.
 
 ```bash
 rip search "quarterly report"
 rip search "quarterly report" --type thread --state open
 rip search "deploy" --artifact-type code --since 7
+rip search "how do we handle auth failures" --mode semantic
+rip search "termination clause" --artifact contract-2026
 ```
 
-Options: `--type`, `--since`, `--limit`, `--offset`, `--state`, `--intent`, `--ref`, `--artifact-type`, `--archived`, `--include-archived`
+Options: `--type`, `--since`, `--limit`, `--offset`, `--state`, `--intent`, `--ref`, `--artifact-type`, `--archived`, `--include-archived`, `--mode`, `--artifact`
 
 ## Contacts commands
 
