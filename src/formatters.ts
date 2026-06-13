@@ -4,7 +4,11 @@ export type Formatter = (data: Record<string, unknown>) => string;
 
 export const formatArtifactCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
+  // `id` and `publicId` carry the same value; the rest of the platform
+  // (agent / surface responses) keys on `publicId`. We echo the alias too so
+  // a caller that just set one can confirm it. See packages/cli/CLAUDE.md.
   if (data.id) lines.push(`  ID:      ${data.id}`);
+  if (data.alias) lines.push(`  Alias:   ${data.alias}`);
   if (data.url) lines.push(`  URL:     ${data.url}`);
   if (data.type) lines.push(`  Type:    ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:    ${data.mimeType}`);
@@ -728,6 +732,10 @@ export const formatMountDrillIn: Formatter = (data) => {
     if (contextArtifact.publicId) lines.push(`  Artifact ID:    ${contextArtifact.publicId}`);
     if (contextArtifact.version) lines.push(`  Version:     v${contextArtifact.version}`);
     if (contextArtifact.sizeBytes != null) lines.push(`  Size:        ${formatBytes(contextArtifact.sizeBytes)}`);
+    // show-mount returns context metadata only — the body lives behind a
+    // dedicated endpoint. Point there so verification doesn't dead-end on
+    // "0 chars" (Moa debrief §3.7).
+    if (mount.id) lines.push(`  Body:        run \`rip agent mount-context ${mount.id}\``);
   }
   const layers = (data as any).layers;
   if (layers) {

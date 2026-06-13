@@ -13,7 +13,7 @@ type ContentType = (typeof VALID_TYPES)[number];
 export async function update(
   uuid: string,
   filePath: string,
-  options: { type?: string; description?: string; context?: string; dryRun?: boolean },
+  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; dryRun?: boolean },
 ): Promise<void> {
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
@@ -31,6 +31,7 @@ export async function update(
 
   const { client } = requireAuthClient();
 
+  let result: Record<string, unknown>;
   if (options.type) {
     // Content publish mode
     const content = fs.readFileSync(absPath, 'utf-8');
@@ -39,7 +40,7 @@ export async function update(
     if (options.context) body.creatorContext = options.context;
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
-    outputSuccess(data.data, formatVersionCreated);
+    result = data.data;
   } else {
     // File upload mode
     const form = new FormData();
@@ -52,6 +53,20 @@ export async function update(
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
     });
-    outputSuccess(data.data, formatVersionCreated);
+    result = data.data;
   }
+
+  // Title / alias are artifact-level metadata, not version content — apply them
+  // with a follow-up PATCH so a republish-and-retitle is one command (Moa
+  // debrief §3.3). The new version is already created above; if the PATCH
+  // fails we surface that error but the version persisted.
+  if (options.title !== undefined || options.alias !== undefined) {
+    const patchBody: Record<string, unknown> = {};
+    if (options.title !== undefined) patchBody.title = options.title;
+    if (options.alias !== undefined) patchBody.alias = options.alias;
+    const { data: patched } = await client.patch(`/v0/artifacts/${uuid}`, patchBody);
+    result = { ...result, title: patched.data.title ?? result.title, alias: patched.data.alias };
+  }
+
+  outputSuccess(result, formatVersionCreated);
 }

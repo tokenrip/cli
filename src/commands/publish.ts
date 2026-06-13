@@ -11,6 +11,32 @@ import { resolveTeam, resolveTeams } from '../teams.js';
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'table', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
 
+/**
+ * Standard create-response payload. Echoes both `id` and `publicId` (same
+ * value — the rest of the platform keys on `publicId`) and the `alias` the
+ * caller set, so scripts don't print `None` looking for a field publish never
+ * returned (Moa debrief §3.6). `aliasFallback` is the `--alias` we sent, used
+ * when the backend response doesn't echo it.
+ */
+function artifactCreatedPayload(
+  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string },
+  url: string,
+  aliasFallback: string | undefined,
+  starred: boolean,
+): Record<string, unknown> {
+  const alias = data.alias ?? aliasFallback ?? null;
+  return {
+    id: data.id,
+    publicId: data.publicId ?? data.id,
+    ...(alias ? { alias } : {}),
+    url,
+    title: data.title,
+    type: data.type,
+    currentVersionId: data.currentVersionId,
+    ...(starred ? { starred: true } : {}),
+  };
+}
+
 export async function publish(
   filePath: string | undefined,
   options: {
@@ -110,7 +136,7 @@ export async function publish(
       starred = true;
     }
     outputSuccess(
-      { id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId, ...(starred ? { starred: true } : {}) },
+      artifactCreatedPayload(data.data, url, options.alias, starred),
       formatArtifactCreated,
     );
     return;
@@ -160,7 +186,7 @@ export async function publish(
       await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
       starred = true;
     }
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId, ...(starred ? { starred: true } : {}) }, formatArtifactCreated);
+    outputSuccess(artifactCreatedPayload(data.data, url, options.alias, starred), formatArtifactCreated);
     return;
   }
 
@@ -207,7 +233,7 @@ export async function publish(
       await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
       starred = true;
     }
-    outputSuccess({ id: data.data.id, url, title: data.data.title, type: data.data.type, currentVersionId: data.data.currentVersionId, ...(starred ? { starred: true } : {}) }, formatArtifactCreated);
+    outputSuccess(artifactCreatedPayload(data.data, url, options.alias, starred), formatArtifactCreated);
     return;
   }
 
@@ -254,12 +280,5 @@ export async function publish(
     await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
     starred = true;
   }
-  outputSuccess({
-    id: data.data.id,
-    url,
-    title: data.data.title,
-    type: data.data.type,
-    currentVersionId: data.data.currentVersionId,
-    ...(starred ? { starred: true } : {}),
-  }, formatArtifactCreated);
+  outputSuccess(artifactCreatedPayload(data.data, url, options.alias, starred), formatArtifactCreated);
 }

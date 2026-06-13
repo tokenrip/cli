@@ -42,15 +42,16 @@ Response includes `publicId`, `currentRevisionId`, `draftUrl`, and a `validation
 
 ### 4. Fix validation
 
-Read `validation.errors` + `validation.operations`:
+The `validation` object carries the diagnostic arrays directly: `errors`, `warnings`, `accessibility`, `overflow`, `blockedNetworkAttempts` (each finding has `kind` + `message`; console errors include `metadata.location`). Read `validation.errors` — no separate fetch — and map each `kind`:
 
-| Symptom | Fix |
+| Symptom (`error.kind` / finding) | Fix |
 |---|---|
-| Uncaught error / unhandled rejection | Find the JS bug; add `try/catch` around the SDK call |
-| Blocked non-allowlisted CDN | Switch to an allowed CDN or drop the dependency |
-| `BINDINGS_REQUIRED` / `BINDING_RESOURCE_NOT_FOUND` / `BINDING_DENIED` | Re-`inspect`; copy `recommendedBinding` verbatim |
-| Validator timed out | Remove animations, polling, long-running mount effects |
-| `validation_blocked` in `operations[]` | **Expected** — the validator exercises write paths without committing. Don't "fix" it. |
+| `console_error` / `page_error` (uncaught error, unhandled rejection) | Find the JS bug; add `try/catch` around the SDK call |
+| `blocked_egress` in `blockedNetworkAttempts` | Non-allowlisted CDN — switch to an allowed CDN or drop the dependency |
+| `api_error` / `BINDINGS_REQUIRED` / `BINDING_RESOURCE_NOT_FOUND` / `BINDING_DENIED` | Re-`inspect`; copy `recommendedBinding` verbatim |
+| `timeout` | Remove animations, polling, long-running mount effects |
+| accessibility / overflow findings | Add `aria-label`s / `<label htmlFor>`; make the layout responsive (`max-w-*`, `flex-wrap`) |
+| `validation_blocked` (a blocked **write**, not in `errors`) | **Expected** — the validator exercises write paths without committing. Don't "fix" it. |
 
 ```bash
 rip surface update <publicId> <file.html>   # new revision + auto-validate (file path is positional)

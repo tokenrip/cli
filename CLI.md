@@ -87,13 +87,23 @@ Options: `--since`, `--limit`
 
 ### `rip artifact update <uuid> <file>`
 
-Publish a new version of an existing artifact. The shareable link stays the same.
+Publish a new version of an existing artifact. The shareable link stays the same. `--title` / `--alias` additionally patch the artifact's metadata, so you can republish and re-title in one command.
 
 ```bash
-rip artifact update 550e8400-... report-v2.md --type markdown --label "copy edits"
+rip artifact update 550e8400-... report-v2.md --type markdown --description "copy edits"
+rip artifact update my-doc report-v2.md --type markdown --title "Report (v2)"
 ```
 
-Options: `--type`, `--label`, `--context`, `--dry-run`
+Options: `--type`, `--description`, `--context`, `--title`, `--alias`, `--dry-run`
+
+### `rip artifact team add <id> <teams...>` / `rip artifact team remove <id> <team>`
+
+Share or un-share an already-published artifact with teams (accepts UUID or alias; resolves local team aliases). The only way to change team scoping after publish — `patch` has no `--team` and `share` only mints links.
+
+```bash
+rip artifact team add my-report acme-team beta-squad
+rip artifact team remove my-report acme-team
+```
 
 ### `rip artifact archive <uuid>` / `rip artifact unarchive <uuid>`
 
@@ -1436,41 +1446,49 @@ rip operator-link --expires 1h
 
 ## Cred commands
 
-Local tool credentials — used by harness-side tool impls that need API keys or tokens (Twitter, Reddit, Gmail, etc.). Stored at `~/.config/tokenrip/credentials.json` with mode `0600`. Values never leave the harness — the platform sees only the *presence* of a kind via the bootloader's `local-config-file` capability probe.
+Tool credentials — used by tool impls that need API keys or tokens (Twitter, Reddit, Gmail, etc.). **Two storage backends:**
 
-### `rip cred set <kind> [--<field>=<value>]…`
+- **Local (default):** stored at `~/.config/tokenrip/credentials.json` with mode `0600`, for harness-side impls. Values never leave the harness — the platform sees only the *presence* of a kind via the bootloader's `local-config-file` capability probe. Field flags are camel-cased into JSON keys (`--api-key` → `apiKey`).
+- **Server (`--server`):** stored account-scoped on the backend via `PUT/GET/DELETE /v0/accounts/credentials/:kind` (requires auth). For BYO service credentials that **backend-mode** tool impls read directly — e.g. `email-outbound` (Postmark). One credential per kind per account; adding a new MCP/CLI surface to the same account reuses it. Field flags are kept **snake_case** to match the backend schema (`--postmark-api-key` → `postmark_api_key`).
 
-Save a credential. Long-option names are camel-cased into JSON keys (`--api-key` → `apiKey`). Repeated calls merge fields into the existing entry.
+The `--server` flag is accepted on `set`, `get`, and `unset`. `list --server` is not supported (there is no server list endpoint) — use `get <kind> --server` to check a specific kind.
+
+### `rip cred set <kind> [--<field>=<value>]… [--server]`
+
+Save a credential. Repeated calls merge fields into the existing entry.
 
 ```bash
 rip cred set twitter --consumer-key=ck_... --consumer-secret=cs_... \
                      --access-token=at_... --access-secret=as_...
 rip cred set reddit --token=rd_...
+rip cred set email-outbound --postmark-api-key=pm_... --server   # account-scoped on the backend
 ```
 
-### `rip cred get <kind>`
+### `rip cred get <kind> [--server]`
 
-Print the stored JSON object for a kind. Exits 1 with `CRED_NOT_FOUND` if absent. Human mode prints the bare object (so scripts can `JSON.parse`); `--json` mode wraps it in `{ ok: true, data: {...} }`.
+Print the stored JSON object for a kind. Exits 1 with `CRED_NOT_FOUND` if absent. Local: human mode prints the bare object (so scripts can `JSON.parse`); `--json` mode wraps it in `{ ok: true, data: {...} }`. With `--server` the result is **existence-only** — the backend never returns the secret value, so it prints `{ configured: true }` (or exits 1 if not configured).
 
 ```bash
 rip cred get twitter
 rip cred get twitter | jq .consumerKey
+rip cred get email-outbound --server   # → { "configured": true }
 ```
 
 ### `rip cred list`
 
-List the kinds currently stored. Human mode prints one kind per line; `--json` mode emits `{ kinds: [...] }`.
+List the kinds currently stored locally. Human mode prints one kind per line; `--json` mode emits `{ kinds: [...] }`. `--server` is unsupported (no server list endpoint) — it prints a clean message and exits 0.
 
 ```bash
 rip cred list
 ```
 
-### `rip cred unset <kind>`
+### `rip cred unset <kind> [--server]`
 
-Remove a kind. Exits 1 with `CRED_NOT_FOUND` if absent.
+Remove a kind. Exits 1 with `CRED_NOT_FOUND` if absent. `--server` removes the account-scoped backend credential instead of the local file.
 
 ```bash
 rip cred unset twitter
+rip cred unset email-outbound --server
 ```
 
 ## Config commands

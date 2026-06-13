@@ -248,12 +248,15 @@ artifact
   .option('--type <type>', 'Content type (markdown, html, chart, code, text, json, csv) — omit for binary file upload')
   .option('--description <text>', 'Version description')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
+  .option('--title <title>', 'Also update the artifact title (applied via a follow-up patch)')
+  .option('--alias <alias>', 'Also update the artifact alias (applied via a follow-up patch)')
   .option('--dry-run', 'Validate without publishing')
   .description('Publish a new version of an existing artifact')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact update 550e8400-... report-v2.md --type markdown
   $ rip artifact update 550e8400-... chart.png --description "with axes fixed"
+  $ rip artifact update my-doc report-v2.md --type markdown --title "Report (v2)"
 `)
   .action(wrapCommand(update));
 
@@ -480,6 +483,40 @@ EXAMPLES:
   $ rip artifact patch my-post --description "A helpful description"
 `)
   .action(wrapCommand(patch));
+
+// Share / un-share an existing artifact with teams (Moa debrief §3.4).
+const artifactTeam = artifact
+  .command('team')
+  .description('Share or un-share an existing artifact with teams');
+
+artifactTeam
+  .command('add')
+  .argument('<identifier>', 'Artifact UUID or alias')
+  .argument('<teams...>', 'One or more team slugs (or local team aliases)')
+  .description('Share an existing artifact with one or more teams')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact team add my-report acme-team
+  $ rip artifact team add 550e8400-... acme-team beta-squad
+`)
+  .action(wrapCommand(async (identifier, teams) => {
+    const { artifactTeamAdd } = await import('./commands/artifact-teams.js');
+    await artifactTeamAdd(identifier, teams);
+  }));
+
+artifactTeam
+  .command('remove')
+  .argument('<identifier>', 'Artifact UUID or alias')
+  .argument('<team>', 'Team slug (or local team alias) to un-share from')
+  .description('Un-share an existing artifact from a team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact team remove my-report acme-team
+`)
+  .action(wrapCommand(async (identifier, team) => {
+    const { artifactTeamRemove } = await import('./commands/artifact-teams.js');
+    await artifactTeamRemove(identifier, team);
+  }));
 
 // ── table commands ──────────────────────────────────────────────────
 const table = program
@@ -1934,7 +1971,7 @@ EXAMPLES:
 // ── cred commands ────────────────────────────────────────────────────
 const cred = program
   .command('cred')
-  .description('Manage local tool credentials stored under ~/.config/tokenrip/credentials.json');
+  .description('Manage tool credentials (local file by default, or --server for account-scoped)');
 
 cred
   .command('set')
@@ -1945,58 +1982,78 @@ cred
 EXAMPLES:
   $ rip cred set twitter --api-key=abc --api-secret=xyz
   $ rip cred set reddit --token=def
+  $ rip cred set email-outbound --postmark-api-key=pm --server
 
 NOTES:
-  Long-option names are camel-cased into JSON keys:
+  Local mode (default) camel-cases long-option names into JSON keys:
     --api-key  -> apiKey
     --api-secret -> apiSecret
   The credentials file is written with mode 0600.
+
+  --server stores the credential account-scoped on the backend (requires auth).
+  In --server mode option names are kept snake_case to match the backend schema:
+    --postmark-api-key -> postmark_api_key
 `)
   .action(wrapCommand(async (kind: string, _opts: unknown, cmd: { args: string[] }) => {
     const { credSet } = await import('./commands/cred.js');
     // commander gives us the positional + every unknown option in cmd.args
-    // when allowUnknownOption is enabled. Drop the leading <kind>.
-    const rawArgs = cmd.args.slice(1);
-    await credSet(kind, rawArgs);
+    // when allowUnknownOption is enabled. Drop the leading <kind>, then pull
+    // out our own `--server` flag (it must not be treated as a field).
+    const rest = cmd.args.slice(1);
+    const server = rest.includes('--server');
+    const rawArgs = rest.filter((a) => a !== '--server');
+    await credSet(kind, rawArgs, { server });
   }));
 
 cred
   .command('get')
   .argument('<kind>', 'Credential kind to retrieve')
+  .option('--server', 'Read from the server (account-scoped) instead of locally')
   .description('Print the stored credential as JSON. Exits 1 if missing.')
   .addHelpText('after', `
 EXAMPLES:
   $ rip cred get twitter
   $ rip cred get twitter | jq .consumerKey
+  $ rip cred get email-outbound --server   # prints { "configured": true } or exits 1
+
+NOTES:
+  --server checks existence only — the backend never returns the secret value.
 `)
-  .action(wrapCommand(async (kind: string) => {
+  .action(wrapCommand(async (kind: string, opts: { server?: boolean }) => {
     const { credGet } = await import('./commands/cred.js');
-    await credGet(kind);
+    await credGet(kind, { server: opts.server });
   }));
 
 cred
   .command('list')
+  .option('--server', 'Target the server (account-scoped) instead of the local file')
   .description('List the kinds of credentials currently stored')
   .addHelpText('after', `
 EXAMPLES:
   $ rip cred list
+
+NOTES:
+  --server is not supported for listing (no server list endpoint). Use
+  \`rip cred get <kind> --server\` to check a specific kind.
 `)
-  .action(wrapCommand(async () => {
+  .action(wrapCommand(async (opts: { server?: boolean }) => {
     const { credList } = await import('./commands/cred.js');
-    await credList();
+    await credList({ server: opts.server });
   }));
 
 cred
   .command('unset')
   .argument('<kind>', 'Credential kind to remove')
+  .option('--server', 'Remove from the server (account-scoped) instead of locally')
   .description('Remove a stored credential')
   .addHelpText('after', `
 EXAMPLES:
   $ rip cred unset twitter
+  $ rip cred unset email-outbound --server
 `)
-  .action(wrapCommand(async (kind: string) => {
+  .action(wrapCommand(async (kind: string, opts: { server?: boolean }) => {
     const { credUnset } = await import('./commands/cred.js');
-    await credUnset(kind);
+    await credUnset(kind, { server: opts.server });
   }));
 
 // ── team commands ────────────────────────────────────────────────────

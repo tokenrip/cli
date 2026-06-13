@@ -407,7 +407,7 @@ rip surface delete <publicId> --yes                          # permanent delete
 
 The `--bindings` file is a JSON object: `{ "<bindingKey>": { "kind": "mount_table" | "artifact", ... } }`. Each binding key must match `^[a-z][a-z0-9_-]*$`. Get the recommended shape from the inspect commands above. Bindings, when supplied to `update`, replace the entire map (not merged).
 
-Every `publish` and `update` triggers a headless Playwright validation. The summary is attached to the response. Mutating SDK calls reject with `validation_blocked` during validation runs — generated UIs should detect `surface.info().runtime === 'validation'` and degrade gracefully. If `validation.errorCount > 0`, fix the HTML via `rip surface update` before asking the operator to promote.
+Every `publish` and `update` triggers a headless Playwright validation. The `validation` object is attached to the response and carries the counts **plus the diagnostic arrays** — `errors`, `warnings`, `accessibility`, `overflow`, `blockedNetworkAttempts` (each finding has `kind` + `message`; console errors include `metadata.location`). When `validation.errorCount > 0`, read `validation.errors` to see exactly what failed and fix the HTML via `rip surface update` before asking the operator to promote — no need to render the draft. Mutating SDK calls reject with `validation_blocked` during validation runs — generated UIs should detect `surface.info().runtime === 'validation'` and degrade gracefully.
 
 Restore does NOT auto-validate. The command tells you to run `rip surface validate` as a follow-up.
 
@@ -563,6 +563,15 @@ rip cred get twitter | jq .consumerKey
 ```
 
 When a Tokenrip agent declares a `kind`-form tool (e.g. `{ "kind": "twitter", "bind": "tw" }`), `agent_load` runs a two-phase handshake: the bootloader probes your environment, you re-invoke with `capabilities: [...]`, and the resolver picks the best impl. If a required tool resolves to nothing, the brain's Phase 0 reads `unavailableTools[]` and relays a `setupHint` to the operator — usually a copy-pasteable `rip cred set <kind> …` command.
+
+### Server-stored credentials (`--server`)
+
+Some tools run **server-side** (`backend` execution mode) and need their credential stored on the backend, not in your local file — e.g. `email-outbound` lets an operator bring their own Postmark domain. Add `--server` to store the credential account-scoped on the backend instead of the local file (requires auth). The platform reads it directly at execute time; it's never returned, so `get <kind> --server` reports existence only (`{ configured: true }`). Server-mode field flags are snake_case to match the backend schema.
+
+```bash
+rip cred set email-outbound --postmark-api-key=pm_... --server
+rip cred get email-outbound --server   # → { "configured": true }
+```
 
 ## Operator Dashboard
 

@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.6.6
+version: 1.6.8
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.6.6 -->
+<!-- tokenrip-skill-version: 1.6.8 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -231,6 +231,10 @@ Organizing into a folder?
 Both team and folder?
   → rip artifact publish <file> --type markdown --title "..." --team <slug> --folder <slug>
 
+Share an ALREADY-published artifact with a team (or un-share)?
+  → rip artifact team add <id-or-alias> <slug> [<slug>...]
+  → rip artifact team remove <id-or-alias> <slug>
+
 Team thread?
   → rip thread create --team <slug> --collaborators alice --message "..."
 
@@ -258,7 +262,8 @@ Fix metadata (title, description, alias) without a new version?
   → rip artifact patch <id-or-alias> --alias my-slug
 
 Publish a new version (content changed)?
-  → rip artifact update <uuid> <file> --type markdown --label "revised"
+  → rip artifact update <id-or-alias> <file> --type markdown --description "revised"
+  → rip artifact update <id-or-alias> <file> --type markdown --title "New Title"   # version + retitle in one call
 
 See what changed between a version and the one before it?
   → rip artifact diff <id-or-alias>            # current version vs. previous

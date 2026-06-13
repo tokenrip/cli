@@ -21,6 +21,13 @@ import { getFrontendUrl } from '../config.js';
 
 // ── shared shapes ────────────────────────────────────────────────────
 
+interface ValidationDiagnostic {
+  kind: string;
+  message?: string;
+  url?: string;
+  metadata?: Record<string, unknown>;
+}
+
 interface ValidationSummary {
   ok: boolean;
   errorCount: number;
@@ -28,6 +35,14 @@ interface ValidationSummary {
   revisionId: string | null;
   validatedAt?: string;
   loadTimeMs?: number;
+  // Diagnostic detail — present on create / update / validate responses
+  // (backend echoes the arrays so a failing surface is debuggable from the
+  // CLI). Older backends omit these; the formatter degrades to counts.
+  errors?: ValidationDiagnostic[];
+  warnings?: ValidationDiagnostic[];
+  accessibility?: ValidationDiagnostic[];
+  overflow?: ValidationDiagnostic[];
+  blockedNetworkAttempts?: ValidationDiagnostic[];
 }
 
 interface SurfaceRevisionSummary {
@@ -92,10 +107,48 @@ function surfaceUrl(publicId: string): string {
 
 function formatValidationLine(v: ValidationSummary | null | undefined): string {
   if (!v) return 'Validation: (not run)';
-  if (v.ok) {
-    return `Validated ✓ (${v.errorCount} errors, ${v.warningCount} warnings)`;
-  }
-  return `Failed ✗ (${v.errorCount} errors, ${v.warningCount} warnings)`;
+  const head = v.ok
+    ? `Validated ✓ (${v.errorCount} errors, ${v.warningCount} warnings)`
+    : `Failed ✗ (${v.errorCount} errors, ${v.warningCount} warnings)`;
+  const detail = formatValidationDetail(v);
+  return detail ? `${head}\n${detail}` : head;
+}
+
+/**
+ * Render the per-finding diagnostic detail the backend now echoes on
+ * create / update / validate responses. Without this, a `Failed ✗ (1 error)`
+ * line is undebuggable from the CLI (the historical 3.1 gap). Degrades to ''
+ * when an older backend omits the arrays.
+ */
+function formatValidationDetail(v: ValidationSummary): string {
+  const lines: string[] = [];
+  const section = (label: string, items?: ValidationDiagnostic[]) => {
+    if (!items || items.length === 0) return;
+    lines.push(`  ${label}:`);
+    for (const d of items) {
+      const loc =
+        d.metadata && typeof d.metadata === 'object'
+          ? formatLocation((d.metadata as Record<string, unknown>).location)
+          : '';
+      const where = d.url ? ` (${d.url})` : loc ? ` (${loc})` : '';
+      lines.push(`    - [${d.kind}] ${d.message ?? ''}${where}`.trimEnd());
+    }
+  };
+  section('Errors', v.errors);
+  section('Blocked network', v.blockedNetworkAttempts);
+  section('Accessibility', v.accessibility);
+  section('Overflow', v.overflow);
+  section('Warnings', v.warnings);
+  return lines.join('\n');
+}
+
+function formatLocation(loc: unknown): string {
+  if (!loc || typeof loc !== 'object') return '';
+  const l = loc as { url?: string; lineNumber?: number; columnNumber?: number };
+  if (!l.url) return '';
+  const line = typeof l.lineNumber === 'number' ? `:${l.lineNumber}` : '';
+  const col = typeof l.columnNumber === 'number' ? `:${l.columnNumber}` : '';
+  return `${l.url}${line}${col}`;
 }
 
 function statusPill(s: string): string {
