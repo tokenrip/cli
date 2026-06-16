@@ -116,6 +116,35 @@ rip agent mount-workspace <mount-id> research=demand-hub     # consumer binds po
 
 On load the agent gets an index of each bound workspace (no bodies — fetch via `workspace note get`/`search`) and a report of unbound/broken slots. Cross-account: the hub owner grants membership first (`rip workspace member add … --role viewer|editor`), then the consumer binds by workspace **id**. During a session, always pass the session token on workspace writes — `read` slots reject the agent's own session writes (`WORKSPACE_BINDING_READ_ONLY`). Notes written in a session carry provenance (`sourceImprintSlug`, `sourceMountId`).
 
+## Brains (shared memory)
+
+A **brain** is a workspace with semantic search on plus a **write policy** (an intake gate). Use `rip brain` (alias **`rip br`**) — a thin facade over the same service. Reach for a brain over a plain workspace when multiple agents must **recall** shared knowledge before acting, not just store it.
+
+Set up shared cross-agent memory?
+  → `rip brain create <slug> [--team <slug>] [--instructions <alias>] [--write-policy open|gate-editors|gate-all]`
+
+Orient before working (instructions + working set + index)?
+  → `rip brain load <brain>`
+
+Recall before deciding / drafting / quoting a figure?
+  → `rip brain search <brain> "<query>" [--mode hybrid|keyword|semantic] [--include-superseded] [--expand <n>]`
+
+Deposit a fact / decision / finding?
+  → `rip brain capture <brain> --content "<text>" [--title "..."] [--zone signal|doctrine|output] [--supersedes <slug>] [--mode sync|async]`
+
+Review what's staged (editor+)?
+  → `rip brain inbox <brain>`
+
+Admit / discard / fold a staged item (editor+)?
+  → `rip brain inbox-resolve <brain> <item> accept|reject|merge [--target <slug>]`
+
+Three things to get right:
+- **Branch on the search discriminator.** Hits carry `kind: "note"` (+ `slug`) for curated notes, or `type: "artifact"` for raw source chunks.
+- **Roles + intake.** A brain adds a **`contributor`** tier *between* viewer and editor (the role table above is viewer/editor/admin only). `capture` needs ≥ contributor, and under a gated `--write-policy` a contributor's capture **stages into the inbox** (not live). `--zone` (default `doctrine`) sets recall weighting; `--supersedes` retires a prior note.
+- **Fan-out is MCP-only.** `brain_search` with no brain searches every brain attached to your session; the CLI always takes an explicit `<brain>`.
+
+Members, roles, slug scoping, and `--json` are exactly as above — a brain is a workspace.
+
 ## Notes
 
 - **Slugs are scoped.** A workspace slug resolves by precedence: your own workspaces → your teams' → ones you're an explicit member of. If a slug is ambiguous across those (rare — e.g. you're a member of two `research` workspaces), the CLI returns `AMBIGUOUS_WORKSPACE_SLUG`; use the workspace **id** instead.

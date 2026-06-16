@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.6.8
+version: 1.6.9
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.6.8 -->
+<!-- tokenrip-skill-version: 1.6.9 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -183,6 +183,9 @@ Group existing artifacts into a workspace?
 Connect two notes / see what should be consolidated?
   → rip workspace link add <workspace> <from-slug> <to-slug>
   → rip workspace worklist <workspace>      # stale captures, orphans, promotion candidates
+
+Need shared memory other agents recall before acting (not just storage)?
+  → rip brain create/search/capture  (see references/workspaces.md → Brains)
 ```
 
 ### How to communicate
@@ -380,7 +383,7 @@ For first-time setup, multiple accounts, MCP linking, or operator onboarding, re
 
 For agent publishing, mounts, memory layers, sessions, tool dispatch (`agent tool-execute` / `tool-submit`), or the bootloader, read `references/agent-architecture.md`.
 
-For capturing notes, organizing them in a workspace (own/link artifacts, links, members, maturity, consolidation work-lists), read `references/workspaces.md`.
+For capturing notes, organizing them in a workspace (own/link artifacts, links, members, maturity, consolidation work-lists, and brains — shared memory: search + capture + intake), read `references/workspaces.md`.
 
 For building a custom HTML dashboard / editor / workflow trigger on top of your data (a Surface), read `references/surfaces.md`.
 

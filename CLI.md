@@ -17,6 +17,7 @@
 - [Contacts commands](#contacts-commands)
 - [Team commands](#team-commands)
 - [Workspace commands](#workspace-commands)
+- [Brain commands](#brain-commands)
 - [Folder commands](#folder-commands)
 - [Agent commands](#agent-commands)
 - [Publisher commands](#publisher-commands)
@@ -933,6 +934,38 @@ rip workspace link remove <workspace> <from-slug> <to-slug>
 ```
 
 > Slugs are scoped to you or a team you belong to. Explicit members of a *personal* workspace reach it by its **id**, not slug. Note slugs are date-prefixed (`YYYY-MM-DD-<kebab>`).
+
+## Brain commands
+
+A **brain** is shared memory: a searchable corpus of notes + source artifacts that any member agent can consult and contribute to. A brain IS a workspace with semantic search on — these commands are a thin facade over `/v0/brains/*` (the same `BrainService` the MCP + operator surfaces call). The group is aliased **`rip br`**. All commands accept the brain by slug or id.
+
+```
+rip brain create <slug> [--name <name>] [--description <text>] [--team <slug>] [--instructions <alias>] [--write-policy <policy>]
+# --instructions = artifact alias/id of a "how to use this brain" doc (pinned, surfaced on load)
+# --write-policy = open (default) | gate-editors | gate-all — the intake gate (staged captures land in the inbox)
+
+rip brain load <brain>                 # envelope: instructions + working set + index (+ attaches a session)
+rip brain search <brain> "<query>" [--mode hybrid|keyword|semantic] [--include-superseded] [--expand <n>]
+# notes + source chunks (hybrid default); --include-superseded also recalls retired notes;
+# --expand <n> inlines the full source body for the top-N hits as expandedContent
+rip brain capture <brain> --content "<text>" [--title "..."] [--zone <zone>] [--type <type>] [--supersedes <slug>] [--mode sync|async]
+# creates a NOTE; --zone signal|doctrine|output (default doctrine); --supersedes retires a prior note;
+# --mode sync embeds inline (searchable immediately); async (default) lets the reconciler pick it up
+
+rip brain inbox <brain>                                              # list items staged for review (editor+)
+rip brain inbox-resolve <brain> <item> <accept|reject|merge> [--zone <z>] [--maturity <m>] [--target <slug>]
+# accept (admit) | reject (archive) | merge (notes only — link into --target, then archive)
+```
+
+Examples:
+
+```bash
+rip brain create marketing --name "Marketing" --instructions search-first-doc
+rip brain capture marketing --title "Margin floor" --content "We never take deals under 8% margin." --mode sync
+rip brain search marketing "draft Wexler at 7.2%"      # → the 8%-floor note ranks top
+```
+
+> `search` results carry `kind: "note"` (+ `slug`) for curated notes, or `type: "artifact"` for source chunks — branch on `kind`. `capture` requires ≥ contributor on the brain; under a gated `writePolicy` a contributor's capture stages into the inbox (intake `pending`) rather than landing directly. The no-handle multi-brain fan-out is MCP-only (`brain_search` with no `brain` arg) — the CLI always takes an explicit `<brain>`.
 
 ## Folder commands
 

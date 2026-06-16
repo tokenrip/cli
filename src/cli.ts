@@ -2500,6 +2500,109 @@ workspaceLinkGroup
     await workspaceLinks(ws, slug);
   }));
 
+// ── brain commands ──────────────────────────────────────────────────
+// A brain IS a workspace with semantic search on. These commands are a thin
+// facade over `/v0/brains/*` — the same BrainService the MCP + operator
+// surfaces call. Capture deposits an artifact; search recalls notes + chunks.
+const brain = program
+  .command('brain')
+  .alias('br')
+  .description('Brains — shared memory: deposit knowledge, recall it across sessions');
+
+brain
+  .command('create')
+  .argument('<slug>', 'Brain slug (unique within your account or team)')
+  .option('--name <name>', 'Display name (defaults to slug)')
+  .option('--description <text>', 'Brain description')
+  .option('--team <slug>', 'Make this a team-owned brain')
+  .option('--instructions <alias>', 'Artifact alias/id of a "how to use this brain" doc')
+  .option('--write-policy <policy>', 'open | gate-editors | gate-all (intake gate; default open)')
+  .description('Create a brain (a semantic workspace)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip brain create marketing --name "Marketing"
+  $ rip brain create marketing --instructions search-first-doc
+`)
+  .action(wrapCommand(async (slug, options) => {
+    const { brainCreate } = await import('./commands/brain.js');
+    await brainCreate(slug, options);
+  }));
+
+brain
+  .command('load')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Load a brain envelope — instructions, working set, and index')
+  .action(wrapCommand(async (br, options) => {
+    const { brainLoad } = await import('./commands/brain.js');
+    await brainLoad(br, options);
+  }));
+
+brain
+  .command('search')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<query>', 'Search query')
+  .option('--mode <mode>', 'hybrid | keyword | semantic (default hybrid)')
+  .option('--include-superseded', 'Include retired (superseded) notes, flagged')
+  .option('--expand <n>', 'Inline the full source body for the top-N hits (1–10)')
+  .description('Search a brain — unified hybrid over notes + source chunks')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip brain search marketing "draft Wexler at 7.2%"
+  $ rip brain search marketing "margin floor" --mode semantic
+`)
+  .action(wrapCommand(async (br, query, options) => {
+    const { brainSearch } = await import('./commands/brain.js');
+    await brainSearch(br, query, options);
+  }));
+
+brain
+  .command('capture')
+  .argument('<brain>', 'Brain id or slug')
+  .option('--content <text>', 'Inline content / claim to record (required)')
+  .option('--title <title>', 'Short title (derived from the content if omitted)')
+  .option('--zone <zone>', 'signal | doctrine | output (default doctrine)')
+  .option('--type <type>', 'Claim shape: claim | thesis | proof-point | one-liner')
+  .option('--supersedes <slug>', 'Slug of a note this claim retires (fact-correction)')
+  .option('--mode <mode>', 'sync (embed inline) | async (reconciler picks it up, default)')
+  .description('Record knowledge into a brain as a zoned note (routed by write policy)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip brain capture marketing \\
+    --content "We never take deals under 8% margin." --zone doctrine --mode sync
+`)
+  .action(wrapCommand(async (br, options) => {
+    const { brainCapture } = await import('./commands/brain.js');
+    await brainCapture(br, options);
+  }));
+
+brain
+  .command('inbox')
+  .argument('<brain>', 'Brain id or slug')
+  .description('List the brain inbox — items staged for review (editor+)')
+  .action(wrapCommand(async (br) => {
+    const { brainInbox } = await import('./commands/brain.js');
+    await brainInbox(br);
+  }));
+
+brain
+  .command('inbox-resolve')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<item>', 'Inbox item ref (note slug / artifact publicId)')
+  .argument('<action>', 'accept | reject | merge')
+  .option('--zone <zone>', 'On accept, set the note zone')
+  .option('--maturity <maturity>', 'On accept, promote the note to this maturity')
+  .option('--target <slug>', 'On merge, the target note slug to link into')
+  .description('Resolve a staged inbox item (editor+)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip brain inbox-resolve acme 2026-06-15-margin-floor accept
+  $ rip brain inbox-resolve acme draft-note merge --target canonical-note
+`)
+  .action(wrapCommand(async (br, item, action, options) => {
+    const { brainInboxResolve } = await import('./commands/brain.js');
+    await brainInboxResolve(br, item, action, options);
+  }));
+
 // ── folder commands ─────────────────────────────────────────────────
 const folder = program
   .command('folder')
