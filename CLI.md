@@ -903,10 +903,11 @@ rip workspace delete <workspace>        # destroys OWNED items, unfiles LINKED o
 
 # Notes (capture / structured / search) — "rip ws …" is shorthand for "rip workspace …"
 rip workspace capture <workspace> "<raw text>"
-rip workspace note set <workspace> --title "..." --body "..." [--maturity <state>]   # create
+rip workspace note set <workspace> --title "..." --body "..." [--maturity <state>] [--source-artifact <publicId>]   # create
+# --source-artifact = (create only) records the note as an atom of that source artifact
 rip workspace note set <workspace> --slug <note-slug> --body "..."  # update
 rip workspace note get <workspace> <note-slug>
-rip workspace note list <workspace> [--archived | --include-archived]   # default hides archived
+rip workspace note list <workspace> [--archived | --include-archived] [--source-artifact <publicId>]   # default hides archived; --source-artifact lists only that source's atoms
 rip workspace note promote <workspace> <note-slug>               # advance one maturity step (gated)
 rip workspace note archive <workspace> <note-slug>               # hide from the default list
 rip workspace note unarchive <workspace> <note-slug>             # restore an archived note
@@ -914,6 +915,8 @@ rip workspace note delete <workspace> <note-slug>                # permanent (al
 rip workspace search <workspace> "<query>"                       # full-text search
 
 # Consolidation work-list (stale captures / orphans / promotion candidates / stale top-tier)
+# When the workspace is a brain, also returns brain candidate-sets:
+#   unAtomizedSources (ranked by retrieval hotness) / staleAtomSources / recurringSignals / pendingInbox (editor-gated)
 rip workspace worklist <workspace> [--stale-capture-days <n>] [--stale-top-tier-days <n>]
 
 # Members (viewer | editor | admin)
@@ -940,11 +943,15 @@ rip workspace link remove <workspace> <from-slug> <to-slug>
 A **brain** is shared memory: a searchable corpus of notes + source artifacts that any member agent can consult and contribute to. A brain IS a workspace with semantic search on — these commands are a thin facade over `/v0/brains/*` (the same `BrainService` the MCP + operator surfaces call). The group is aliased **`rip br`**. All commands accept the brain by slug or id.
 
 ```
-rip brain create <slug> [--name <name>] [--description <text>] [--team <slug>] [--instructions <alias>] [--write-policy <policy>]
+rip brain create <slug> [--name <name>] [--description <text>] [--team <slug>] [--instructions <alias>] [--write-policy <policy>] [--atomize-playbook <alias>] [--consolidate-playbook <alias>]
 # --instructions = artifact alias/id of a "how to use this brain" doc (pinned, surfaced on load)
 # --write-policy = open (default) | gate-editors | gate-all — the intake gate (staged captures land in the inbox)
+# --atomize-playbook / --consolidate-playbook = artifact alias/id pinning a per-brain override for that refinement command (default uses the built-in playbook)
 
 rip brain load <brain>                 # envelope: instructions + working set + index (+ attaches a session)
+rip brain load <brain> --command <atomize|consolidate>   # loads that command's refinement playbook as the envelope's `flow` block
+rip brain consolidate <brain>          # shortcut for: brain load <brain> --command consolidate
+rip brain atomize <brain>              # shortcut for: brain load <brain> --command atomize
 rip brain search <brain> "<query>" [--mode hybrid|keyword|semantic] [--include-superseded] [--expand <n>]
 # notes + source chunks (hybrid default); --include-superseded also recalls retired notes;
 # --expand <n> inlines the full source body for the top-N hits as expandedContent

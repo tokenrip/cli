@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.6.9
+version: 1.6.10
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +56,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.6.9 -->
+<!-- tokenrip-skill-version: 1.6.10 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -186,6 +186,9 @@ Connect two notes / see what should be consolidated?
 
 Need shared memory other agents recall before acting (not just storage)?
   → rip brain create/search/capture  (see references/workspaces.md → Brains)
+
+Refine a brain — distil raw sources into atoms, or consolidate the note spine?
+  → rip brain atomize <brain> / rip brain consolidate <brain>  (loads a refinement playbook; see references/workspaces.md → Brains)
 ```
 
 ### How to communicate

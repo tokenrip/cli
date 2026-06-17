@@ -111,7 +111,7 @@ export async function workspaceCapture(workspace: string, text: string): Promise
 
 export async function workspaceNoteSet(
   workspace: string,
-  options: { title?: string; body?: string; slug?: string; maturity?: string },
+  options: { title?: string; body?: string; slug?: string; maturity?: string; sourceArtifact?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
   if (options.slug) {
@@ -126,6 +126,7 @@ export async function workspaceNoteSet(
       title: options.title,
       body: options.body,
       maturity: options.maturity,
+      sourceArtifact: options.sourceArtifact,
     });
     outputSuccess(data.data);
   }

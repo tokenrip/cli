@@ -12,7 +12,7 @@ function ref(brain: string): string {
 
 export async function brainCreate(
   slug: string,
-  options: { name?: string; description?: string; team?: string; instructions?: string; writePolicy?: string } = {},
+  options: { name?: string; description?: string; team?: string; instructions?: string; writePolicy?: string; atomizePlaybook?: string; consolidatePlaybook?: string } = {},
 ): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.post('/v0/brains', {
@@ -22,14 +22,27 @@ export async function brainCreate(
     team: options.team,
     instructions: options.instructions,
     writePolicy: options.writePolicy,
+    atomizePlaybook: options.atomizePlaybook,
+    consolidatePlaybook: options.consolidatePlaybook,
   });
   outputSuccess(data.data);
 }
 
-export async function brainLoad(brain: string, _options: Record<string, unknown> = {}): Promise<void> {
+export async function brainLoad(brain: string, options: { command?: string } = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/brains/${ref(brain)}/load`);
+  const qs = options.command ? `?command=${encodeURIComponent(options.command)}` : '';
+  const { data } = await client.get(`/v0/brains/${ref(brain)}/load${qs}`);
   outputSuccess(data.data);
+}
+
+/** `rip brain consolidate <brain>` — load the consolidate playbook as flow. */
+export function brainConsolidate(brain: string): Promise<void> {
+  return brainLoad(brain, { command: 'consolidate' });
+}
+
+/** `rip brain atomize <brain>` — load the atomize playbook as flow. */
+export function brainAtomize(brain: string): Promise<void> {
+  return brainLoad(brain, { command: 'atomize' });
 }
 
 export async function brainSearch(

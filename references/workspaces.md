@@ -47,6 +47,7 @@ At most **one** workspace can *own* a given artifact (409 `ALREADY_OWNED` otherw
 
 ```bash
 rip workspace note set research --title "Quarterly goals" --body "Ship Slice 1"   # create
+rip workspace note set research --title "Atom" --body "..." --source-artifact <publicId>   # create as an atom of a source (create only)
 rip workspace note set research --slug 2026-05-29-quarterly-goals --body "..."     # update by slug
 rip workspace note get research 2026-05-29-quarterly-goals
 rip workspace note list research                              # active notes (archived hidden)
@@ -59,6 +60,8 @@ rip workspace link list research 2026-05-29-quarterly-goals
 ```
 
 Each note tracks how many notes link *to* it (`backlinkCount`). **Archiving** hides a note from the default list and the agent's eager `agent_load` tiers without deleting it — list it back with `--archived` and restore with `note unarchive`.
+
+`--source-artifact <publicId>` is a **create-only** flag: it records the note as an *atom* of that source artifact (the atom→source link). It can't be changed on update. Use it when a note distils one source — `note list research --source-artifact <publicId>` then lists only the atoms of that source.
 
 ## Members and roles
 
@@ -91,6 +94,7 @@ rip workspace worklist research --stale-capture-days 14 --stale-top-tier-days 60
 
 - Promotion advances exactly one step along the configured order; a `min-backlinks-N` rule requires the note to have ≥ N backlinks first (else `PROMOTION_BLOCKED`).
 - `worklist` returns four candidate sets for the consolidation/absorb ritual: **staleCaptures**, **orphans** (no backlinks), **promotionCandidates**, **staleTopTier**. It's a read — the harness (not the backend) decides what to do with them, using the write tools above (`note set` / `note promote` / `link add` / archive).
+- When the workspace is a **brain**, `worklist` also returns brain candidate-sets (all brain-membership-scoped): **unAtomizedSources** (source artifacts with no atoms yet, ranked by retrieval hotness), **staleAtomSources** (sources whose atoms have drifted from the current source version), **recurringSignals** (signals that keep resurfacing and may deserve a note), and **pendingInbox** (staged items awaiting an editor — editor-gated). These feed the `atomize` / `consolidate` rituals above.
 
 ## Delete
 
@@ -121,10 +125,14 @@ On load the agent gets an index of each bound workspace (no bodies — fetch via
 A **brain** is a workspace with semantic search on plus a **write policy** (an intake gate). Use `rip brain` (alias **`rip br`**) — a thin facade over the same service. Reach for a brain over a plain workspace when multiple agents must **recall** shared knowledge before acting, not just store it.
 
 Set up shared cross-agent memory?
-  → `rip brain create <slug> [--team <slug>] [--instructions <alias>] [--write-policy open|gate-editors|gate-all]`
+  → `rip brain create <slug> [--team <slug>] [--instructions <alias>] [--write-policy open|gate-editors|gate-all] [--atomize-playbook <alias>] [--consolidate-playbook <alias>]`
 
 Orient before working (instructions + working set + index)?
   → `rip brain load <brain>`
+
+Run a refinement ritual (atomize raw sources / consolidate the note spine)?
+  → `rip brain load <brain> --command <atomize|consolidate>`   # loads the playbook as the envelope's `flow` block
+  → `rip brain consolidate <brain>` / `rip brain atomize <brain>`   # shortcuts for the two commands
 
 Recall before deciding / drafting / quoting a figure?
   → `rip brain search <brain> "<query>" [--mode hybrid|keyword|semantic] [--include-superseded] [--expand <n>]`
@@ -142,6 +150,8 @@ Three things to get right:
 - **Branch on the search discriminator.** Hits carry `kind: "note"` (+ `slug`) for curated notes, or `type: "artifact"` for raw source chunks.
 - **Roles + intake.** A brain adds a **`contributor`** tier *between* viewer and editor (the role table above is viewer/editor/admin only). `capture` needs ≥ contributor, and under a gated `--write-policy` a contributor's capture **stages into the inbox** (not live). `--zone` (default `doctrine`) sets recall weighting; `--supersedes` retires a prior note.
 - **Fan-out is MCP-only.** `brain_search` with no brain searches every brain attached to your session; the CLI always takes an explicit `<brain>`.
+
+**Refinement playbooks.** `--command atomize|consolidate` swaps that command's playbook into the load envelope's `flow` block so a spine agent runs the ritual. By default the command resolves a built-in playbook; pin a per-brain override at creation with `--atomize-playbook <alias>` / `--consolidate-playbook <alias>` (artifact alias/id) when a brain needs its own house rules.
 
 Members, roles, slug scoping, and `--json` are exactly as above — a brain is a workspace.
 

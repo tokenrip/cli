@@ -2406,6 +2406,7 @@ workspaceNote
   .option('--body <body>', 'Note body')
   .option('--slug <slug>', 'Existing note slug to update (omit to create)')
   .option('--maturity <state>', 'Set the note maturity (must be in the workspace ladder)')
+  .option('--source-artifact <publicId>', 'publicId of the source artifact this note is an atom of (create only)')
   .description('Create or update a note')
   .action(wrapCommand(async (ws, options) => {
     const { workspaceNoteSet } = await import('./commands/workspace.js');
@@ -2517,6 +2518,8 @@ brain
   .option('--team <slug>', 'Make this a team-owned brain')
   .option('--instructions <alias>', 'Artifact alias/id of a "how to use this brain" doc')
   .option('--write-policy <policy>', 'open | gate-editors | gate-all (intake gate; default open)')
+  .option('--atomize-playbook <alias>', 'Artifact alias overriding the system-default atomize playbook')
+  .option('--consolidate-playbook <alias>', 'Artifact alias overriding the system-default consolidate playbook')
   .description('Create a brain (a semantic workspace)')
   .addHelpText('after', `
 EXAMPLES:
@@ -2531,10 +2534,29 @@ EXAMPLES:
 brain
   .command('load')
   .argument('<brain>', 'Brain id or slug')
+  .option('--command <command>', 'Load a refinement playbook as flow: atomize | consolidate')
   .description('Load a brain envelope — instructions, working set, and index')
   .action(wrapCommand(async (br, options) => {
     const { brainLoad } = await import('./commands/brain.js');
     await brainLoad(br, options);
+  }));
+
+brain
+  .command('consolidate')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Load the consolidate playbook as flow (promote / fuse / supersede on a cadence)')
+  .action(wrapCommand(async (br) => {
+    const { brainConsolidate } = await import('./commands/brain.js');
+    await brainConsolidate(br);
+  }));
+
+brain
+  .command('atomize')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Load the atomize playbook as flow (decompose a source into atoms)')
+  .action(wrapCommand(async (br) => {
+    const { brainAtomize } = await import('./commands/brain.js');
+    await brainAtomize(br);
   }));
 
 brain
