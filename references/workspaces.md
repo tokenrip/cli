@@ -125,7 +125,10 @@ On load the agent gets an index of each bound workspace (no bodies — fetch via
 A **brain** is a workspace with semantic search on plus a **write policy** (an intake gate). Use `rip brain` (alias **`rip br`**) — a thin facade over the same service. Reach for a brain over a plain workspace when multiple agents must **recall** shared knowledge before acting, not just store it.
 
 Set up shared cross-agent memory?
-  → `rip brain create <slug> [--team <slug>] [--instructions <alias>] [--write-policy open|gate-editors|gate-all] [--atomize-playbook <alias>] [--consolidate-playbook <alias>]`
+  → `rip brain create <slug> [--team <slug>] [--instructions <alias>] [--write-policy open|gate-editors|gate-all] [--atomize-playbook <alias>] [--consolidate-playbook <alias>] [--visibility private|unlisted|public]`
+
+Open a brain for anonymous read access (or close it again)?
+  → `rip brain visibility <slug> <private|unlisted|public>`   # flips public read on an existing brain; prints the exposure warning when raising it
 
 Orient before working (instructions + working set + index)?
   → `rip brain load <brain>`
@@ -146,12 +149,30 @@ Review what's staged (editor+)?
 Admit / discard / fold a staged item (editor+)?
   → `rip brain inbox-resolve <brain> <item> accept|reject|merge [--target <slug>]`
 
+Edit the routing contract — what the brain is, WHEN to query it (the most important payload of `load`)?
+  → `rip brain instructions get <brain>`   # current instructions, or a recommended what/when/how scaffold if unset
+  → `rip brain instructions set <brain> "<text>"`   # inline → an auto-managed, versioned `<slug>-instructions` artifact
+  → `rip brain instructions set <brain> --artifact <alias>`   # pin an existing artifact (long / shared guidance)
+
+See what you have / inspect one?
+  → `rip brain list` · `rip brain show <brain>`   # `show` adds source/note/member counts + whether instructions are set
+
+Build it (add source documents) / manage members / retire it?
+  → `rip brain source add|list|remove <brain> <item> [--kind artifact|folder]`
+  → `rip brain member add|list|remove <brain> <account> [--role viewer|editor|admin]`
+  → `rip brain archive <brain>` · `rip brain delete <brain>`   # archive = hide (recoverable); delete = owned items destroyed
+
+Re-pin a refinement playbook on an existing brain?
+  → `rip brain playbook <brain> <atomize|consolidate> --artifact <alias>`
+
 Three things to get right:
 - **Branch on the search discriminator.** Hits carry `kind: "note"` (+ `slug`) for curated notes, or `type: "artifact"` for raw source chunks.
 - **Roles + intake.** A brain adds a **`contributor`** tier *between* viewer and editor (the role table above is viewer/editor/admin only). `capture` needs ≥ contributor, and under a gated `--write-policy` a contributor's capture **stages into the inbox** (not live). `--zone` (default `doctrine`) sets recall weighting; `--supersedes` retires a prior note.
 - **Fan-out is MCP-only.** `brain_search` with no brain searches every brain attached to your session; the CLI always takes an explicit `<brain>`.
 
 **Refinement playbooks.** `--command atomize|consolidate` swaps that command's playbook into the load envelope's `flow` block so a spine agent runs the ritual. By default the command resolves a built-in playbook; pin a per-brain override at creation with `--atomize-playbook <alias>` / `--consolidate-playbook <alias>` (artifact alias/id) when a brain needs its own house rules.
+
+**Public read access (visibility).** A brain is `private` by default (members only). `unlisted` makes it anonymously loadable + searchable by-URL (noindex); `public` also makes it discoverable/indexable. Set it at creation with `--visibility` or flip it later with `rip brain visibility <slug> <level>` — raising it above `private` prints an exposure warning, and only owner-controlled content is ever surfaced (superseded + pending notes are withheld). Anonymous reads hit `GET /v0/brains/:owner/:slug/{load,search}` (no auth); the write surface stays members-only.
 
 Members, roles, slug scoping, and `--json` are exactly as above — a brain is a workspace.
 

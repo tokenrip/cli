@@ -2,6 +2,73 @@ import { loadTeams } from './teams.js';
 
 export type Formatter = (data: Record<string, unknown>) => string;
 
+// Null-safe wrapper over the (hoisted) numeric formatBytes below.
+function fmtSize(n: unknown): string {
+  const bytes = typeof n === 'number' ? n : Number(n);
+  return Number.isFinite(bytes) ? formatBytes(bytes) : '?';
+}
+
+export const formatBundleCreated: Formatter = (data) => {
+  const verb = data.dryRun ? 'Would deploy' : data.version && Number(data.version) > 1 ? 'Re-deployed' : 'Deployed';
+  const lines = [`${verb}: ${data.title || '(untitled)'}`];
+  if (data.id) lines.push(`  ID:        ${data.id}`);
+  if (data.slug) lines.push(`  Slug:      ${data.slug}`);
+  // Live + page URLs printed in full on their own lines — agents pipe these.
+  if (data.liveUrl) lines.push(`  Live site: ${data.liveUrl}`);
+  if (data.pageUrl) lines.push(`  Page:      ${data.pageUrl}`);
+  if (data.entrypoint) lines.push(`  Entry:     ${data.entrypoint}`);
+  if (data.fileCount !== undefined) lines.push(`  Files:     ${data.fileCount}`);
+  if (data.sizeBytes !== undefined) lines.push(`  Size:      ${fmtSize(data.sizeBytes)}`);
+  if (data.versionCount !== undefined) lines.push(`  Versions:  ${data.versionCount}`);
+  if (data.currentVersionId) lines.push(`  Version:   ${data.currentVersionId}`);
+  return lines.join('\n');
+};
+
+export const formatBundleList: Formatter = (data) => {
+  const bundles = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(bundles) || bundles.length === 0) return 'No bundles found.';
+  const lines = [`${bundles.length} bundle(s):\n`];
+  for (const b of bundles) {
+    lines.push(`${b.title || '(untitled)'}  [${b.visibility}]`);
+    lines.push(`  ID:        ${b.id}`);
+    if (b.slug) lines.push(`  Slug:      ${b.slug}`);
+    lines.push(`  Live site: ${b.liveUrl}`);
+    lines.push(`  Files:     ${b.fileCount ?? '?'}   Versions: ${b.versionCount ?? '?'}`);
+    if (b.updatedAt) lines.push(`  Updated:   ${b.updatedAt}`);
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
+};
+
+export const formatBundleDetail: Formatter = (data) => {
+  const lines = [`Bundle: ${data.title || '(untitled)'}  [${data.visibility}]`];
+  lines.push(`  ID:        ${data.id}`);
+  if (data.slug) lines.push(`  Slug:      ${data.slug}`);
+  lines.push(`  Live site: ${data.liveUrl}`);
+  lines.push(`  Page:      ${data.pageUrl}`);
+  lines.push(`  API:       ${data.apiUrl}`);
+  lines.push(`  Kind:      ${data.kind}   Entry: ${data.entrypoint}${data.spaFallback ? '   (SPA fallback)' : ''}`);
+  lines.push(`  Versions:  ${data.versionCount}   Files: ${data.fileCount ?? '?'}   Size: ${fmtSize(data.sizeBytes)}`);
+  const manifest = data.manifest as { files?: { path: string; sizeBytes: number }[] } | null;
+  if (manifest && Array.isArray(manifest.files) && manifest.files.length > 0) {
+    lines.push('  Files:');
+    for (const f of manifest.files) lines.push(`    ${f.path}  (${fmtSize(f.sizeBytes)})`);
+  }
+  return lines.join('\n');
+};
+
+export const formatBundleVersions: Formatter = (data) => {
+  const versions = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(versions) || versions.length === 0) return 'No versions found.';
+  const lines = [`${versions.length} version(s):\n`];
+  for (const v of versions) {
+    lines.push(`v${v.version}${v.isCurrent ? '  (current)' : ''}`);
+    if (v.description) lines.push(`  ${v.description}`);
+    lines.push(`  Entry: ${v.entrypoint}   Files: ${v.fileCount ?? '?'}   Size: ${fmtSize(v.sizeBytes)}   ${v.createdAt}`);
+  }
+  return lines.join('\n');
+};
+
 export const formatArtifactCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
   // `id` and `publicId` carry the same value; the rest of the platform
@@ -855,4 +922,138 @@ export const formatVersionDiff: Formatter = (data) => {
     return `  ${ANSI.dim}${r.value}${ANSI.reset}`;
   });
   return header + '\n' + lines.join('\n');
+};
+
+// ── brain formatters ────────────────────────────────────────────────
+// A brain IS a workspace with semantic recall. These render the `rip brain`
+// surface in human mode; --json still passes the data verbatim.
+
+/** Single-brain summary: create / show / visibility / instructions-set / playbook-set. */
+export const formatBrain: Formatter = (data) => {
+  const lines = [`Brain: ${data.name ?? '(unnamed)'}${data.slug ? `  (${data.slug})` : ''}`];
+  if (data.description) lines.push(`  Description:  ${data.description}`);
+  if (data.visibility) lines.push(`  Visibility:   ${data.visibility}`);
+  if (data.writePolicy) lines.push(`  Write policy: ${data.writePolicy}`);
+  if (data.embeddingEnabled !== undefined) lines.push(`  Semantic:     ${data.embeddingEnabled ? 'on' : 'off'}`);
+  const counts = data.counts as { sources?: number; notes?: number; members?: number } | undefined;
+  if (counts) lines.push(`  Sources: ${counts.sources ?? 0} · Notes: ${counts.notes ?? 0} · Members: ${counts.members ?? 0}`);
+  if (data.hasInstructions !== undefined) lines.push(`  Instructions: ${data.hasInstructions ? 'set' : 'none — set with `rip brain instructions set`'}`);
+  if (typeof data.instructions === 'string') lines.push(`  Instructions updated (${(data.instructions as string).length} chars).`);
+  if (data.warning) lines.push(`\n⚠ ${data.warning}`);
+  return lines.join('\n');
+};
+
+/** `rip brain list` — array of brain summaries. */
+export const formatBrainList: Formatter = (data) => {
+  const brains = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(brains) || brains.length === 0) return 'No brains found. Create one with `rip brain create <slug>`.';
+  const lines = [`${brains.length} brain(s):\n`];
+  for (const b of brains) {
+    lines.push(`  ${String(b.name ?? '(unnamed)')}  (${b.slug})  [${b.visibility ?? 'private'}]`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip brain instructions get` — content or the recommended scaffold. */
+export const formatBrainInstructions: Formatter = (data) => {
+  if (data.content == null) {
+    const scaffold = (data.scaffold as string | undefined) ?? '';
+    return `No instructions set.\n\nRecommended starting point (set with \`rip brain instructions set <brain> "<text>"\`):\n\n${scaffold}`;
+  }
+  const tag = data.autoManaged ? 'inline, auto-managed' : 'pinned artifact';
+  const head = `Instructions (${tag}${data.alias ? `, alias: ${data.alias}` : ''}${data.artifactId ? `, id: ${data.artifactId}` : ''}):`;
+  return `${head}\n\n${data.content}`;
+};
+
+/** `rip brain search` — ranked note + source hits. */
+export const formatBrainSearch: Formatter = (data) => {
+  const results = (data.results ?? []) as Array<Record<string, unknown>>;
+  const mode = data.mode ? ` [${data.mode}]` : '';
+  if (!results.length) return `No results${mode}.`;
+  const lines = [`${data.total ?? results.length} result(s)${mode}:\n`];
+  for (const r of results) {
+    const isNote = r.kind === 'note';
+    const label = isNote ? 'note' : 'source';
+    const id = isNote ? r.slug : r.id;
+    const brain = r.brain ? ` {${r.brain}}` : '';
+    lines.push(`  [${label}] ${r.title ?? '(untitled)'}  (${id})${brain}`);
+    const snippet = (r.snippet ?? r.body) as string | undefined;
+    if (snippet) lines.push(`      ${String(snippet).replace(/\s+/g, ' ').slice(0, 160)}`);
+    if (r.expandedContent) lines.push(`      [expanded ${String(r.expandedContent).length} chars]`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip brain load` — the brain envelope. */
+export const formatBrainLoad: Formatter = (data) => {
+  const lines = [`Brain: ${data.name ?? '(unnamed)'}${data.slug ? `  (${data.slug})` : ''}`];
+  if (data.instructions) lines.push(`\n## When to use this brain\n${data.instructions}`);
+  const workingSet = (data.workingSet ?? []) as Array<{ slug?: string; title?: string }>;
+  if (workingSet.length) {
+    lines.push(`\nWorking set (${workingSet.length}):`);
+    for (const n of workingSet) lines.push(`  - ${n.title ?? n.slug ?? '(untitled)'}  (${n.slug})`);
+  }
+  const index = data.index as { entries?: unknown[]; counts?: Record<string, number> } | undefined;
+  if (index?.entries) lines.push(`\nIndex: ${index.entries.length} entr(ies)`);
+  const flow = data.flow as { command?: string; alias?: string } | null | undefined;
+  if (flow) lines.push(`\nFlow [${flow.command}]: ${flow.alias}`);
+  if (data.sessionToken) lines.push(`\nSession: ${data.sessionToken}`);
+  return lines.join('\n');
+};
+
+/** `rip brain capture` — note deposit result. */
+export const formatBrainCapture: Formatter = (data) =>
+  `Captured note: ${data.noteSlug}  (intake: ${data.intake}, ingest: ${data.ingest})`;
+
+/** `rip brain inbox` — staged items awaiting review. */
+export const formatBrainInbox: Formatter = (data) => {
+  const items = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(items) || items.length === 0) return 'Inbox empty — nothing staged for review.';
+  const lines = [`${items.length} pending item(s):\n`];
+  for (const it of items) {
+    lines.push(`  [${it.kind}] ${it.title ?? '(untitled)'}  (${it.ref})${it.zone ? `  zone: ${it.zone}` : ''}`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip brain inbox-resolve` — resolution result. */
+export const formatBrainInboxResolve: Formatter = (data) =>
+  `${data.action}: ${data.item}${data.intake ? `  (intake: ${data.intake})` : ''}`;
+
+/** `rip brain source list` — the brain's source documents. */
+export const formatBrainSources: Formatter = (data) => {
+  const items = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(items) || items.length === 0) return 'No sources. Add one with `rip brain source add <brain> <item>`.';
+  const lines = [`${items.length} source(s):\n`];
+  for (const it of items) {
+    lines.push(`  [${it.kind}] ${it.item}  (${it.ownership}, ${it.intakeStatus})`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip brain source add/remove` — single source change. */
+export const formatBrainSource: Formatter = (data) => {
+  if (data.removed) return `Removed source: ${data.removed}`;
+  return `Added source: ${data.item}  (${data.kind}, ${data.ownership}, ${data.intakeStatus})`;
+};
+
+/** `rip brain member list` — the brain's members. */
+export const formatBrainMembers: Formatter = (data) => {
+  const members = data as unknown as Record<string, unknown>[];
+  if (!Array.isArray(members) || members.length === 0) return 'No members.';
+  const lines = [`${members.length} member(s):\n`];
+  for (const m of members) lines.push(`  ${m.accountId}  —  ${m.role}`);
+  return lines.join('\n');
+};
+
+/** `rip brain member add/remove` — single member change. */
+export const formatBrainMember: Formatter = (data) => {
+  if (data.removed) return `Removed member: ${data.removed}`;
+  return `Added member: ${data.accountId}  (${data.role})`;
+};
+
+/** `rip brain delete` / `rip brain archive` — lifecycle confirmation. */
+export const formatBrainLifecycle: Formatter = (data) => {
+  if (data.deleted) return `Deleted brain: ${data.deleted}`;
+  return `Archived brain: ${data.slug ?? ''}`.trimEnd();
 };

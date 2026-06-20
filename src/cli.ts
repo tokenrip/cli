@@ -17,6 +17,7 @@ import { artifactGet } from './commands/artifact-get.js';
 import { artifactInspect } from './commands/artifact-inspect.js';
 import { mountInspect } from './commands/mount-inspect.js';
 import { surfacePublish, surfaceUpdate, surfaceList, surfaceGet, surfaceValidate, surfacePromote, surfaceSetDefault, surfacePromoteToImprint, surfaceOpen, surfaceRevisions, surfaceRestore, surfaceDelete } from './commands/surface.js';
+import { bundleDeploy, bundleList, bundleGet, bundleVersions, bundleRollback, bundleOpen, bundleDelete } from './commands/bundle.js';
 import { artifactDownload } from './commands/artifact-download.js';
 import { artifactCat } from './commands/artifact-cat.js';
 import { artifactVersions } from './commands/artifact-versions.js';
@@ -720,6 +721,88 @@ surface
   .option('--yes', 'Confirm deletion (required)')
   .description('Permanently delete a surface and all its revisions')
   .action(wrapCommand(surfaceDelete));
+
+// ── bundle commands (multi-file static-site deployment) ──────────────
+//
+// A bundle is a versioned tree of files. `rip deploy <dir>` zips a directory
+// and uploads it as one bundle; the live site is served at
+// `https://bundles.tokenrip.com/<id>/`. `rip bundle …` manages the lifecycle.
+const deployOptions = (cmd: import('commander').Command) =>
+  cmd
+    .option('--title <title>', 'Display title (default: directory name)')
+    .option('--slug <slug>', 'Human-readable slug for the bundle')
+    .option('--alias <slug>', 'Alias for --slug')
+    .option('--description <text>', 'Optional description')
+    .option('--bundle <idOrSlug>', 'Re-deploy a new version of an existing bundle')
+    .option('--visibility <v>', 'private | link | public (default: link)')
+    .option('--entrypoint <file>', 'Default file to serve (default: index.html)')
+    .option('--spa', 'SPA fallback — serve the entrypoint for unknown paths')
+    .option('--dry-run', 'Zip and inspect locally without uploading');
+
+const runDeploy = (dir: string, options: Record<string, unknown>) =>
+  bundleDeploy(dir, { ...options, slug: (options.slug as string) ?? (options.alias as string) });
+
+// Top-level convenience: `rip deploy <dir>`
+deployOptions(
+  program
+    .command('deploy')
+    .argument('<dir>', 'Directory to deploy as a static-site bundle')
+    .description('Deploy a directory as a multi-file static site bundle')
+    .addHelpText('after', `
+EXAMPLES:
+  $ rip deploy ./site --title "Intro to Agents" --slug intro-course
+  $ rip deploy ./dist --spa
+  $ rip deploy ./site --bundle intro-course   # publish a new version
+`),
+).action(wrapCommand(runDeploy));
+
+const bundle = program
+  .command('bundle')
+  .description('Deploy and manage multi-file static site bundles');
+
+deployOptions(bundle.command('deploy').argument('<dir>', 'Directory to deploy').description('Deploy a directory as a bundle')).action(
+  wrapCommand(runDeploy),
+);
+
+bundle
+  .command('list')
+  .option('--archived', 'Show only archived bundles')
+  .option('--include-archived', 'Include archived bundles')
+  .description('List your bundles')
+  .action(wrapCommand(bundleList));
+
+bundle
+  .command('get')
+  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .description('Show a bundle: metadata, live URL, and file manifest')
+  .action(wrapCommand(bundleGet));
+
+bundle
+  .command('versions')
+  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .description('List a bundle\'s versions, newest first')
+  .action(wrapCommand(bundleVersions));
+
+bundle
+  .command('rollback')
+  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .argument('<version>', 'Version number to roll back to')
+  .description('Flip the live site back to an earlier version')
+  .action(wrapCommand(bundleRollback));
+
+bundle
+  .command('open')
+  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .option('--browser', 'Launch the live URL in the OS default browser (best-effort)')
+  .description('Print (or open) the bundle\'s live URL')
+  .action(wrapCommand(bundleOpen));
+
+bundle
+  .command('delete')
+  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .option('--yes', 'Confirm deletion (required)')
+  .description('Permanently delete a bundle and all its versions')
+  .action(wrapCommand(bundleDelete));
 
 // ── agent commands ───────────────────────────────────────────────────
 const mountedagent = program
@@ -2508,7 +2591,12 @@ workspaceLinkGroup
 const brain = program
   .command('brain')
   .alias('br')
-  .description('Brains — shared memory: deposit knowledge, recall it across sessions');
+  .description('Brains — shared memory: deposit knowledge, recall it across sessions')
+  .addHelpText('after', `
+A brain is a workspace with semantic recall. These \`brain\` commands are the
+knowledge- and lifecycle-facing verbs; any \`rip ws\` command also works on a
+brain by its slug (e.g. note maturity, note links, raw worklist).
+`);
 
 brain
   .command('create')
@@ -2520,6 +2608,7 @@ brain
   .option('--write-policy <policy>', 'open | gate-editors | gate-all (intake gate; default open)')
   .option('--atomize-playbook <alias>', 'Artifact alias overriding the system-default atomize playbook')
   .option('--consolidate-playbook <alias>', 'Artifact alias overriding the system-default consolidate playbook')
+  .option('--visibility <level>', 'private | unlisted | public (default private)')
   .description('Create a brain (a semantic workspace)')
   .addHelpText('after', `
 EXAMPLES:
@@ -2529,6 +2618,16 @@ EXAMPLES:
   .action(wrapCommand(async (slug, options) => {
     const { brainCreate } = await import('./commands/brain.js');
     await brainCreate(slug, options);
+  }));
+
+brain
+  .command('visibility')
+  .argument('<slug>', 'Brain slug')
+  .argument('<level>', 'private | unlisted | public')
+  .description("Set a brain's public read access")
+  .action(wrapCommand(async (slug, level) => {
+    const { brainVisibility } = await import('./commands/brain.js');
+    await brainVisibility(slug, level);
   }));
 
 brain
@@ -2623,6 +2722,151 @@ EXAMPLES:
   .action(wrapCommand(async (br, item, action, options) => {
     const { brainInboxResolve } = await import('./commands/brain.js');
     await brainInboxResolve(br, item, action, options);
+  }));
+
+brain
+  .command('list')
+  .description('List your brains')
+  .action(wrapCommand(async () => {
+    const { brainList } = await import('./commands/brain.js');
+    await brainList();
+  }));
+
+brain
+  .command('show')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Show a brain — detail + counts (sources / notes / members)')
+  .action(wrapCommand(async (br) => {
+    const { brainShow } = await import('./commands/brain.js');
+    await brainShow(br);
+  }));
+
+const brainInstructions = brain
+  .command('instructions')
+  .description("Get or set a brain's operating instructions (the routing contract)");
+
+brainInstructions
+  .command('get')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Show the brain\'s instructions (or the recommended scaffold if unset)')
+  .action(wrapCommand(async (br) => {
+    const { brainInstructionsGet } = await import('./commands/brain.js');
+    await brainInstructionsGet(br);
+  }));
+
+brainInstructions
+  .command('set')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('[text]', 'Instructions text (inline, auto-managed + versioned). Omit when using --artifact')
+  .option('--artifact <alias>', 'Pin an existing artifact alias/id instead of inline text')
+  .description("Set the brain's instructions — what it is, when to query it, how")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip brain instructions set dogs "I cover dog care. Query me about breeds, training, health."
+  $ rip brain instructions set dogs --artifact dog-routing-guide
+`)
+  .action(wrapCommand(async (br, text, options) => {
+    const { brainInstructionsSet } = await import('./commands/brain.js');
+    await brainInstructionsSet(br, text, options);
+  }));
+
+brain
+  .command('playbook')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<command>', 'atomize | consolidate')
+  .requiredOption('--artifact <alias>', 'Artifact alias/id to pin as this brain\'s playbook')
+  .description('Override a brain\'s atomize/consolidate playbook')
+  .action(wrapCommand(async (br, command, options) => {
+    const { brainPlaybookSet } = await import('./commands/brain.js');
+    await brainPlaybookSet(br, command, options);
+  }));
+
+const brainSource = brain
+  .command('source')
+  .description('Manage a brain\'s source documents (artifacts / folders)');
+
+brainSource
+  .command('add')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<item>', 'Artifact public id (or folder slug/id with --kind folder)')
+  .option('--kind <kind>', 'artifact (default) | folder')
+  .option('--ownership <ownership>', 'linked (default) | owned')
+  .description('Add a source document to the brain')
+  .action(wrapCommand(async (br, item, options) => {
+    const { brainSourceAdd } = await import('./commands/brain.js');
+    await brainSourceAdd(br, item, options);
+  }));
+
+brainSource
+  .command('list')
+  .argument('<brain>', 'Brain id or slug')
+  .description('List the brain\'s source documents')
+  .action(wrapCommand(async (br) => {
+    const { brainSourceList } = await import('./commands/brain.js');
+    await brainSourceList(br);
+  }));
+
+brainSource
+  .command('remove')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<item>', 'Artifact public id (or folder slug/id with --kind folder)')
+  .option('--kind <kind>', 'artifact (default) | folder')
+  .description('Remove a source document from the brain')
+  .action(wrapCommand(async (br, item, options) => {
+    const { brainSourceRemove } = await import('./commands/brain.js');
+    await brainSourceRemove(br, item, options);
+  }));
+
+const brainMember = brain
+  .command('member')
+  .description('Manage a brain\'s members');
+
+brainMember
+  .command('add')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<account>', 'Agent id or saved contact name')
+  .option('--role <role>', 'viewer (default) | editor | admin')
+  .description('Add a member to the brain')
+  .action(wrapCommand(async (br, account, options) => {
+    const { brainMemberAdd } = await import('./commands/brain.js');
+    await brainMemberAdd(br, account, options);
+  }));
+
+brainMember
+  .command('list')
+  .argument('<brain>', 'Brain id or slug')
+  .description('List the brain\'s members')
+  .action(wrapCommand(async (br) => {
+    const { brainMemberList } = await import('./commands/brain.js');
+    await brainMemberList(br);
+  }));
+
+brainMember
+  .command('remove')
+  .argument('<brain>', 'Brain id or slug')
+  .argument('<account>', 'Agent id of the member to remove')
+  .description('Remove a member from the brain')
+  .action(wrapCommand(async (br, account) => {
+    const { brainMemberRemove } = await import('./commands/brain.js');
+    await brainMemberRemove(br, account);
+  }));
+
+brain
+  .command('archive')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Archive a brain (hide from listings; recoverable)')
+  .action(wrapCommand(async (br) => {
+    const { brainArchive } = await import('./commands/brain.js');
+    await brainArchive(br);
+  }));
+
+brain
+  .command('delete')
+  .argument('<brain>', 'Brain id or slug')
+  .description('Delete a brain (owned items destroyed, linked items unfiled)')
+  .action(wrapCommand(async (br) => {
+    const { brainDelete } = await import('./commands/brain.js');
+    await brainDelete(br);
   }));
 
 // ── folder commands ─────────────────────────────────────────────────

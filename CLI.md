@@ -7,6 +7,7 @@
 - [Artifact commands](#artifact-commands)
 - [Table commands](#table-commands)
 - [Surface commands](#surface-commands)
+- [Bundle commands](#bundle-commands)
 - [Mount commands](#mount-commands)
 - [Account commands](#account-commands)
 - [Auth commands](#auth-commands)
@@ -436,6 +437,47 @@ rip surface delete f0c1e8e0-... --yes
 ```
 
 Options: `--yes` (required).
+
+## Bundle commands
+
+Deploy a directory as a multi-file **static-site bundle** — a versioned file tree served live at `https://bundles.tokenrip.com/<id>/`, with relative links and client-side JS intact. The `bundle` group manages the lifecycle; `rip deploy` is a top-level alias for `rip bundle deploy`.
+
+### `rip deploy <dir>` (alias for `rip bundle deploy <dir>`)
+
+Zips the directory locally, uploads it, and prints the live URL plus the `/b/:id` page URL.
+
+```bash
+rip deploy ./ef-course --title "Equipment Finance Course" --slug ef-course --visibility public
+rip deploy ./dist --spa                 # SPA fallback: serve the entrypoint for unknown paths
+rip deploy ./site --bundle ef-course    # publish a NEW version of an existing bundle
+rip deploy ./site --dry-run             # zip + inspect locally without uploading
+```
+
+Options: `--title`, `--slug` (alias `--alias`), `--description`, `--bundle <idOrSlug>` (re-deploy a new version), `--visibility <private|link|public>` (default `link`), `--entrypoint <file>` (default `index.html`), `--spa`, `--dry-run`. `.git`, `node_modules`, and OS junk files are skipped.
+
+### `rip bundle list`
+
+Lists your bundles. Options: `--archived`, `--include-archived`.
+
+### `rip bundle get <idOrSlug>`
+
+Shows metadata, the live URL, and the file manifest.
+
+### `rip bundle versions <idOrSlug>`
+
+Lists versions, newest first.
+
+### `rip bundle rollback <idOrSlug> <version>`
+
+Flips the live site back to an earlier version (a pointer flip — no new version).
+
+### `rip bundle open <idOrSlug>`
+
+Prints the live URL (and the `/b/:id` page URL). `--browser` opens it in the OS default browser.
+
+### `rip bundle delete <idOrSlug>`
+
+Permanently deletes a bundle and all its versions. Options: `--yes` (required).
 
 ## Mount commands
 
@@ -940,13 +982,18 @@ rip workspace link remove <workspace> <from-slug> <to-slug>
 
 ## Brain commands
 
-A **brain** is shared memory: a searchable corpus of notes + source artifacts that any member agent can consult and contribute to. A brain IS a workspace with semantic search on — these commands are a thin facade over `/v0/brains/*` (the same `BrainService` the MCP + operator surfaces call). The group is aliased **`rip br`**. All commands accept the brain by slug or id.
+A **brain** is shared memory: a searchable corpus of notes + source artifacts that any member agent can consult and contribute to. A brain IS a workspace with semantic recall — these commands are the knowledge- and lifecycle-facing verbs over `/v0/brains/*` (the same `BrainService` the MCP + operator surfaces call), and any `rip ws` command also works on a brain by its slug. The group is aliased **`rip br`**. All commands accept the brain by slug or id, and **render human-readable output by default** (`--json` emits the raw envelope).
 
 ```
-rip brain create <slug> [--name <name>] [--description <text>] [--team <slug>] [--instructions <alias>] [--write-policy <policy>] [--atomize-playbook <alias>] [--consolidate-playbook <alias>]
+rip brain create <slug> [--name <name>] [--description <text>] [--team <slug>] [--instructions <alias>] [--write-policy <policy>] [--atomize-playbook <alias>] [--consolidate-playbook <alias>] [--visibility <level>]
 # --instructions = artifact alias/id of a "how to use this brain" doc (pinned, surfaced on load)
 # --write-policy = open (default) | gate-editors | gate-all — the intake gate (staged captures land in the inbox)
 # --atomize-playbook / --consolidate-playbook = artifact alias/id pinning a per-brain override for that refinement command (default uses the built-in playbook)
+# --visibility = private (default) | unlisted | public — anonymous read access; creating non-private prints an exposure warning
+
+rip brain visibility <brain> <private|unlisted|public>   # open/close anonymous read access on an existing brain
+# unlisted = read by URL (noindex); public = also discoverable. Raising above private prints what becomes publicly readable.
+# Public readers load + search over plain HTTP at app.tokenrip.com/brain/<owner>/<slug> and GET /v0/brains/<owner>/<slug>/{load,search} — no auth, read-only.
 
 rip brain load <brain>                 # envelope: instructions + working set + index (+ attaches a session)
 rip brain load <brain> --command <atomize|consolidate>   # loads that command's refinement playbook as the envelope's `flow` block
@@ -962,6 +1009,28 @@ rip brain capture <brain> --content "<text>" [--title "..."] [--zone <zone>] [--
 rip brain inbox <brain>                                              # list items staged for review (editor+)
 rip brain inbox-resolve <brain> <item> <accept|reject|merge> [--zone <z>] [--maturity <m>] [--target <slug>]
 # accept (admit) | reject (archive) | merge (notes only — link into --target, then archive)
+
+# ── build & manage (the brain lifecycle) ──
+rip brain list                          # your brains (the workspaces with semantic recall on)
+rip brain show <brain>                  # detail + counts (sources / notes / members) + whether instructions are set
+
+# instructions = the routing contract: what the brain is, WHEN to query it, when not to, how
+rip brain instructions get <brain>      # current instructions, or a recommended what/when/how scaffold if unset
+rip brain instructions set <brain> "<text>"            # inline → an auto-managed, versioned <slug>-instructions artifact
+rip brain instructions set <brain> --artifact <alias>  # pin an existing artifact instead (long/shared guidance)
+
+rip brain playbook <brain> <atomize|consolidate> --artifact <alias>   # re-pin a per-brain refinement playbook
+
+rip brain source add <brain> <item> [--kind artifact|folder] [--ownership linked|owned]   # add a source document
+rip brain source list <brain>                                          # the brain's source documents
+rip brain source remove <brain> <item> [--kind artifact|folder]        # unfile a source (never destroys it)
+
+rip brain member add <brain> <account> [--role viewer|editor|admin]    # add a member (agent id or contact name)
+rip brain member list <brain>
+rip brain member remove <brain> <account>
+
+rip brain archive <brain>               # hide from listings (recoverable)
+rip brain delete <brain>                # owned items destroyed, linked items unfiled
 ```
 
 Examples:

@@ -12,12 +12,13 @@ description: >-
   "send a message to an agent", "create a shareable link", "tokenrip",
   "share my work", "collaborate with another agent", "create a team",
   "share with my team", "group agents", "organize artifacts", "create a folder",
-  "file into folder", "publish an agent", "manage an agent", "use the rip CLI".
+  "file into folder", "publish an agent", "manage an agent", "use the rip CLI",
+  "deploy a site", "deploy a folder of HTML", "host a static site", "deploy a course".
   Do NOT use for: local file operations (use shell commands directly),
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.6.10
+version: 1.7.0
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -56,7 +57,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.6.10 -->
+<!-- tokenrip-skill-version: 1.7.0 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -133,6 +134,9 @@ Structured data (API responses, configs)?
 Binary files (PDFs, images)?
   → rip artifact upload <file> --title "..."
 
+A whole folder of HTML/CSS/JS as a live website (a course, microsite, multi-page report)?
+  → rip deploy <dir> --title "..."   (served live at bundles.tokenrip.com/<id>/; relative links + JS work)
+
 CSV snapshot (versioned file, won't mutate)?
   → rip artifact publish data.csv --type csv --title "..."
 
@@ -185,7 +189,7 @@ Connect two notes / see what should be consolidated?
   → rip workspace worklist <workspace>      # stale captures, orphans, promotion candidates
 
 Need shared memory other agents recall before acting (not just storage)?
-  → rip brain create/search/capture  (see references/workspaces.md → Brains)
+  → rip brain create/list/show/search/capture · brain instructions set (the routing contract: when to query it) · brain source/member  (see references/workspaces.md → Brains)
 
 Refine a brain — distil raw sources into atoms, or consolidate the note spine?
   → rip brain atomize <brain> / rip brain consolidate <brain>  (loads a refinement playbook; see references/workspaces.md → Brains)
