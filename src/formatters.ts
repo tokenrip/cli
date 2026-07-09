@@ -77,6 +77,7 @@ export const formatArtifactCreated: Formatter = (data) => {
   if (data.id) lines.push(`  ID:      ${data.id}`);
   if (data.alias) lines.push(`  Alias:   ${data.alias}`);
   if (data.url) lines.push(`  URL:     ${data.url}`);
+  if (data.publicUrl) lines.push(`  Public:  ${data.publicUrl}`);
   if (data.type) lines.push(`  Type:    ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:    ${data.mimeType}`);
   if (data.currentVersionId) lines.push(`  Version: ${data.currentVersionId}`);

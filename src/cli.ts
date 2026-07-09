@@ -96,6 +96,7 @@ artifact
   .option('--attach-agent <slug>', 'Attach this artifact to an agent package — files it into the imprint, hides from the flat list')
   .option('--attach-mount <id>', 'Attach this artifact to a mount package — files it into the mount folder, hides from the flat list')
   .option('--star', 'Star the artifact immediately after publishing')
+  .option('--public-asset', 'Store bytes in a public bucket and return a direct CDN URL (not valid with private visibility)')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `

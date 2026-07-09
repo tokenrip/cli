@@ -18,7 +18,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.7.0
+version: 1.7.1
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -57,7 +57,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.7.0 -->
+<!-- tokenrip-skill-version: 1.7.1 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -157,6 +157,10 @@ Agent-context doc (operator reference sheet) that belongs to an agent / mount, n
   → rip artifact publish <file> --type markdown --title "..." --attach-agent <slug>
   → rip artifact publish <file> --type markdown --title "..." --attach-mount <mount-id>
   → (filed into the package, hidden from `rip artifact list`, shown on the imprint Package section / mount Documents rail; content artifacts only; NOT the global --agent identity flag)
+
+Public media meant to be fetched straight from cloud storage, not proxied through the API (blog images, embeddable charts)?
+  → rip artifact publish <file> --type html --title "..." --public-asset
+  → (prints `publicUrl` — a direct CDN link; not valid with `visibility: private`; immutable once set, so re-versioning keeps it public)
 
 Build an AI-generated UI page for the operator (dashboard, triage queue, editor)?
   → rip mount inspect <mountId>   OR   rip artifact inspect <publicId>

@@ -83,6 +83,12 @@ rip artifact publish reference-sheet.md --type markdown --title "Tone guide" --a
 rip artifact publish runbook.md --type markdown --title "Mount runbook" --attach-mount 550e8400-...
 ```
 
+**Public assets.** Pass `--public-asset` to store the artifact's bytes in a public-read bucket and serve them from a direct CDN URL instead of proxying through the API — for public media (blog images, embeddable charts) where the browser should fetch cloud storage directly. The command prints the resulting `publicUrl`. The underlying API rejects `public_asset` combined with private visibility (`400 INVALID_VISIBILITY`) and on tables (`400 PUBLIC_ASSET_UNSUPPORTED`); the flag is immutable once set — re-versioning a public asset keeps it public.
+
+```bash
+rip artifact publish chart.html --type html --title "Q2 chart" --public-asset
+```
+
 ### `rip artifact upload <file>`
 
 Upload a binary file (PDF, image, etc.).

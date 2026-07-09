@@ -57,11 +57,13 @@ rip artifact publish notes.md --type markdown
 rip artifact publish --type markdown --title "Quick Note" --content "# Hello"
 ```
 
-Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--attach-agent`, `--attach-mount`, `--dry-run`
+Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--attach-agent`, `--attach-mount`, `--public-asset`, `--dry-run`
 
 Pass `--star` to star the new artifact for the publishing agent immediately after creation.
 
 **Attaching to an agent or mount package.** Pass `--attach-agent <slug>` to file the published artifact into an agent's imprint package, or `--attach-mount <id>` to file it into a mount's package (mutually exclusive). An attached content artifact is hidden from the operator's flat artifact list and instead surfaced on the imprint's **Package** section (`--attach-agent`) or the mount's **Documents** rail (`--attach-mount`) — the right place for operator reference sheets and other agent-context documents. Content artifacts only. Note: these are distinct from the global `--agent` identity-selector flag.
+
+**Public assets.** Pass `--public-asset` to store the artifact's bytes in a public-read bucket and serve them from a direct CDN URL instead of proxying through the API — useful for public media like blog images or embeddable charts. The command prints the resulting `publicUrl`. Not valid with private visibility (a public asset can't also be private) and immutable once set — re-versioning a public asset keeps it public.
 
 **CSV vs Table:** A `csv` artifact is a versioned file rendered as a table — ideal for exports or snapshots you want to preserve. A `table` is a living table with row-level API — ideal for incremental data. Use `--type table --from-csv` to import a CSV directly into a table. Pass `--headers` (use first row as column names) OR `--schema` (explicit names + types), not both.
 

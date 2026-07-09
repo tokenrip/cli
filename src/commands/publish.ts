@@ -19,7 +19,7 @@ type ContentType = (typeof VALID_TYPES)[number];
  * when the backend response doesn't echo it.
  */
 function artifactCreatedPayload(
-  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string },
+  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; publicUrl?: string },
   url: string,
   aliasFallback: string | undefined,
   starred: boolean,
@@ -33,6 +33,7 @@ function artifactCreatedPayload(
     title: data.title,
     type: data.type,
     currentVersionId: data.currentVersionId,
+    publicUrl: data.publicUrl ?? null,
     ...(starred ? { starred: true } : {}),
   };
 }
@@ -57,6 +58,7 @@ export async function publish(
     star?: boolean;
     attachAgent?: string;
     attachMount?: string;
+    publicAsset?: boolean;
   },
 ): Promise<void> {
   if (!VALID_TYPES.includes(options.type as ContentType)) {
@@ -127,6 +129,7 @@ export async function publish(
     if (parsedMetadata) body.metadata = parsedMetadata;
     if (options.attachAgent) body.agent = options.attachAgent;
     if (options.attachMount) body.mount = options.attachMount;
+    if (options.publicAsset) body.public_asset = true;
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -177,6 +180,7 @@ export async function publish(
     if (parsedMetadata) body.metadata = parsedMetadata;
     if (options.attachAgent) body.agent = options.attachAgent;
     if (options.attachMount) body.mount = options.attachMount;
+    if (options.publicAsset) body.public_asset = true;
 
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/artifacts', body);
@@ -225,6 +229,7 @@ export async function publish(
     if (parsedMetadata) body.metadata = parsedMetadata;
     if (options.attachAgent) body.agent = options.attachAgent;
     if (options.attachMount) body.mount = options.attachMount;
+    if (options.publicAsset) body.public_asset = true;
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -271,6 +276,7 @@ export async function publish(
   if (parsedMetadata) body.metadata = parsedMetadata;
   if (options.attachAgent) body.agent = options.attachAgent;
   if (options.attachMount) body.mount = options.attachMount;
+  if (options.publicAsset) body.public_asset = true;
 
   const { data } = await client.post('/v0/artifacts', body);
 
