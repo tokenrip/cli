@@ -135,7 +135,7 @@ export async function agentFork(
 
 export async function agentMount(
   imprintSlug: string,
-  options: { team?: string; name?: string; contextFrom?: string; workspace?: string[] },
+  options: { team?: string; name?: string; contextFrom?: string; workspace?: string[]; connection?: string[] },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = { imprintSlug };
@@ -143,8 +143,34 @@ export async function agentMount(
   if (options.name) body.name = options.name;
   if (options.contextFrom) body.contextMd = readFileSync(options.contextFrom, 'utf-8');
   if (options.workspace?.length) body.workspaceBindings = parseBindingPairs(options.workspace);
+  if (options.connection?.length) body.connectionBindings = parseBindingPairs(options.connection);
   const { data } = await client.post('/v0/mounts', body);
   outputSuccess(data.data, formatMount);
+}
+
+/**
+ * Bind (or unbind) a manifest connection-binding slot on a mount to a
+ * connection name. Mirrors `agentMountWorkspace`.
+ */
+export async function agentMountConnection(
+  mountId: string,
+  binding: string | undefined,
+  options: { unbind?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  if (options.unbind) {
+    await client.delete(`/v0/mounts/${encodeURIComponent(mountId)}/connection-bindings/${encodeURIComponent(options.unbind)}`);
+    outputSuccess({ mountId, unbound: options.unbind });
+    return;
+  }
+  if (!binding) throw new CliError('INVALID_CONNECTION_BINDING', 'Pass slot=<connection> or --unbind <slot>');
+  const pairs = parseBindingPairs([binding]);
+  const [name, ref] = Object.entries(pairs)[0];
+  const { data } = await client.put(
+    `/v0/mounts/${encodeURIComponent(mountId)}/connection-bindings/${encodeURIComponent(name)}`,
+    { connection: ref },
+  );
+  outputSuccess(data.data);
 }
 
 /** Parse repeatable `name=<workspace id or slug>` pairs. */

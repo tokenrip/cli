@@ -18,7 +18,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.7.1
+version: 1.7.2
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -57,7 +57,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.7.1 -->
+<!-- tokenrip-skill-version: 1.7.2 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -197,6 +197,25 @@ Need shared memory other agents recall before acting (not just storage)?
 
 Refine a brain — distil raw sources into atoms, or consolidate the note spine?
   → rip brain atomize <brain> / rip brain consolidate <brain>  (loads a refinement playbook; see references/workspaces.md → Brains)
+```
+
+### Calling external APIs & LLMs (connections)
+
+A **connection** is an encrypted, server-side API key you store once (personal or `--team`); a mount calls the upstream through it and the platform injects the auth — the caller never sees the secret. See `references/connections.md`.
+
+```
+Call an external API / LLM (MiniMax, OpenAI-/Anthropic-compatible, a data API) through a stored server-side key?
+  → rip connection create --name <n> --base-url <url> --auth-type <bearer|header|basic|query> --secret-env <VAR>
+  → rip agent mount-grants <mount-id> --connections '["<n>"]'   # let a mount use it
+  → rip connection call --mount <mount-id> --connection <n> --method POST --path /v1/messages --body '<json>'
+  → (deep-dive: references/connections.md)
+
+Share one key with a whole team without anyone seeing it?
+  → rip connection create --team <slug> --name <n> ...   # owner-managed, member-invokable
+
+Wire a skill's declarative connection-binding slot to a real connection at mount time?
+  → rip agent mount <slug> --connection <slot>=<name>
+  → rip agent mount-connection <mount-id> <slot>=<name>   # bind/re-bind post-mount
 ```
 
 ### How to communicate
@@ -397,6 +416,8 @@ For agent publishing, mounts, memory layers, sessions, tool dispatch (`agent too
 For capturing notes, organizing them in a workspace (own/link artifacts, links, members, maturity, consolidation work-lists, and brains — shared memory: search + capture + intake), read `references/workspaces.md`.
 
 For building a custom HTML dashboard / editor / workflow trigger on top of your data (a Surface), read `references/surfaces.md`.
+
+For calling external HTTP APIs or LLM providers through a stored, server-side credential (a Connection) — create/rotate/grant a key the caller never sees, then `rip connection call`, and wire connection-binding slots at mount time — read `references/connections.md`.
 
 For JSON output format, provenance flags, or `--json` details, read `references/output-and-provenance.md`.
 

@@ -96,7 +96,10 @@ Upload a binary file (PDF, image, etc.).
 ```bash
 rip artifact upload screenshot.png --title "Screenshot"
 rip artifact upload document.pdf --dry-run  # validate only
+rip artifact upload hero.png --public-asset # → data.publicUrl (direct CDN)
 ```
+
+Pass `--public-asset` to store the bytes in a public-read bucket and return a direct CDN URL (`publicUrl`) instead of proxying through the API — for public media like blog images or embeddable charts. `--visibility <link|public|private>` sets the artifact's visibility (defaults to `public` with `--public-asset`; a public asset can't be `private`).
 
 ### `rip artifact list`
 
@@ -256,10 +259,12 @@ rip agent fork chief-of-staff --team acme
 rip agent fork chief-of-staff --team acme --slug acme-cos
 
 # Mount lifecycle
-rip agent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>] [--workspace <slot>=<ref>]
+rip agent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>] [--workspace <slot>=<ref>] [--connection <slot>=<name>]
 rip agent mounts                                     # list caller's mounts
 rip agent mount-workspace <mount-id> <slot>=<ref>    # bind a manifest workspace-binding slot to a workspace
 rip agent mount-workspace <mount-id> --unbind <slot> # unbind (workspace itself untouched)
+rip agent mount-connection <mount-id> <slot>=<name>  # bind a manifest connection-binding slot to a connection
+rip agent mount-connection <mount-id> --unbind <slot> # unbind (connection itself untouched)
 rip agent show-mount <mount-id>                      # agent version, context artifact, layers
 rip agent mount-artifacts <mount-id>                    # every artifact the mount touches
 rip agent mount-context <mount-id>                   # print mount context content
@@ -325,6 +330,38 @@ Agents declare `teamContext` (`ignored` / `supported` / `recommended`) to signal
 Team-aware agents may declare `crossSessionReferences` — surfaces another team operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim. On personal/solo mounts the references no-op with `reasonInactive: "no-team"`.
 
 Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs, Twitter, ...) and `workflowTables[]` for tracking external state. Each entry is `{ kind, bind, required? }` — the platform resolves the impl at session start based on the caller's advertised `capabilities[]` augmented with `server-credential:*` caps the server already knows about. Execution mode is derived at dispatch from the chosen impl's handlers: `backend` (server-side), `harness` (local), `auto` (both). The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow tables use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`. For any tool-declaring manifest, `agent_load` is a two-phase handshake (probe → resolve) — see [`/cli/cred`](#local-tool-credentials) for the credential side.
+
+## Connection Commands
+
+A **connection** is an encrypted, server-side credential that makes Tokenrip a general API/inference router: store an upstream API key once, and a mount calls the provider through it while the platform injects the auth server-side — the caller never sees the secret. Owned by a personal account or a team (`--team <slug>`; owner-managed, any member may read/invoke). See [`references/connections.md`](./references/connections.md) and `docs/architecture/connections.md`.
+
+```bash
+# Create — set the secret via --secret-env <VAR> / --secret-stdin (kept out of shell history), never --secret in scripts.
+# Repeatable --header k=v => static default_headers (e.g. anthropic-version); --query k=v => default_query.
+export MINIMAX_KEY=sk-...
+rip connection create --team quintel --name minimax \
+  --base-url https://api.minimax.io/anthropic --auth-type header \
+  --auth-header-name x-api-key --secret-env MINIMAX_KEY \
+  --allowed-paths '/v1/*' --header anthropic-version=2023-06-01
+
+rip connection list [--team <slug>] [--include-disabled]   # secrets never shown
+rip connection get <id> [--team <slug>]
+rip connection rotate-secret <id> [--team <slug>] (--secret-env <VAR> | --secret-stdin)
+rip connection disable <id> [--team <slug>]                # soft disable, frees the name
+rip connection rm <id> [--team <slug>]                     # hard delete
+```
+
+`--auth-type` is `bearer` | `header` (needs `--auth-header-name`) | `basic` | `query`. Optional `--rate-limit-per-min <n>` / `--daily-quota <n>` cap usage.
+
+**Invoke an upstream through a granted connection.** A mount must have the connection name in its granted set (`rip agent mount-grants <mount-id> --connections '["minimax"]'`) or a bound connection-binding slot (`rip agent mount-connection`). Auth + default headers/query are injected server-side.
+
+```bash
+rip connection call --mount <mount-id> --connection minimax \
+  --method POST --path /v1/messages \
+  --body '{"model":"MiniMax-M2.5","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+In human mode `call` prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON on stdout (so a skill can `JSON.parse(stdout)`); `--json` wraps it in the standard `{ ok, data }` envelope. Options: `--query <json>` (merged with defaults), repeatable `--header k=v`.
 
 ## Publisher Commands
 

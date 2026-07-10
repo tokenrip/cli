@@ -24,7 +24,7 @@ import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactDiff } from './commands/artifact-diff.js';
 import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountConfig, agentMountContext, agentMountGrants, agentMountRename, agentMountWorkspace, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentThemeList, agentThemeShow, agentThemeUpsert, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
+import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountConfig, agentMountConnection, agentMountContext, agentMountGrants, agentMountRename, agentMountWorkspace, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentThemeList, agentThemeShow, agentThemeUpsert, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
 import { mountTableList, mountTableRows, mountTableLatest, mountTableByTag, mountTablePatch, mountTableAppend } from './commands/mount-table.js';
 import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
 import { tour, tourNext, tourRestart } from './commands/tour.js';
@@ -67,11 +67,14 @@ artifact
   .option('--refs <urls>', 'Comma-separated input reference URLs')
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
+  .option('--public-asset', 'Store in a public bucket and return a direct CDN URL (publicUrl)')
+  .option('--visibility <level>', 'Artifact visibility (link | public | private); defaults to public with --public-asset')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact upload report.pdf --title "Agent Analysis"
+  $ rip artifact upload hero.png --public-asset   # -> data.publicUrl (direct CDN)
   $ rip artifact upload chart.png --context "Claude Agent 1" \\
     --refs "https://source.example.com,https://another.com"
 `)
@@ -929,6 +932,7 @@ mountedagent
   .option('--name <label>', 'Friendly mount name (required for a second mount of the same agent)')
   .option('--context-from <file>', 'Seed the mount context artifact from a markdown file')
   .option('--workspace <name=ref...>', 'Bind a manifest workspace-binding slot to a workspace id or slug (repeatable)')
+  .option('--connection <slot=name...>', 'Map a manifest connection-binding slot to a connection name (repeatable)')
   .description('Create a deployment of an agent (personal by default; --team makes it collaborative)')
   .addHelpText('after', `
 EXAMPLES:
@@ -936,6 +940,7 @@ EXAMPLES:
   $ rip agent mount chief-of-staff --team acme --name engineering
   $ rip agent mount blog-writing --name flowers --context-from ./flowers-context.md
   $ rip agent mount blog-writer --workspace research=demand-hub
+  $ rip agent mount quintel-skill --team quintel --connection image-gen=minimax
 
 NOTES:
   Creates a system-managed team mount folder (and a personal mount folder
@@ -991,6 +996,19 @@ EXAMPLES:
   $ rip agent mount-workspace <mount-id> --unbind research
 `)
   .action(wrapCommand(agentMountWorkspace));
+
+mountedagent
+  .command('mount-connection')
+  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
+  .argument('[binding]', 'slot=<connection name> to bind a slot')
+  .option('--unbind <slot>', 'Unbind a slot (never touches the connection itself)')
+  .description("Bind or unbind one of the mount's manifest connection-binding slots")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip agent mount-connection <mount-id> image-gen=minimax
+  $ rip agent mount-connection <mount-id> --unbind image-gen
+`)
+  .action(wrapCommand(agentMountConnection));
 
 mountedagent
   .command('show-mount')
@@ -2138,6 +2156,116 @@ EXAMPLES:
   .action(wrapCommand(async (kind: string, opts: { server?: boolean }) => {
     const { credUnset } = await import('./commands/cred.js');
     await credUnset(kind, { server: opts.server });
+  }));
+
+// ── connection commands ──────────────────────────────────────────────
+// Repeatable `--header k=v` / `--query k=v` collector.
+const collectKv = (v: string, prev: string[] = []): string[] => prev.concat(v);
+
+const connection = program
+  .command('connection')
+  .description('Manage connections — encrypted server-side API-router credentials (personal or team)');
+
+connection
+  .command('create')
+  .requiredOption('--name <name>', 'Connection name (unique per owner)')
+  .requiredOption('--base-url <url>', 'Base URL of the upstream API')
+  .requiredOption('--auth-type <type>', 'bearer | header | basic | query')
+  .option('--auth-header-name <name>', 'Header name when --auth-type=header (e.g. x-api-key)')
+  .option('--secret <value>', 'Secret value (prefer --secret-env / --secret-stdin)')
+  .option('--secret-env <VAR>', 'Read the secret from an environment variable')
+  .option('--secret-stdin', 'Read the secret from stdin')
+  .option('--allowed-paths <csv>', 'Comma-separated allowed path globs (e.g. "/v1/*")')
+  .option('--header <kv>', 'Static default header key=value (repeatable)', collectKv, [])
+  .option('--query <kv>', 'Static default query key=value (repeatable)', collectKv, [])
+  .option('--rate-limit-per-min <n>', 'Per-minute rate limit')
+  .option('--daily-quota <n>', 'Daily request quota')
+  .option('--team <slug>', 'Create a team-owned connection (team owner only)')
+  .description('Create a connection')
+  .addHelpText('after', `
+EXAMPLES:
+  $ MINIMAX_KEY=sk-... rip connection create --team quintel --name minimax \\
+      --base-url https://api.minimax.io/anthropic --auth-type header \\
+      --auth-header-name x-api-key --secret-env MINIMAX_KEY \\
+      --allowed-paths '/v1/*' --header anthropic-version=2023-06-01
+`)
+  .action(wrapCommand(async (options) => {
+    const { connectionCreate } = await import('./commands/connection.js');
+    await connectionCreate(options);
+  }));
+
+connection
+  .command('list')
+  .option('--team <slug>', "List a team's connections")
+  .option('--include-disabled', 'Include disabled connections')
+  .description('List connections (secrets are never shown)')
+  .action(wrapCommand(async (options) => {
+    const { connectionList } = await import('./commands/connection.js');
+    await connectionList(options);
+  }));
+
+connection
+  .command('get')
+  .argument('<id>', 'Connection id')
+  .option('--team <slug>', 'Team-owned connection')
+  .description('Show one connection')
+  .action(wrapCommand(async (id, options) => {
+    const { connectionGet } = await import('./commands/connection.js');
+    await connectionGet(id, options);
+  }));
+
+connection
+  .command('rotate-secret')
+  .argument('<id>', 'Connection id')
+  .option('--secret <value>', 'New secret (prefer --secret-env / --secret-stdin)')
+  .option('--secret-env <VAR>', 'Read the new secret from an environment variable')
+  .option('--secret-stdin', 'Read the new secret from stdin')
+  .option('--team <slug>', 'Team-owned connection (team owner only)')
+  .description('Rotate a connection secret')
+  .action(wrapCommand(async (id, options) => {
+    const { connectionRotate } = await import('./commands/connection.js');
+    await connectionRotate(id, options);
+  }));
+
+connection
+  .command('disable')
+  .argument('<id>', 'Connection id')
+  .option('--team <slug>', 'Team-owned connection (team owner only)')
+  .description('Disable a connection (frees the name)')
+  .action(wrapCommand(async (id, options) => {
+    const { connectionDisable } = await import('./commands/connection.js');
+    await connectionDisable(id, options);
+  }));
+
+connection
+  .command('rm')
+  .argument('<id>', 'Connection id')
+  .option('--team <slug>', 'Team-owned connection (team owner only)')
+  .description('Delete a connection')
+  .action(wrapCommand(async (id, options) => {
+    const { connectionRemove } = await import('./commands/connection.js');
+    await connectionRemove(id, options);
+  }));
+
+connection
+  .command('call')
+  .requiredOption('--mount <id>', 'Mount UUID whose grants authorize this call')
+  .requiredOption('--connection <name>', 'Name of a connection granted to the mount')
+  .requiredOption('--method <M>', 'HTTP method (GET/POST/PUT/PATCH/DELETE)')
+  .requiredOption('--path <path>', "Path under the connection's base URL")
+  .option('--body <json>', 'JSON request body')
+  .option('--query <json>', 'JSON object of query params')
+  .option('--header <kv>', 'Extra request header key=value (repeatable)', collectKv, [])
+  .description('Invoke an external API through a granted connection (auth injected server-side)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip connection call --mount <mount-id> --connection minimax \\
+      --method POST --path /v1/messages \\
+      --body '{"model":"MiniMax-M2.5","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}'
+`)
+  .action(wrapCommand(async (options) => {
+    const { connectionCall } = await import('./commands/connection.js');
+    await connectionCall(options);
   }));
 
 // ── team commands ────────────────────────────────────────────────────

@@ -1058,3 +1058,35 @@ export const formatBrainLifecycle: Formatter = (data) => {
   if (data.deleted) return `Deleted brain: ${data.deleted}`;
   return `Archived brain: ${data.slug ?? ''}`.trimEnd();
 };
+
+/** `rip connection get/create/rotate/disable` — one connection (secret never shown). */
+export const formatConnection: Formatter = (data) => {
+  const c = data as Record<string, any>;
+  const scope = c.ownerType === 'team' ? `team (${c.teamId})` : 'personal';
+  const lines = [
+    `${c.name}  [${c.id}]`,
+    `  scope:    ${scope}`,
+    `  base_url: ${c.baseUrl}`,
+    `  auth:     ${c.authType}${c.authHeaderName ? ` (${c.authHeaderName})` : ''}`,
+  ];
+  if (Array.isArray(c.allowedPaths) && c.allowedPaths.length) lines.push(`  allowed:  ${c.allowedPaths.join(', ')}`);
+  if (c.defaultHeaders && Object.keys(c.defaultHeaders).length) {
+    lines.push(`  headers:  ${Object.keys(c.defaultHeaders).join(', ')}`);
+  }
+  lines.push(`  limits:   ${c.rateLimitPerMin}/min, ${c.dailyQuota}/day`);
+  if (c.disabledAt) lines.push(`  disabled: ${c.disabledAt}`);
+  return lines.join('\n');
+};
+
+/** `rip connection list` — one row per connection. */
+export const formatConnectionList: Formatter = (data) => {
+  const rows = data as unknown as Array<Record<string, any>>;
+  if (!Array.isArray(rows) || rows.length === 0) return 'No connections.';
+  return rows
+    .map((c) => {
+      const scope = c.ownerType === 'team' ? 'team' : 'personal';
+      const dis = c.disabledAt ? '  (disabled)' : '';
+      return `${String(c.name).padEnd(20)} ${scope.padEnd(8)} ${c.baseUrl}  [${c.id}]${dis}`;
+    })
+    .join('\n');
+};

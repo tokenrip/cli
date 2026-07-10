@@ -9,7 +9,7 @@ import { formatArtifactCreated } from '../formatters.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
 
-export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string }): Promise<void> {
+export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string }): Promise<void> {
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
@@ -41,6 +41,15 @@ export async function upload(filePath: string, options: { title?: string; parent
     form.append('team', resolveTeam(teamSlugs[0]));
   }
   if (options.folder) form.append('folder', options.folder);
+  // Public-asset uploads land in a public bucket and get a direct CDN URL
+  // (data.publicUrl). A public asset can't be private, so pass a non-private
+  // visibility (defaults to `public` when --public-asset is set without one).
+  if (options.publicAsset) {
+    form.append('publicAsset', 'true');
+    form.append('visibility', options.visibility ?? 'public');
+  } else if (options.visibility) {
+    form.append('visibility', options.visibility);
+  }
 
   const { data } = await client.post('/v0/artifacts', form, {
     headers: form.getHeaders(),
@@ -56,5 +65,6 @@ export async function upload(filePath: string, options: { title?: string; parent
     type: data.data.type,
     mimeType: data.data.mimeType,
     currentVersionId: data.data.currentVersionId,
+    ...(data.data.publicUrl ? { publicUrl: data.data.publicUrl } : {}),
   }, formatArtifactCreated);
 }

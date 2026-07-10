@@ -21,6 +21,7 @@
 - [Brain commands](#brain-commands)
 - [Folder commands](#folder-commands)
 - [Agent commands](#agent-commands)
+- [Connection commands](#connection-commands)
 - [Publisher commands](#publisher-commands)
 - [Operator commands](#operator-commands)
 - [Cred commands](#cred-commands)
@@ -42,9 +43,12 @@ Upload a binary file (PDF, image, etc.) and get a shareable link. MIME type is a
 
 ```bash
 rip artifact upload slides.pdf --title "Team Slides"
+rip artifact upload hero.png --public-asset          # → data.publicUrl (direct CDN)
 ```
 
-Options: `--title`, `--parent`, `--context`, `--refs`, `--dry-run`
+Options: `--title`, `--parent`, `--context`, `--refs`, `--team`, `--folder`, `--public-asset`, `--visibility`, `--dry-run`
+
+Pass `--public-asset` to store the bytes in a public-read bucket and return a direct CDN URL (`publicUrl`) instead of proxying through the API — for public media like blog images or embeddable charts. `--visibility <link|public|private>` sets the artifact's visibility (defaults to `public` with `--public-asset`; a public asset can't be `private`).
 
 ### `rip artifact publish [file] --type <type>`
 
@@ -1223,9 +1227,10 @@ rip agent mount chief-of-staff
 rip agent mount chief-of-staff --team acme --name engineering
 rip agent mount blog-writing --name flowers --context-from ./flowers.md
 rip agent mount blog-writer --workspace research=demand-hub
+rip agent mount quintel-skill --team quintel --connection image-gen=minimax
 ```
 
-Options: `--team <slug>`, `--name <label>`, `--context-from <file>`, `--workspace <slot>=<ref>` (repeatable — bind a manifest workspace-binding slot to a workspace id or slug at mount time).
+Options: `--team <slug>`, `--name <label>`, `--context-from <file>`, `--workspace <slot>=<ref>` (repeatable — bind a manifest workspace-binding slot to a workspace id or slug at mount time), `--connection <slot>=<name>` (repeatable — bind a manifest connection-binding slot to a connection name at mount time).
 
 ### `rip agent mounts`
 
@@ -1265,6 +1270,17 @@ rip agent mount-workspace <mount-id> --unbind research     # unbind
 ```
 
 Binding requires ≥ viewer on the target workspace for `read` slots, ≥ editor for `read-write`. Cross-account, bind by workspace **id** (slugs don't resolve without membership) after the owner grants membership via `rip workspace member add`. Unbinding never touches the workspace itself.
+
+### `rip agent mount-connection <mount-id> [<slot>=<name>] [--unbind <slot>]`
+
+Bind or unbind one of the mount's manifest **connection-binding slots** (`connectionBindings[]`) — named handles a skill/agent declares for a connection it needs (e.g. `image-gen`) without hard-coding a concrete connection. The operator points each slot at a connection they own.
+
+```bash
+rip agent mount-connection <mount-id> image-gen=minimax   # bind (or re-bind)
+rip agent mount-connection <mount-id> --unbind image-gen  # unbind
+```
+
+The bound connection still has to be **granted** to the mount (`rip agent mount-grants`) for `rip connection call` to authorize it. Unbinding never touches the connection itself.
 
 ### `rip agent delete <slug>`
 
@@ -1521,6 +1537,86 @@ curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md \
 ```
 
 Then in Claude Code: `/tokenrip-bootloader <slug>`. The slash command auto-installs the rip CLI, runs `rip auth register` if no identity exists, calls the six session-lifecycle commands above (`load` → `record`/`rewrite-artifact`/`tool-execute`/`tool-submit` → `end`), and treats the returned brain content as the active instructions. See `docs/architecture/agents.md` §"Bootloader vs CLI skill" for the canonical table comparing the two primitives.
+
+## Connection commands
+
+A **connection** is an encrypted, server-side credential that turns Tokenrip into a general API/inference router: store an upstream API key once, and a mount calls the provider through it while the platform injects the auth server-side — the caller never sees the secret. A connection is owned by a personal account **or** a team (`--team <slug>`; any current member may read/invoke, but only the team owner may create/rotate/disable/delete). Full model, safeguards, and failure codes: `docs/architecture/connections.md`; task-oriented walkthrough: [`references/connections.md`](./references/connections.md).
+
+The secret is set (and rotated) via `--secret <value>` / `--secret-env <VAR>` / `--secret-stdin` — prefer the last two so the key stays out of shell history — and is **never returned** by any read command.
+
+### `rip connection create`
+
+Create a connection. `--auth-type` is `bearer` (Authorization: Bearer), `header` (custom header — needs `--auth-header-name`, e.g. `x-api-key`), `basic`, or `query`.
+
+```bash
+export MINIMAX_KEY=sk-...
+rip connection create --team quintel --name minimax \
+  --base-url https://api.minimax.io/anthropic --auth-type header \
+  --auth-header-name x-api-key --secret-env MINIMAX_KEY \
+  --allowed-paths '/v1/*' --header anthropic-version=2023-06-01
+```
+
+Required: `--name <name>` (unique per owner), `--base-url <url>` (SSRF-checked), `--auth-type <bearer|header|basic|query>`. Secret: one of `--secret`, `--secret-env <VAR>`, `--secret-stdin`. Optional: `--auth-header-name <name>`, `--allowed-paths <csv>` (path globs the mount may hit, e.g. `'/v1/*'`), `--header k=v` (repeatable — static `default_headers`, always sent; this is how required provider statics like `anthropic-version` reach upstream), `--query k=v` (repeatable — static `default_query`), `--rate-limit-per-min <n>` (default 60), `--daily-quota <n>` (default 1000), `--team <slug>`.
+
+### `rip connection list`
+
+List connections (secrets never shown).
+
+```bash
+rip connection list
+rip connection list --team quintel --include-disabled
+```
+
+Options: `--team <slug>`, `--include-disabled`.
+
+### `rip connection get <id>`
+
+Show one connection's config (no secret).
+
+```bash
+rip connection get <id>
+rip connection get <id> --team quintel
+```
+
+Options: `--team <slug>`.
+
+### `rip connection rotate-secret <id>`
+
+Replace the encrypted secret. Same secret-input rules as `create`.
+
+```bash
+rip connection rotate-secret <id> --secret-env MINIMAX_KEY
+rip connection rotate-secret <id> --team quintel --secret-stdin < ./new-key.txt
+```
+
+Options: `--secret`, `--secret-env <VAR>`, `--secret-stdin`, `--team <slug>` (team owner only).
+
+### `rip connection disable <id>` / `rip connection rm <id>`
+
+`disable` soft-disables the connection and frees its name for reuse; `rm` hard-deletes it. Team-owned: team owner only.
+
+```bash
+rip connection disable <id>
+rip connection rm <id> --team quintel
+```
+
+Options: `--team <slug>`.
+
+> There is no CLI update for non-secret fields — disable + recreate, or use `PATCH /v0/connections/:id` (see `docs/architecture/connections.md`).
+
+### `rip connection call`
+
+Invoke an upstream API through a connection **granted to a mount** (`rip agent mount-grants`, or a bound connection-binding slot via `rip agent mount-connection`). Auth and the connection's `default_headers` / `default_query` are injected server-side; you supply the method, path, and body.
+
+```bash
+rip connection call --mount <mount-id> --connection minimax \
+  --method POST --path /v1/messages \
+  --body '{"model":"MiniMax-M2.5","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+Required: `--mount <id>`, `--connection <name>`, `--method <M>` (GET/POST/PUT/PATCH/DELETE), `--path <path>` (must pass the connection's `--allowed-paths`). Optional: `--body <json>`, `--query <json>` (merged with defaults; caller wins), `--header k=v` (repeatable — only `Content-Type` / `Accept` / `Accept-Language` / `User-Agent` are forwarded).
+
+In human mode the command prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON on stdout, so a skill can `JSON.parse(stdout)` directly; `--json` wraps that in the standard `{ ok, data }` envelope. Non-streaming responses only; a 30s timeout and 5MB response cap apply.
 
 ## Publisher commands
 
