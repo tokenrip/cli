@@ -100,6 +100,8 @@ artifact
   .option('--attach-mount <id>', 'Attach this artifact to a mount package — files it into the mount folder, hides from the flat list')
   .option('--star', 'Star the artifact immediately after publishing')
   .option('--public-asset', 'Store bytes in a public bucket and return a direct CDN URL (not valid with private visibility)')
+  .option('--visibility <level>', 'private | link | public (default link)')
+  .option('--strict', 'For tables: reject unknown columns and type-mismatched values on row writes')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -478,6 +480,7 @@ artifact
   .option('--alias <alias>', 'New alias for the artifact')
   .option('--title <title>', 'New title for the artifact')
   .option('--description <description>', 'New description for the artifact (empty string clears it)')
+  .option('--visibility <level>', 'private | link | public')
   .description('Update artifact metadata and/or alias without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
@@ -533,13 +536,19 @@ table
   .argument('<uuid>', 'Table artifact public ID')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
+  .option('--upsert-on <column>', 'Update the row matching this column instead of inserting (column must be unique: true)')
   .description('Append one or more rows to a table (max 1000 per call)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
   $ rip table append 550e8400-... --file rows.json
+  $ rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert-on slug
 
 NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
+
+UPSERT: --upsert-on makes publishing idempotent in one call — no check-then-write,
+no race. The named column must be declared unique: true in the table schema.
+Without --upsert-on, a duplicate value in a unique column is rejected (409).
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { tableAppend } = await import('./commands/table.js');
@@ -551,16 +560,28 @@ table
   .argument('<uuid>', 'Table artifact public ID')
   .option('--limit <n>', 'Max rows to return (default: 100, max: 500)')
   .option('--after <rowId>', 'Cursor: show rows after this row ID')
-  .option('--sort-by <column>', 'Sort by column name')
+  .option('--before <rowId>', 'Cursor: show rows before this row ID (not with --after)')
+  .option('--sort-by <column>', 'Sort by column name, or createdAt / updatedAt / id')
   .option('--sort-order <order>', 'Sort direction: asc or desc (default: asc)')
-  .option('--filter <key=value...>', 'Filter rows by column value (repeatable)')
+  .option('--filter <key=value...>', 'Filter rows (repeatable). The key may carry an operator: revenue[gte]=75')
+  .option('--fields <columns>', 'Comma-separated columns to return, e.g. slug,title')
+  .option('--include-total', 'Also return the total row count matching the filters')
   .description('List rows in a table')
   .addHelpText('after', `
+FILTER OPERATORS:
+  eq (default)  lt  lte  gt  gte  ne  in (comma-separated)  contains  starts
+
+  Comparisons use the column's declared type, so a number column compares
+  numerically and a date column chronologically. A filter or sort naming a
+  column the table doesn't have is an error, not a silently ignored filter.
+
 EXAMPLES:
   $ rip table rows 550e8400-...
   $ rip table rows 550e8400-... --limit 50
   $ rip table rows 550e8400-... --sort-by discovered_at --sort-order desc
   $ rip table rows 550e8400-... --filter ignored=false --filter action=engage
+  $ rip table rows 550e8400-... --filter 'revenue[gte]=75' --filter 'tier[in]=gold,silver'
+  $ rip table rows 550e8400-... --fields slug,title,excerpt --include-total
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { tableRows } = await import('./commands/table.js');

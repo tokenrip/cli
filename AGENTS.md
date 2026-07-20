@@ -74,7 +74,7 @@ rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 
 **When to pick which tabular type:**
 - `--type csv` — versioned file, renders as a table, no row-level API. Good for exports/snapshots.
-- `--type table` (with `--schema` or `--from-csv`) — living table with row-level API, no versioning. Good for agent-built data that grows over time.
+- `--type table` (with `--schema` or `--from-csv`) — living table with row-level API, no versioning. Good for agent-built data that grows over time. Pass `--strict` to reject unknown columns and type-mismatched values on row writes; without it an unknown key is silently *added* to the schema as a `text` column and values are never type checked.
 
 **Attach to an agent / mount package.** Pass `--attach-agent <slug>` (or `--attach-mount <id>`, mutually exclusive) to file a published content artifact into an agent's imprint package or a mount's package instead of the operator's flat artifact list. Attached artifacts are hidden from `rip artifact list` and surfaced on the imprint **Package** section (`--attach-agent`) or the mount **Documents** rail (`--attach-mount`) — the home for operator reference sheets and other agent-context docs. Content artifacts only; not to be confused with the global `--agent` identity selector.
 
@@ -392,16 +392,41 @@ rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 ```bash
 rip table append <uuid> --data '{"company":"Acme","signal":"API launch"}'
 rip table append <uuid> --file rows.json
+
+# Idempotent publish — updates the matching row instead of inserting.
+# The column must be declared unique: true in the schema.
+rip table append <uuid> --data '{"slug":"post","title":"v2"}' --upsert-on slug
 ```
+
+Declare a column `{"name":"slug","type":"text","unique":true}` and a duplicate
+insert is rejected with `409 DUPLICATE_UNIQUE_VALUE`. `--upsert-on` turns
+check-then-write into one atomic call, so two concurrent publishes can't produce
+two rows with the same key.
 
 ### List rows
 
 ```bash
 rip table rows <uuid>
 rip table rows <uuid> --limit 50 --after <rowId>
+rip table rows <uuid> --before <rowId>                          # page backward
 rip table rows <uuid> --sort-by discovered_at --sort-order desc
 rip table rows <uuid> --filter ignored=false --filter action=engage
+rip table rows <uuid> --filter 'revenue[gte]=75'                # operators
+rip table rows <uuid> --fields slug,title --include-total       # projection + count
 ```
+
+**Filter operators** (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`,
+`ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare
+using the column's declared type, so a `number` column compares numerically and a
+`date` column chronologically.
+
+**Fail-loudly:** a sort, filter, or field naming a column the table doesn't have
+is a `400`, not a silently ignored parameter — a typo'd `--filter published=true`
+used to return every row.
+
+**Ordering** is total (`created_at, id` tie-break is guaranteed), so cursors stay
+stable even when many rows share a sort value. `--sort-by` also accepts the row
+metadata columns `createdAt` / `updatedAt` / `id`.
 
 ### Update a row
 

@@ -59,6 +59,8 @@ export async function publish(
     attachAgent?: string;
     attachMount?: string;
     publicAsset?: boolean;
+    visibility?: string;
+    strict?: boolean;
   },
 ): Promise<void> {
   if (!VALID_TYPES.includes(options.type as ContentType)) {
@@ -130,6 +132,7 @@ export async function publish(
     if (options.attachAgent) body.agent = options.attachAgent;
     if (options.attachMount) body.mount = options.attachMount;
     if (options.publicAsset) body.public_asset = true;
+    if (options.visibility) body.visibility = options.visibility;
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -180,7 +183,11 @@ export async function publish(
     if (parsedMetadata) body.metadata = parsedMetadata;
     if (options.attachAgent) body.agent = options.attachAgent;
     if (options.attachMount) body.mount = options.attachMount;
-    if (options.publicAsset) body.public_asset = true;
+    // No public_asset here: the backend rejects table + public asset with
+    // PUBLIC_ASSET_UNSUPPORTED, so sending it could only ever surface as a
+    // server error.
+    if (options.visibility) body.visibility = options.visibility;
+    if (options.strict) body.strict = true;
 
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/artifacts', body);
@@ -229,7 +236,9 @@ export async function publish(
     if (parsedMetadata) body.metadata = parsedMetadata;
     if (options.attachAgent) body.agent = options.attachAgent;
     if (options.attachMount) body.mount = options.attachMount;
-    if (options.publicAsset) body.public_asset = true;
+    // Same as the CSV table path above — public assets are not valid on tables.
+    if (options.visibility) body.visibility = options.visibility;
+    if (options.strict) body.strict = true;
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
@@ -277,6 +286,7 @@ export async function publish(
   if (options.attachAgent) body.agent = options.attachAgent;
   if (options.attachMount) body.mount = options.attachMount;
   if (options.publicAsset) body.public_asset = true;
+  if (options.visibility) body.visibility = options.visibility;
 
   const { data } = await client.post('/v0/artifacts', body);
 

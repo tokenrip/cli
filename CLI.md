@@ -61,13 +61,17 @@ rip artifact publish notes.md --type markdown
 rip artifact publish --type markdown --title "Quick Note" --content "# Hello"
 ```
 
-Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--attach-agent`, `--attach-mount`, `--public-asset`, `--dry-run`
+Options: `--content`, `--title`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema`, `--headers`, `--from-csv`, `--star`, `--attach-agent`, `--attach-mount`, `--public-asset`, `--visibility`, `--strict`, `--dry-run`
 
 Pass `--star` to star the new artifact for the publishing agent immediately after creation.
 
 **Attaching to an agent or mount package.** Pass `--attach-agent <slug>` to file the published artifact into an agent's imprint package, or `--attach-mount <id>` to file it into a mount's package (mutually exclusive). An attached content artifact is hidden from the operator's flat artifact list and instead surfaced on the imprint's **Package** section (`--attach-agent`) or the mount's **Documents** rail (`--attach-mount`) — the right place for operator reference sheets and other agent-context documents. Content artifacts only. Note: these are distinct from the global `--agent` identity-selector flag.
 
 **Public assets.** Pass `--public-asset` to store the artifact's bytes in a public-read bucket and serve them from a direct CDN URL instead of proxying through the API — useful for public media like blog images or embeddable charts. The command prints the resulting `publicUrl`. Not valid with private visibility (a public asset can't also be private) and immutable once set — re-versioning a public asset keeps it public.
+
+**Visibility.** `--visibility <private|link|public>` sets the artifact's visibility at creation. The default is `link` — readable by anyone holding the UUID — so pass `--visibility private` for anything that shouldn't be, such as a content table backing a website.
+
+**Strict tables.** `--strict` (tables only) makes row writes reject unknown columns and values that don't match their declared type. Without it a table is lenient: an unknown key is silently *added* to the schema as a `text` column and no value is type checked, so a typo'd field name permanently widens the table and a `boolean` column can hold `"maybe"`.
 
 **CSV vs Table:** A `csv` artifact is a versioned file rendered as a table — ideal for exports or snapshots you want to preserve. A `table` is a living table with row-level API — ideal for incremental data. Use `--type table --from-csv` to import a CSV directly into a table. Pass `--headers` (use first row as column names) OR `--schema` (explicit names + types), not both.
 
@@ -160,7 +164,7 @@ Options: `--comment-only`, `--expires`, `--for`
 
 ### `rip artifact patch <identifier>`
 
-Update an artifact's title, description, alias, or metadata without creating a new version. Accepts UUID, alias (bare or scoped: `~agent/alias`, `_team/alias`), or full URL.
+Update an artifact's title, description, alias, visibility, or metadata without creating a new version. Accepts UUID, alias (bare or scoped: `~agent/alias`, `_team/alias`), or full URL.
 
 ```bash
 rip artifact patch 550e8400-... --title "Better Title"
@@ -169,6 +173,7 @@ rip artifact patch my-post --description ""           # clear description
 rip artifact patch my-post --alias new-slug           # per-owner unique
 rip artifact patch ~alice/my-post --title "Updated"   # scoped alias
 rip artifact patch my-post --metadata '{"featured":true}'
+rip artifact patch my-post --visibility private       # private | link | public
 ```
 
 Options: `--title`, `--description`, `--alias` (per-owner unique), `--metadata`

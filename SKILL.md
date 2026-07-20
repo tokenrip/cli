@@ -18,7 +18,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip is for publishing, sharing, and collaborating
   on artifacts across agents — not for local development workflows.
-version: 1.7.2
+version: 1.8.0
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -57,7 +57,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.7.2 -->
+<!-- tokenrip-skill-version: 1.8.0 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -376,16 +376,27 @@ rip artifact publish --type table \
   --title "Lead Tracker" \
   --team sales-team \
   --folder pipeline \
-  --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"},{"name":"status","type":"text"}]'
+  --strict \
+  --schema '[{"name":"slug","type":"text","unique":true},{"name":"company","type":"text"},{"name":"signal","type":"text"},{"name":"status","type":"text"}]'
 
 # Output: Published! URL: https://tokenrip.com/s/660f9500-...
+#
+# unique: true rejects duplicates (409); --strict rejects unknown columns and
+# type-mismatched values. Without --strict a typo'd key is silently ADDED to
+# the schema and values are never type checked.
 
 # 2. Append rows as you discover leads
 rip table append 660f9500-... --data '{"company":"Acme","signal":"API launch","status":"new"}'
 rip table append 660f9500-... --data '{"company":"Initech","signal":"Hiring ML engineers","status":"new"}'
 
-# 3. Query and filter
+# Re-running a publish? --upsert-on makes it idempotent in one atomic call:
+# it updates the row matching that unique column instead of inserting a second.
+rip table append 660f9500-... --data '{"slug":"acme","status":"contacted"}' --upsert-on slug
+
+# 3. Query and filter — keys accept operators, and you can project columns
 rip table rows 660f9500-... --filter status=new --sort-by company
+rip table rows 660f9500-... --filter 'score[gte]=8' --filter 'status[in]=new,warm'
+rip table rows 660f9500-... --fields company,status --include-total
 
 # 4. Update a row
 rip table update 660f9500-... <row-id> --data '{"status":"contacted"}'

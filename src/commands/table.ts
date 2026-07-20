@@ -8,7 +8,7 @@ import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
 
 export async function tableAppend(
   uuid: string,
-  options: { data?: string; file?: string },
+  options: { data?: string; file?: string; upsertOn?: string },
 ): Promise<void> {
   let rows: Record<string, unknown>[];
 
@@ -25,22 +25,38 @@ export async function tableAppend(
   }
 
   const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, { rows });
+  const body: Record<string, unknown> = { rows };
+  if (options.upsertOn) body.upsertOn = options.upsertOn;
+  const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, body);
   outputSuccess({ rows: data.data, count: data.data.length }, formatRowsAppended);
 }
 
 export async function tableRows(
   uuid: string,
-  options: { limit?: string; after?: string; sortBy?: string; sortOrder?: string; filter?: string[] },
+  options: {
+    limit?: string;
+    after?: string;
+    before?: string;
+    sortBy?: string;
+    sortOrder?: string;
+    filter?: string[];
+    fields?: string;
+    includeTotal?: boolean;
+  },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const params: Record<string, string> = {};
   if (options.limit) params.limit = options.limit;
   if (options.after) params.after = options.after;
+  if (options.before) params.before = options.before;
   if (options.sortBy) params.sort_by = options.sortBy;
   if (options.sortOrder) params.sort_order = options.sortOrder;
+  if (options.fields) params.fields = options.fields;
+  if (options.includeTotal) params.include_total = '1';
   if (options.filter) {
     for (const f of options.filter) {
+      // Split on the first '=' so an operator suffix in the key survives:
+      // `revenue[gte]=75` → `filter.revenue[gte]=75`.
       const eq = f.indexOf('=');
       if (eq > 0) params[`filter.${f.slice(0, eq)}`] = f.slice(eq + 1);
     }

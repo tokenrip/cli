@@ -8,10 +8,25 @@ import { parseArtifactId } from '../parse-artifact-id.js';
 
 export async function patch(
   identifier: string,
-  options: { metadata?: string; alias?: string; title?: string; description?: string },
+  options: {
+    metadata?: string;
+    alias?: string;
+    title?: string;
+    description?: string;
+    visibility?: string;
+  },
 ): Promise<void> {
-  if (!options.metadata && !options.alias && options.title === undefined && options.description === undefined) {
-    throw new CliError('INVALID_ARGS', 'Provide at least one of --title, --description, --metadata, or --alias.');
+  if (
+    !options.metadata &&
+    !options.alias &&
+    options.title === undefined &&
+    options.description === undefined &&
+    options.visibility === undefined
+  ) {
+    throw new CliError(
+      'INVALID_ARGS',
+      'Provide at least one of --title, --description, --metadata, --alias, or --visibility.',
+    );
   }
 
   const body: Record<string, unknown> = {};
@@ -26,6 +41,9 @@ export async function patch(
   }
   if (options.description !== undefined) {
     body.description = options.description;
+  }
+  if (options.visibility !== undefined) {
+    body.visibility = options.visibility;
   }
 
   const id = parseArtifactId(identifier);
