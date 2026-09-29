@@ -1,6 +1,6 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { formatTeamCreated, formatTeamList, formatTeamDetails, formatTeamInvite } from '../formatters.js';
+import { formatTeamCreated, formatTeamList, formatTeamDetails, formatTeamInvite, formatTeamMemberAdded } from '../formatters.js';
 import { loadTeams, saveTeams, resolveTeam, syncTeamsFromResponse, setAlias, removeAlias } from '../teams.js';
 
 export async function teamCreate(slug: string, options: { name?: string; description?: string }): Promise<void> {
@@ -43,7 +43,7 @@ export async function teamAdd(slugOrId: string, agentIdOrAlias: string): Promise
   const { data } = await client.post(`/v0/teams/${encodeURIComponent(resolved)}/members`, {
     agentId: agentIdOrAlias,
   });
-  outputSuccess(data.data ?? { ok: true });
+  outputSuccess(data.data ?? { ok: true }, formatTeamMemberAdded);
 }
 
 export async function teamInvite(slugOrId: string): Promise<void> {

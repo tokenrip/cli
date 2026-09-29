@@ -7,27 +7,17 @@ import { publish } from './commands/publish.js';
 import { status } from './commands/status.js';
 import { deleteArtifact } from './commands/delete.js';
 import { archiveArtifact, unarchiveArtifact } from './commands/archive.js';
-import { star, unstar, starred } from './commands/star.js';
 import { forkArtifact } from './commands/fork.js';
 import { update } from './commands/update.js';
 import { deleteVersion } from './commands/delete-version.js';
 import { stats } from './commands/stats.js';
-import { share } from './commands/share.js';
 import { artifactGet } from './commands/artifact-get.js';
-import { artifactInspect } from './commands/artifact-inspect.js';
-import { mountInspect } from './commands/mount-inspect.js';
-import { surfacePublish, surfaceUpdate, surfaceList, surfaceGet, surfaceValidate, surfacePromote, surfaceSetDefault, surfacePromoteToImprint, surfaceOpen, surfaceRevisions, surfaceRestore, surfaceDelete } from './commands/surface.js';
 import { bundleDeploy, bundleList, bundleGet, bundleVersions, bundleRollback, bundleOpen, bundleDelete } from './commands/bundle.js';
 import { artifactDownload } from './commands/artifact-download.js';
 import { artifactCat } from './commands/artifact-cat.js';
 import { artifactVersions } from './commands/artifact-versions.js';
 import { artifactDiff } from './commands/artifact-diff.js';
-import { artifactComment, artifactComments } from './commands/artifact-comments.js';
 import { patch } from './commands/patch.js';
-import { agentArtifacts, agentDelete, agentEnd, agentFork, agentList, agentLoad, agentMount, agentMountArtifacts, agentMountConfig, agentMountConnection, agentMountContext, agentMountGrants, agentMountRename, agentMountWorkspace, agentMounts, agentPublish, agentPublishToggle, agentRecord, agentRewriteArtifact, agentSetDisplay, agentSetFeatured, agentShow, agentShowMount, agentThemeList, agentThemeShow, agentThemeUpsert, agentToolExecute, agentToolSubmit, agentUnmount, agentUnpublish, agentValidate } from './commands/agent.js';
-import { mountTableList, mountTableRows, mountTableLatest, mountTableByTag, mountTablePatch, mountTableAppend } from './commands/mount-table.js';
-import { adminAgentList, adminAgentSessions, adminAgentSetFeatured, adminAgentShow, adminAgentUnpublish } from './commands/admin-agent.js';
-import { tour, tourNext, tourRestart } from './commands/tour.js';
 import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './output.js';
 import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
@@ -39,7 +29,7 @@ const { version } = require('../package.json');
 const program = new Command();
 program
   .name('rip')
-  .description('Tokenrip — The collaboration layer for agents and operators')
+  .description('Tokenrip — shared workspaces for people and AI agents')
   .version(version)
   .option('--json', 'Use JSON output instead of human-readable')
   .option('--agent <name>', 'Use a specific agent identity for this command')
@@ -69,6 +59,9 @@ artifact
   .option('--folder <slug>', 'File into folder')
   .option('--public-asset', 'Store in a public bucket and return a direct CDN URL (publicUrl)')
   .option('--visibility <level>', 'Artifact visibility (link | public | private); defaults to public with --public-asset')
+  .option('--workspace-id <id>', 'Create inside a workspace')
+  .option('--audience <audience>', 'Workspace audience: internal | shared')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
@@ -96,12 +89,12 @@ artifact
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
   .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
-  .option('--attach-agent <slug>', 'Attach this artifact to an agent package — files it into the imprint, hides from the flat list')
-  .option('--attach-mount <id>', 'Attach this artifact to a mount package — files it into the mount folder, hides from the flat list')
-  .option('--star', 'Star the artifact immediately after publishing')
   .option('--public-asset', 'Store bytes in a public bucket and return a direct CDN URL (not valid with private visibility)')
   .option('--visibility <level>', 'private | link | public (default link)')
   .option('--strict', 'For tables: reject unknown columns and type-mismatched values on row writes')
+  .option('--workspace-id <id>', 'Create inside a workspace')
+  .option('--audience <audience>', 'Workspace audience: internal | shared')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -157,6 +150,8 @@ artifact
   .command('delete')
   .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
   .option('--dry-run', 'Show what would be deleted without deleting')
+  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Permanently delete an artifact and its shareable link')
   .addHelpText('after', `
 EXAMPLES:
@@ -173,6 +168,8 @@ CAUTION:
 artifact
   .command('archive')
   .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
+  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Archive an artifact (hidden from listings but still accessible by ID)')
   .addHelpText('after', `
 EXAMPLES:
@@ -188,6 +185,8 @@ EXAMPLES:
 artifact
   .command('unarchive')
   .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
+  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Unarchive an artifact, restoring it to published state')
   .addHelpText('after', `
 EXAMPLES:
@@ -197,54 +196,19 @@ EXAMPLES:
   .action(wrapCommand(unarchiveArtifact));
 
 artifact
-  .command('star')
-  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
-  .description('Star an artifact — pins it to your dashboard')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact star 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact star my-alias
-  $ rip artifact star '~alice/dashboard'
-`)
-  .action(wrapCommand(star));
-
-artifact
-  .command('unstar')
-  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
-  .description('Unstar an artifact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact unstar 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact unstar my-alias
-`)
-  .action(wrapCommand(unstar));
-
-artifact
-  .command('starred')
-  .option('--since <iso>', 'Only return stars created after this ISO 8601 timestamp')
-  .option('--limit <n>', 'Maximum number of items to return', '100')
-  .description('List your starred artifacts (newest-starred first)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact starred
-  $ rip artifact starred --limit 20
-  $ rip artifact starred --since 2026-04-01T00:00:00Z
-`)
-  .action(wrapCommand(starred));
-
-artifact
   .command('fork')
   .argument('<identifier>', 'Artifact public ID, alias, or scoped alias (~owner/alias) to fork')
-  .option('--version <versionId>', 'Fork a specific version (defaults to latest)')
+  .option('--version-id <versionId>', 'Fork a specific version (defaults to latest)')
   .option('--title <title>', 'Title for the forked artifact (defaults to original)')
   .option('--folder <folder>', 'Folder slug to file the fork into')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Create your own copy of an existing artifact')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact fork 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact fork my-skill --title "My Custom Skill"
   $ rip artifact fork '~alice/dashboard' --title "My Dashboard"
-  $ rip artifact fork 550e8400 --version abc123 --folder tools
+  $ rip artifact fork 550e8400 --version-id abc123 --folder tools
 `)
   .action(wrapCommand(forkArtifact));
 
@@ -257,6 +221,10 @@ artifact
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--title <title>', 'Also update the artifact title (applied via a follow-up patch)')
   .option('--alias <alias>', 'Also update the artifact alias (applied via a follow-up patch)')
+  .option('--expected-version-id <id>', 'Required current version ID when replacing workspace content')
+  .option('--audience <audience>', 'Set workspace audience: internal | shared')
+  .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision when changing audience')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .option('--dry-run', 'Validate without publishing')
   .description('Publish a new version of an existing artifact')
   .addHelpText('after', `
@@ -272,6 +240,8 @@ artifact
   .argument('<uuid>', 'Artifact ID')
   .argument('<versionId>', 'Version ID to delete')
   .option('--dry-run', 'Show what would be deleted without deleting')
+  .option('--expected-workspace-revision <n>', 'Required live revision when deleting a workspace artifact version')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Delete a specific version of an artifact')
   .addHelpText('after', `
 EXAMPLES:
@@ -282,21 +252,6 @@ CAUTION:
   Cannot delete the last remaining version — delete the artifact instead.
 `)
   .action(wrapCommand(deleteVersion));
-
-artifact
-  .command('share')
-  .argument('<uuid>', 'Artifact public ID to generate a share link for')
-  .option('--comment-only', 'Only allow commenting (no version creation)')
-  .option('--expires <duration>', 'Token expiry: 30m, 1h, 7d, 30d, etc.')
-  .option('--for <agentId>', 'Restrict token to a specific agent (rip1...)')
-  .description('Generate a shareable link with scoped permissions')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact share 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact share 550e8400-... --comment-only --expires 7d
-  $ rip artifact share 550e8400-... --for rip1x9a2f...
-`)
-  .action(wrapCommand(share));
 
 artifact
   .command('stats')
@@ -323,37 +278,17 @@ EXAMPLES:
   .action(wrapCommand(artifactGet));
 
 artifact
-  .command('inspect')
-  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
-  .description('SDK-shaped inspection of a text artifact (drives Surface authoring)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact inspect 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact inspect my-doc
-  $ rip --json artifact inspect my-doc
-
-NOTES:
-  Wraps GET /v0/operator/artifacts/:publicId/inspect — the same payload the
-  inspect_artifact MCP tool returns. Pairs with rip mount inspect for the
-  full SDK-shaped surface needed to draft a tokenrip Surface (no raw
-  /v0/... URLs surface to the caller).
-  Only valid for text-supporting types (markdown, html, code, text, json);
-  other types return INVALID_ARTIFACT_TYPE.
-`)
-  .action(wrapCommand(artifactInspect));
-
-artifact
   .command('download')
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
-  .option('--version <versionId>', 'Download a specific version')
+  .option('--version-id <versionId>', 'Download a specific version')
   .option('--format <format>', 'Export format for tables: csv or json (default: csv)')
   .description('Download artifact content to a local file')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact download 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact download 550e8400-... --output ./report.pdf
-  $ rip artifact download 550e8400-... --version abc123
+  $ rip artifact download 550e8400-... --version-id abc123
   $ rip artifact download 550e8400-... --format json
 `)
   .action(wrapCommand(artifactDownload));
@@ -361,14 +296,14 @@ EXAMPLES:
 artifact
   .command('cat')
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
-  .option('--version <versionId>', 'Output a specific version')
+  .option('--version-id <versionId>', 'Output a specific version')
   .description('Print artifact content to stdout')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact cat 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact cat my-post
   $ rip artifact cat '~alice/dashboard'
-  $ rip artifact cat my-post --version abc123
+  $ rip artifact cat my-post --version-id abc123
   $ rip artifact cat my-post | head -20
 `)
   .action(wrapCommand(artifactCat));
@@ -376,72 +311,42 @@ EXAMPLES:
 artifact
   .command('versions')
   .argument('<uuid>', 'Artifact UUID or full URL')
-  .option('--version <versionId>', 'Get metadata for a specific version')
+  .option('--version-id <versionId>', 'Get metadata for a specific version')
   .description('List versions of an artifact')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact versions 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact versions 550e8400-... --version abc123
+  $ rip artifact versions 550e8400-... --version-id abc123
 `)
   .action(wrapCommand(artifactVersions));
 
 artifact
   .command('diff')
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
-  .option('--version <versionId>', 'Diff a specific version (default: current version)')
+  .option('--version-id <versionId>', 'Diff a specific version (default: current version)')
   .description('Show what changed in a version vs. the previous version')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact diff 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact diff my-alias --version abc123
+  $ rip artifact diff my-alias --version-id abc123
 `)
   .action(wrapCommand(artifactDiff));
-
-artifact
-  .command('comment')
-  .argument('<uuid>', 'Artifact UUID or full URL')
-  .argument('<message>', 'Comment text')
-  .option('--intent <intent>', 'Message intent: propose, accept, reject, inform, request')
-  .option('--type <type>', 'Message type')
-  .option('--version-id <uuid>', 'Artifact version this comment refers to')
-  .description('Post a comment on an artifact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact comment 550e8400-... "Looks good, approved"
-  $ rip artifact comment 550e8400-... "Needs revision" --intent reject
-`)
-  .action(wrapCommand(artifactComment));
-
-artifact
-  .command('comments')
-  .argument('<uuid>', 'Artifact UUID or full URL')
-  .option('--since <sequence>', 'Show messages after this sequence number')
-  .option('--limit <n>', 'Max messages to return')
-  .description('List comments on an artifact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact comments 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact comments 550e8400-... --since 5 --limit 10
-`)
-  .action(wrapCommand(artifactComments));
 
 artifact
   .command('move')
   .argument('<uuid>', 'Artifact UUID')
   .option('--folder <slug>', 'Target folder slug')
+  .option('--folder-id <uuid>', 'Target workspace folder UUID')
   .option('--team <slug>', 'Target team (for team folders)')
   .option('--unfiled', 'Remove from current folder')
+  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Move an artifact into a folder or unfile it')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact move 550e8400-... --folder reports
   $ rip artifact move 550e8400-... --folder research --team my-team
   $ rip artifact move 550e8400-... --unfiled
-
-NOTES:
-  Returns FOLDER_LOCKED (HTTP 409) for moves into or out of system-managed
-  agent or mount folders — agent package contents and mount-materialized
-  artifacts are managed by the platform.
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { artifactMove } = await import('./commands/folder.js');
@@ -455,6 +360,9 @@ artifact
   .option('--folder <slug>', 'Target folder slug (for move)')
   .option('--team <slug>', 'Target team for the folder (for move into a team folder)')
   .option('--unfiled', 'Unfile the artifacts (for move)')
+  .option('--folder-id <uuid>', 'Target workspace folder UUID (for move)')
+  .option('--expected-workspace-revisions <json>', 'Map artifact identifiers to live workspace revisions')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Move, archive, or delete many artifacts in one call')
   .addHelpText('after', `
 EXAMPLES:
@@ -481,6 +389,9 @@ artifact
   .option('--title <title>', 'New title for the artifact')
   .option('--description <description>', 'New description for the artifact (empty string clears it)')
   .option('--visibility <level>', 'private | link | public')
+  .option('--audience <audience>', 'Set workspace audience: internal | shared without creating a version')
+  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Update artifact metadata and/or alias without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
@@ -537,6 +448,8 @@ table
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
   .option('--upsert-on <column>', 'Update the row matching this column instead of inserting (column must be unique: true)')
+  .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Append one or more rows to a table (max 1000 per call)')
   .addHelpText('after', `
 EXAMPLES:
@@ -593,6 +506,9 @@ table
   .argument('<uuid>', 'Table artifact public ID')
   .argument('<rowId>', 'Row ID to update')
   .requiredOption('--data <json>', 'Fields to update as JSON (partial merge)')
+  .option('--expected-revision <n>', 'Required live row revision for a workspace row')
+  .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Update a single row in a table')
   .addHelpText('after', `
 EXAMPLES:
@@ -607,6 +523,8 @@ table
   .command('delete')
   .argument('<uuid>', 'Table artifact public ID')
   .requiredOption('--rows <ids>', 'Comma-separated row IDs to delete')
+  .option('--expected-revisions <json>', 'Map row IDs to live row revisions for workspace deletion')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Delete rows from a table')
   .addHelpText('after', `
 EXAMPLES:
@@ -616,136 +534,6 @@ EXAMPLES:
     const { tableDelete } = await import('./commands/table.js');
     await tableDelete(uuid, options);
   }));
-
-// ── mount commands (top-level discovery surface) ────────────────────
-//
-// Operator-facing entry point for the SDK-shaped mount inspection API. Most
-// mount lifecycle commands live under `rip agent` (mount/mounts/unmount); this
-// top-level `mount` group is for the discovery surface that pairs with the
-// `inspect_mount` MCP tool and `rip artifact inspect`.
-const mount = program
-  .command('mount')
-  .description('Inspect mounts (discovery surface for Surface authoring)');
-
-mount
-  .command('inspect')
-  .argument('<mountId>', 'Mount ID returned by `rip agent mount` or `rip agent mounts`')
-  .description('SDK-shaped inspection of a mount and its tables')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip mount inspect 550e8400-e29b-41d4-a716-446655440000
-  $ rip --json mount inspect 550e8400-...
-
-NOTES:
-  Wraps GET /v0/operator/mounts/:mountId/inspect — the same payload the
-  inspect_mount MCP tool returns. Returns mount metadata + per-table
-  schema, ≤5 sample rows, recommended SDK binding, and
-  window.tokenrip.tables example snippets. Pairs with
-  rip artifact inspect for artifact-backed Surfaces.
-`)
-  .action(wrapCommand(mountInspect));
-
-// ── surface commands (Surface substrate) ─────────────────────────────
-//
-// Surfaces are self-contained HTML pages hosted at `/x/<publicId>` that
-// call the Tokenrip SDK (`window.tokenrip.surface.*`) to read and write
-// bound data sources. All endpoints are owner-only — `requireAuthClient`
-// fails fast on missing identity. Pairs with `rip mount inspect` and
-// `rip artifact inspect` for the SDK-shaped binding discovery flow.
-const surface = program
-  .command('surface')
-  .description('Publish and manage Surfaces (HTML pages hosted at /x/<publicId>)');
-
-surface
-  .command('publish')
-  .argument('<file>', 'Path to the Surface HTML file')
-  .requiredOption('--title <title>', 'Human-readable surface title')
-  .requiredOption('--bindings <file>', 'Path to a JSON file mapping binding keys to { kind, ... }')
-  .option('--mount <mountId>', 'Optional mount UUID this surface belongs to')
-  .option('--description <text>', 'Optional summary shown in the dashboard')
-  .description('Publish a new Surface (auto-validates via Playwright)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip surface publish ./dashboard.html --title "Inbox dashboard" --bindings ./bindings.json
-  $ rip surface publish ./view.html --title "Themes" --mount 550e8400-... --bindings ./b.json
-`)
-  .action(wrapCommand(surfacePublish));
-
-surface
-  .command('list')
-  .option('--mount <mountId>', 'Filter surfaces bound to a mount')
-  .option('--status <status>', 'Filter by status: draft or published')
-  .description('List surfaces owned by the calling agent')
-  .action(wrapCommand(surfaceList));
-
-surface
-  .command('get')
-  .argument('<publicId>', 'Surface public ID')
-  .description('Get full detail for one surface (skips HTML body in human mode)')
-  .action(wrapCommand(surfaceGet));
-
-surface
-  .command('update')
-  .argument('<publicId>', 'Surface public ID')
-  .argument('<file>', 'Path to the new Surface HTML file')
-  .option('--title <title>', 'New human-readable surface title')
-  .option('--description <text>', 'New summary')
-  .option('--bindings <file>', 'Path to a JSON file mapping binding keys (omit to keep current)')
-  .description('Update an existing Surface — creates a new revision and auto-validates')
-  .action(wrapCommand(surfaceUpdate));
-
-surface
-  .command('validate')
-  .argument('<publicId>', 'Surface public ID')
-  .description("Re-run Playwright validation against the surface's current revision")
-  .action(wrapCommand(surfaceValidate));
-
-surface
-  .command('promote')
-  .argument('<publicId>', 'Surface public ID')
-  .description('Promote a draft surface to published. Idempotent.')
-  .action(wrapCommand(surfacePromote));
-
-surface
-  .command('set-default')
-  .argument('<publicId>', 'Surface public ID')
-  .description("Make this surface the default shown for its mount")
-  .action(wrapCommand(surfaceSetDefault));
-
-surface
-  .command('promote-to-imprint')
-  .argument('<publicId>', 'Surface public ID')
-  .option('--alias <alias>', 'Manifest alias for the template (defaults to a slug of the title)')
-  .option('--default', 'Make this the imprint default surface (at most one)')
-  .description('Promote a validated mount surface into a reusable imprint template')
-  .action(wrapCommand(surfacePromoteToImprint));
-
-surface
-  .command('open')
-  .argument('<publicId>', 'Surface public ID')
-  .option('--browser', 'Launch the URL in the OS default browser (best-effort)')
-  .description('Print the operator-facing URL for a surface')
-  .action(wrapCommand(surfaceOpen));
-
-surface
-  .command('revisions')
-  .argument('<publicId>', 'Surface public ID')
-  .description('List revisions for a surface, newest first')
-  .action(wrapCommand(surfaceRevisions));
-
-surface
-  .command('restore')
-  .argument('<publicId>', 'Surface public ID')
-  .argument('<revisionId>', 'Revision id to restore (copies into a new active revision)')
-  .description('Restore an older revision (creates a NEW active revision; history preserved)')
-  .action(wrapCommand(surfaceRestore));
-
-surface
-  .command('delete')
-  .argument('<publicId>', 'Surface public ID')
-  .option('--yes', 'Confirm deletion (required)')
-  .description('Permanently delete a surface and all its revisions')
-  .action(wrapCommand(surfaceDelete));
 
 // ── bundle commands (multi-file static-site deployment) ──────────────
 //
@@ -829,574 +617,6 @@ bundle
   .description('Permanently delete a bundle and all its versions')
   .action(wrapCommand(bundleDelete));
 
-// ── agent commands ───────────────────────────────────────────────────
-const mountedagent = program
-  .command('agent')
-  .description('Manage agents');
-
-mountedagent
-  .command('publish')
-  .argument('<manifest>', 'Path to agent manifest JSON')
-  .option('--publish', 'Tier 2 — request public listing (requires an approved Publisher)')
-  .option('--published', '[deprecated] alias for --publish; mapped automatically with a warning')
-  .option('--featured <weight>', 'Set featured display weight; higher values sort first')
-  .option('--team <slug>', 'Publish as a team-owned agent (maps to teamSlug in v2)')
-  .option('--dry-run', 'Validate the manifest without persisting; exits 1 if validation fails')
-  .description('Publish or update an agent from a manifest')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent publish agents/office-hours/manifest.json
-  $ rip agent publish agents/office-hours/manifest.json --publish --featured 10
-  $ rip agent publish agents/chief-of-staff/manifest.json --team acme
-  $ rip agent publish agents/office-hours/manifest.json --dry-run
-
-NOTES:
-  Brain artifact aliases referenced by the manifest must already be published
-  by the active agent identity. Shared memory tables are created or
-  updated from the manifest during publish. Claude Code invocation surfaces
-  should point at the generated bootloader URL, which installs as
-  .claude/commands/<slug>.md and fetches brain artifacts at runtime.
-
-  --publish requests Tier 2 (public /agents listing) and requires an
-  approved Publisher (see: rip publisher apply). --published is the
-  legacy v1 flag and is mapped to --publish for backward compatibility.
-
-  --dry-run runs every validator (Zod schema, semantic validator,
-  brain-artifact existence + ownership, mount-intake + themes starter,
-  Publisher gate when --publish is set) and prints a structured result
-  without persisting. No Agent row, no folder, no table artifacts
-  get written. Exits 1 if validation fails. Prefer 'rip agent validate'
-  for a dedicated validation entry point.
-
-  Publish auto-creates a system-managed folder under the agent owner and
-  files brain/sample/shared artifacts into it. That folder can't be
-  renamed or deleted directly — delete the agent to remove it.
-`)
-  .action(wrapCommand(agentPublish));
-
-mountedagent
-  .command('validate')
-  .argument('<manifest>', 'Path to agent manifest JSON')
-  .description('Validate a manifest without publishing (alias for `publish --dry-run`)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent validate mountedagents/reddit-scout/manifest.json
-  $ rip agent validate ./manifest.json --json
-
-NOTES:
-  Runs every validator the publish path runs (Zod schema, semantic validator,
-  brain-artifact existence + ownership, mount-intake + themes starter, etc.)
-  and prints a structured result without persisting. No Agent row, no folder,
-  no table artifacts get written.
-
-  Exit code 0 = validation passed; exit code 1 = validation failed (errors in
-  output). Suitable for pre-commit hooks and CI gates.
-`)
-  .action(wrapCommand(agentValidate));
-
-mountedagent
-  .command('show')
-  .argument('<slug>', 'Agent slug')
-  .description('Show an agent published by the active identity')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent show office-hours
-`)
-  .action(wrapCommand(agentShow));
-
-mountedagent
-  .command('artifacts')
-  .argument('<slug>', 'Agent slug')
-  .description('List every artifact referenced by an owned agent')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent artifacts office-hours
-`)
-  .action(wrapCommand(agentArtifacts));
-
-mountedagent
-  .command('list')
-  .description('List agents published by the active identity')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent list
-`)
-  .action(wrapCommand(agentList));
-
-mountedagent
-  .command('fork')
-  .argument('<template-slug>', 'Published agent template slug')
-  .option('--team <team-slug>', 'Team slug that will own the fork (omit for a personal fork)')
-  .option('--slug <new-slug>', 'Override the generated agent slug')
-  .description('Fork a published agent template into a personal or team-owned scaffold')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent fork chief-of-staff
-  $ rip agent fork chief-of-staff --team my-team
-  $ rip agent fork chief-of-staff --team my-team --slug my-team-cos
-
-NOTES:
-  Personal forks are now the default — omit --team to fork into a personal
-  agent owned by the calling account. The fork is created unpublished. The
-  CLI writes the manifest and forked brain/sample artifacts under
-  agents/<slug>/, then you can run /moa --iterate <slug> to customize.
-
-  The fork's folder is marked as a system-managed agent folder and can't
-  be renamed or deleted directly.
-`)
-  .action(wrapCommand(agentFork));
-
-mountedagent
-  .command('mount')
-  .argument('<slug>', 'Agent slug')
-  .option('--team <slug>', 'Bind the mount to a team (collaborative)')
-  .option('--name <label>', 'Friendly mount name (required for a second mount of the same agent)')
-  .option('--context-from <file>', 'Seed the mount context artifact from a markdown file')
-  .option('--workspace <name=ref...>', 'Bind a manifest workspace-binding slot to a workspace id or slug (repeatable)')
-  .option('--connection <slot=name...>', 'Map a manifest connection-binding slot to a connection name (repeatable)')
-  .description('Create a deployment of an agent (personal by default; --team makes it collaborative)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent mount chief-of-staff
-  $ rip agent mount chief-of-staff --team acme --name engineering
-  $ rip agent mount blog-writing --name flowers --context-from ./flowers-context.md
-  $ rip agent mount blog-writer --workspace research=demand-hub
-  $ rip agent mount quintel-skill --team quintel --connection image-gen=minimax
-
-NOTES:
-  Creates a system-managed team mount folder (and a personal mount folder
-  per operator for private-layer artifacts) holding the mount's
-  materialized artifacts and themes. Mount folders are locked — they
-  can't be renamed or deleted directly; unmount to remove them.
-`)
-  .action(wrapCommand(agentMount));
-
-mountedagent
-  .command('mounts')
-  .description("List the caller's mounts (personal + accessible team mounts)")
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent mounts
-`)
-  .action(wrapCommand(agentMounts));
-
-mountedagent
-  .command('mount-rename')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .argument('<new-name>', 'New friendly label')
-  .description('Rename a mount')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent mount-rename <mount-id> engineering
-`)
-  .action(wrapCommand(agentMountRename));
-
-mountedagent
-  .command('mount-config')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .requiredOption('--imprint-config <json>', 'JSON object of imprint-specific config (or null to clear)')
-  .description('Set the mount\'s imprint-specific config block')
-  .action(wrapCommand(agentMountConfig));
-
-mountedagent
-  .command('mount-grants')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .requiredOption('--connections <json>', 'JSON array of connection names to grant (\'[]\' to clear)')
-  .description('Set the mount\'s granted connection names (must resolve to the creator\'s Connection rows)')
-  .action(wrapCommand(agentMountGrants));
-
-mountedagent
-  .command('mount-workspace')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .argument('[binding]', 'name=<workspace id or slug> to bind a slot')
-  .option('--unbind <name>', 'Unbind a slot (never touches the workspace itself)')
-  .description("Bind or unbind one of the mount's manifest workspace-binding slots")
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent mount-workspace <mount-id> research=demand-hub
-  $ rip agent mount-workspace <mount-id> --unbind research
-`)
-  .action(wrapCommand(agentMountWorkspace));
-
-mountedagent
-  .command('mount-connection')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .argument('[binding]', 'slot=<connection name> to bind a slot')
-  .option('--unbind <slot>', 'Unbind a slot (never touches the connection itself)')
-  .description("Bind or unbind one of the mount's manifest connection-binding slots")
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent mount-connection <mount-id> image-gen=minimax
-  $ rip agent mount-connection <mount-id> --unbind image-gen
-`)
-  .action(wrapCommand(agentMountConnection));
-
-mountedagent
-  .command('show-mount')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .description('Show mount context, agent version, and materialized layers')
-  .action(wrapCommand(agentShowMount));
-
-mountedagent
-  .command('mount-artifacts')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .description('List context, materialized, and inherited artifacts for a mount')
-  .action(wrapCommand(agentMountArtifacts));
-
-mountedagent
-  .command('mount-context')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .option('--from-file <file>', 'Replace mount context content from a markdown file')
-  .option('--edit', 'Open $EDITOR and publish the edited context as a new artifact version')
-  .description('Print or update the mount context artifact')
-  .action(wrapCommand(agentMountContext));
-
-// ── mount-scoped table access (generic surface) ────────────────
-//
-// Reads and patches against any mount's materialized tables via the
-// generic `/v0/operator/mounts/:mountId/tables/*` endpoints. Pairs with
-// MCP `mount_table_*` and the operator dashboard's lib functions —
-// triple-surface parity. See `docs/architecture/mount-tables.md`.
-
-const mountedagentTable = mountedagent
-  .command('table')
-  .description('Read or patch rows on a mount\'s materialized tables');
-
-mountedagentTable
-  .command('list')
-  .argument('<mount-id>', 'Mount ID')
-  .description('List the mount\'s materialized tables (slug, kind, tags)')
-  .action(wrapCommand(mountTableList));
-
-mountedagentTable
-  .command('rows')
-  .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Table slug (e.g. "upwork-leads", "pipeline")')
-  .option('--filter <key:value...>', 'Equality filter on a JSONB column (repeatable)')
-  .option('--sort <col:dir>', 'Sort by column (e.g. composite_score:desc)')
-  .option('--limit <n>', 'Max rows (default 100, max 500)')
-  .option('--after <id>', 'Cursor: row UUID to start after')
-  .description('Paginated rows on a named table')
-  .action(wrapCommand(mountTableRows));
-
-mountedagentTable
-  .command('latest')
-  .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Table slug')
-  .description('Most-recent single row on a named table')
-  .action(wrapCommand(mountTableLatest));
-
-mountedagentTable
-  .command('by-tag')
-  .argument('<mount-id>', 'Mount ID')
-  .argument('<tag>', 'Tag declared on one or more workflowTables in the imprint manifest')
-  .option('--filter <key:value...>', 'Equality filter on a JSONB column (repeatable)')
-  .option('--sort <col:dir>', 'Sort by column (e.g. composite_score:desc)')
-  .option('--limit <n>', 'Per-table cap (default 100, max 500)')
-  .description('Interleaved rows across every table tagged with <tag>')
-  .action(wrapCommand(mountTableByTag));
-
-mountedagentTable
-  .command('patch')
-  .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Table slug')
-  .argument('<row-id>', 'Row UUID')
-  .option('--set <key=value...>', 'Field to set (repeatable), e.g. --set status=seen --set owner=alice')
-  .description('Partial update to a row\'s data (validated against the table schema)')
-  .action(wrapCommand(mountTablePatch));
-
-mountedagentTable
-  .command('append')
-  .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Table slug')
-  .requiredOption('--rows <json>', 'JSON array of row objects, e.g. \'[{"status":"queued"}]\'')
-  .description('Append rows to a mount table (operator control-row path — accepts workflow tables)')
-  .action(wrapCommand(mountTableAppend));
-
-// ── themes: durable cross-session working clusters on a mount ─────────
-const mountedagentTheme = mountedagent
-  .command('theme')
-  .description('Manage a mount\'s themes (durable cross-session working clusters)');
-
-mountedagentTheme
-  .command('upsert')
-  .argument('<session-token>', 'Token returned by `agent load`')
-  .argument('<slug>', 'Theme slug')
-  .requiredOption('--summary <text>', 'Theme state body (markdown)')
-  .option('--name <name>', 'Human-readable theme name')
-  .option('--current', 'Pin this theme as the session\'s current theme')
-  .description('Create or update a theme on the active session\'s mount')
-  .action(wrapCommand(agentThemeUpsert));
-
-mountedagentTheme
-  .command('list')
-  .argument('<mount-id>', 'Mount ID')
-  .option('--include-archived', 'Include archived themes')
-  .description('List the mount\'s themes')
-  .action(wrapCommand(agentThemeList));
-
-mountedagentTheme
-  .command('show')
-  .argument('<mount-id>', 'Mount ID')
-  .argument('<slug>', 'Theme slug')
-  .description('Show a theme\'s state artifact id + content')
-  .action(wrapCommand(agentThemeShow));
-
-mountedagent
-  .command('unmount')
-  .argument('<mount-id>', 'Mount ID returned by `mount` or `mounts`')
-  .option('--keep-outputs', 'Keep session outputs as standalone artifacts instead of deleting them', false)
-  .description('Destroy a mount and its mount-owned memory (irreversible)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip agent unmount <mount-id>
-
-NOTES:
-  Cascades all mount-owned memory (team-layer + per-operator private rows)
-  through artifactService.destroyArtifact, then ends any open sessions, then
-  deletes the mount row. Operate on personal mounts you own; team mounts
-  can only be destroyed by the team member who created them.
-
-  Mount folders and their filed artifacts are removed by FK cascade.
-`)
-  .action(wrapCommand(agentUnmount));
-
-// ── session lifecycle (used by the generic /tokenrip bootloader) ─────
-//
-// These four commands wrap `AgentSessionService` so the bootloader skill can
-// drive a tracked session from Claude Code without any MCP setup.
-// Pair them with `--json` (or set TOKENRIP_OUTPUT=json) — output is
-// structured for programmatic consumption.
-
-mountedagent
-  .command('load')
-  .argument('<slug>', 'Agent slug to load (scoped form ~owner/slug or _team/slug when ambiguous)')
-  .option('--team <slug>', 'Bind to a team mount (caller must be a current team member)')
-  .option('--personal', 'Force a private personal mount of a team-owned agent')
-  .option('--command <name>', 'Playbook command to run (swaps the command flow into the brain, tags the session)')
-  .option('--capabilities <json>', 'JSON array of resolved Capability objects (e.g. \'[{"type":"local-cli","name":"tw"}]\' or \'[]\') — advances past a probeManifest for tool-declaring agents')
-  .option('--probed-at <when>', '"fresh" to bust the 1h probe cache, or an ISO-8601 timestamp')
-  .description('Start a session against a published agent (lazy-creates the caller\'s default mount)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip --json agent load office-hours
-  $ rip --json agent load chief-of-staff --team acme
-  $ rip --json agent load meeting-prep --personal
-  $ rip --json agent load research-agent --command consolidate
-  $ rip --json agent load moa --capabilities '[]'
-
-NOTES:
-  Returns the session token, the compiled brain envelope, the layer map,
-  and (when present) the mount-context block. Persist the session token —
-  every record / rewrite-artifact / end call needs it.
-
-  Agents that declare tools[] return a { probeManifest } instead of a session
-  on the first load. Probe each candidate's required capabilities locally,
-  then re-invoke with --capabilities '<json>'. server-credential caps are
-  resolved server-side and do not need to be advertised.
-`)
-  .action(wrapCommand(agentLoad));
-
-mountedagent
-  .command('record')
-  .argument('<session-token>', 'Token returned by `agent load`')
-  .option('--table <slug>', 'Logical table slug (defaults to the manifest default)')
-  .option('--row <json>', 'Inline JSON object payload')
-  .option('--row-file <file>', 'Read the JSON payload from a file')
-  .description("Record a memory row to the session's table")
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip --json agent record <token> --table patterns \\
-      --row '{"pattern":"...","recommendation":"..."}'
-`)
-  .action(wrapCommand(agentRecord));
-
-mountedagent
-  .command('rewrite-artifact')
-  .argument('<session-token>', 'Token returned by `agent load`')
-  .argument('<logical-alias>', 'Memory-artifact logical alias from manifest.memoryArtifacts[].logicalAlias')
-  .option('--content <string>', 'Inline content (UTF-8) for the artifact rewrite')
-  .option('--content-from <file>', 'Read the new content from a file')
-  .description('Rewrite a memory artifact; publishes a new version on the concrete artifact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip --json agent rewrite-artifact <token> <alias> \\
-      --content-from /tmp/new-context.md
-`)
-  .action(wrapCommand(agentRewriteArtifact));
-
-mountedagent
-  .command('tool-execute')
-  .argument('<session-token>', 'Token returned by `agent load`')
-  .argument('<bind>', 'Tool bind name declared on the mount (manifest.tools[].bind)')
-  .option('--args <json>', 'Inline JSON object — tool-specific arguments')
-  .option('--args-file <file>', 'Read the JSON arguments from a file')
-  .description('Dispatch a backend-mode tool binding server-side; returns the tool result')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip --json agent tool-execute <token> jobboard \\
-      --args '{"feeds":["https://weworkremotely.com/categories/remote-programming-jobs.rss"],"keywords":["ai agent"]}'
-
-NOTES:
-  Only valid for tool bindings whose execution mode is "backend" or "auto"
-  (the registry entry has an execute handler). For "harness" / "harness-aliased"
-  bindings, use \`agent tool-submit\` instead — the harness performs the work
-  and reports the outcome back. Mirrors MCP \`agent_tool_execute\`.
-`)
-  .action(wrapCommand(agentToolExecute));
-
-mountedagent
-  .command('tool-submit')
-  .argument('<session-token>', 'Token returned by `agent load`')
-  .argument('<bind>', 'Tool bind name declared on the mount')
-  .option('--payload <json>', 'Inline JSON object — the result payload')
-  .option('--payload-file <file>', 'Read the JSON payload from a file')
-  .option('--provenance-source <source>', 'Provenance: harness | webhook | system (default: harness)', 'harness')
-  .option('--provenance-nonce <nonce>', 'Idempotency nonce (required for harness-sourced submissions)')
-  .description('Submit an externally-produced result for a harness / auto mode tool binding')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip --json agent tool-submit <token> twitter \\
-      --payload '{"rows":[{"url":"...","title":"...","raw_text":"...","posted_at":"..."}]}' \\
-      --provenance-nonce $(date +%s)
-
-NOTES:
-  Used when the harness (or a webhook / system actor) has executed the tool
-  externally and is reporting the outcome. Mirrors MCP \`agent_tool_submit\`.
-  Harness-sourced submissions should pass --provenance-nonce for idempotency.
-`)
-  .action(wrapCommand(agentToolSubmit));
-
-mountedagent
-  .command('end')
-  .argument('<session-token>', 'Token returned by `agent load`')
-  .option('--summary <text>', 'One-paragraph wrap-up summary')
-  .option('--output-from <file>', 'Optional session output content (markdown). Requires --output-title')
-  .option('--output-title <title>', 'Session output title (only meaningful with --output-from)')
-  .option('--output-public', 'Mark the session output public (default: private)', false)
-  .description('End a session and optionally publish a markdown session output')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip --json agent end <token> --summary "Done."
-  $ rip --json agent end <token> --summary "..." \\
-      --output-from /tmp/wrap-up.md --output-title "Office Hours wrap-up"
-
-NOTES:
-  Idempotent on repeat calls — re-running with the same token returns the
-  prior session output, if any. Agents with session.produceSessionOutput: false
-  return SESSION_OUTPUT_NOT_PERMITTED when --output-from is supplied.
-`)
-  .action(wrapCommand(agentEnd));
-
-mountedagent
-  .command('unpublish')
-  .argument('<slug>', 'Agent slug')
-  .description('Set is_published = false on an owned agent')
-  .action(wrapCommand(agentUnpublish));
-
-mountedagent
-  .command('publish-toggle')
-  .argument('<slug>', 'Agent slug')
-  .description('Flip is_published on an owned agent')
-  .action(wrapCommand(agentPublishToggle));
-
-mountedagent
-  .command('set-featured')
-  .argument('<slug>', 'Agent slug')
-  .argument('<weight>', 'Integer weight (higher sorts first) or "clear" to remove')
-  .description('Set or clear the featured-weight on an owned agent')
-  .action(wrapCommand(agentSetFeatured));
-
-mountedagent
-  .command('set-display')
-  .argument('<slug>', 'Agent slug')
-  .option('--display-name <name>', 'Display name')
-  .option('--tagline <text>', 'Tagline')
-  .option('--description <text>', 'Description')
-  .option(
-    '--capability <text>',
-    'Capability (repeatable)',
-    (v: string, prev: string[] = []) => prev.concat(v),
-    [] as string[],
-  )
-  .description('Update display block fields without republishing the agent')
-  .action(wrapCommand(agentSetDisplay));
-
-mountedagent
-  .command('delete')
-  .argument('<slug>', 'Agent slug')
-  .option('--force', 'Skip typed-slug confirmation', false)
-  .option('--keep-outputs', 'Keep session outputs as standalone artifacts instead of deleting them', false)
-  .description('Destroy an agent and cascade its mounts and memory (irreversible)')
-  .action(wrapCommand(agentDelete));
-
-// ── admin commands ──────────────────────────────────────────────────
-const adminCmd = program.command('admin').description('Admin-only commands');
-const adminAgentCmd = adminCmd
-  .command('agent')
-  .description('Admin agent management');
-
-adminAgentCmd
-  .command('list')
-  .description('List all agents across all owners (admin)')
-  .action(wrapCommand(adminAgentList));
-
-adminAgentCmd
-  .command('show')
-  .argument('<slug>', 'Agent slug')
-  .description('Show any agent by slug (admin)')
-  .action(wrapCommand(adminAgentShow));
-
-adminAgentCmd
-  .command('unpublish')
-  .argument('<slug>', 'Agent slug')
-  .description('Force-unpublish an agent regardless of owner (admin)')
-  .action(wrapCommand(adminAgentUnpublish));
-
-adminAgentCmd
-  .command('set-featured')
-  .argument('<slug>', 'Agent slug')
-  .argument('<weight>', 'Integer weight or "clear" to remove')
-  .description('Set or clear featured weight on any agent (admin)')
-  .action(wrapCommand(adminAgentSetFeatured));
-
-adminAgentCmd
-  .command('sessions')
-  .argument('<slug>', 'Agent slug')
-  .description('List recent sessions for an agent (admin)')
-  .action(wrapCommand(adminAgentSessions));
-
-// ── publisher commands ──────────────────────────────────────────────
-const publisher = program
-  .command('publisher')
-  .description('Apply for and manage your Publisher (Tier 2 publishing identity)');
-
-publisher
-  .command('apply')
-  .description('Submit a Publisher application for review by the Tokenrip team (flag-based; interactive prompts coming soon)')
-  .requiredOption('--display-name <name>', 'Public-facing display name')
-  .requiredOption('--email <email>', 'Contact email')
-  .option('--bio <text>', 'Short markdown bio')
-  .option('--website <url>', 'Optional website')
-  .option('--team <slug>', 'Apply on behalf of a team (caller must be a current team member)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip publisher apply --display-name "Alice Co" --email alice@example.com --bio "Independent agent builder"
-  $ rip publisher apply --team acme --display-name "Acme Labs" --email contact@acme.example
-`)
-  .action(wrapCommand(async (options) => {
-    const { publisherApply } = await import('./commands/publisher.js');
-    await publisherApply(options);
-  }));
-
-publisher
-  .command('show')
-  .description('Show your Publisher application + status (or report none)')
-  .action(wrapCommand(async () => {
-    const { publisherShow } = await import('./commands/publisher.js');
-    await publisherShow();
-  }));
-
 // ── auth commands ───────────────────────────────────────────────────
 const auth = program.command('auth').description('Agent identity and authentication');
 
@@ -1421,22 +641,6 @@ EXAMPLES:
   .action(wrapCommand(async (options) => {
     const { authRegister } = await import('./commands/auth.js');
     await authRegister(options);
-  }));
-
-auth
-  .command('login')
-  .description('Sign in via your browser (OAuth)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip auth login
-
-  Opens your browser to tokenrip.com, you approve, and the CLI saves
-  the resulting API key. Use this if you registered your operator
-  account on the web first.
-`)
-  .action(wrapCommand(async (options) => {
-    const { authLogin } = await import('./commands/auth-login.js');
-    await authLogin(options);
   }));
 
 auth
@@ -1511,7 +715,7 @@ EXAMPLES:
 
 auth
   .command('link')
-  .description('Link CLI to an existing MCP-registered agent')
+  .description('Recover a server-managed MCP identity for the CLI')
   .requiredOption('--alias <alias>', 'Your operator username')
   .requiredOption('--password <password>', 'Your operator password')
   .option('--force', 'Overwrite existing local identity')
@@ -1520,8 +724,9 @@ EXAMPLES:
   $ rip auth link --alias myname --password mypass
 
   Downloads your agent's keypair from the server and saves it locally.
-  This is for agents registered via MCP (Claude Cowork, etc.) that want
-  to add CLI access. Only works for agents with server-managed keypairs.
+  If you first connected through MCP, add a handle and password in web
+  account settings before using this command. It works for primary
+  accounts with server-managed keypairs.
 `)
   .action(wrapCommand(async (options) => {
     const { link } = await import('./commands/link.js');
@@ -1582,98 +787,42 @@ agent
     await accountImport(file);
   }));
 
-// ── inbox command ──────────────────────────────────────────────────
-// Parent command with a DEFAULT action (poll) plus `clear`/`delete`
-// subcommands. In Commander v12 a command's `.action()` runs as the default
-// when no subcommand is given, so `rip inbox` still polls while
-// `rip inbox clear`/`rip inbox delete` route to their subcommands.
-const inboxCommand = program
-  .command('inbox')
-  .description('Poll for new thread messages and artifact updates')
-  .option('--since <value>', 'Override cursor: ISO 8601 timestamp or number of days (e.g. 1 = 24h, 7 = week)')
-  .option('--types <types>', 'Filter: threads, artifacts, or both (comma-separated)')
-  .option('--limit <n>', 'Max items per type (default: 50, max: 200)')
-  .option('--clear', 'Advance the stored LOCAL cursor after fetching (marks items as seen locally; does NOT clear server-side — use the `clear` subcommand for that)')
-  .option('--team <slug>', 'Filter inbox to a specific team')
+// ── activity command ───────────────────────────────────────────────
+program
+  .command('activity')
+  .description('What happened in a team or your own scope — connections, team shares, team changes')
+  .option('--team <slug>', "A team's feed (default: your own scope)")
+  .option('--type <list>', 'Comma list of event types, e.g. connection.created,team.member_removed')
+  .option('--actor <who>', "Account id or alias, or the literal 'system'")
+  .option('--subject <ref>', "'<type>:<id>' — e.g. connection:<uuid> for one subject's history")
+  .option('--since <iso>', 'ISO timestamp, or a number of days back')
+  .option('--limit <n>', 'Page size (max 200)')
+  .option('--cursor <cursor>', 'Continue from a previous page')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip inbox
-  $ rip inbox --types threads
-  $ rip inbox --types artifacts --limit 10
-  $ rip inbox --since 1                     # last 24 hours
-  $ rip inbox --since 7                     # last week
-  $ rip inbox --since 2026-04-01T00:00:00Z  # exact timestamp
-  $ rip inbox --clear                       # advance LOCAL cursor
+  $ rip activity --team quintel
+  $ rip activity --team quintel --type connection.created --since 7
 
-SUBCOMMANDS:
-  $ rip inbox clear thread:<id> artifact:<id>   # server-side clear (dismiss)
-  $ rip inbox delete <id> --type thread         # owner-only permanent delete
+NOTES:
+  Read-only: poll it freely. Each row's sentence is rendered server-side, so
+  \`--json\` and human output tell the same story.
 
-  Shows new thread messages and artifact updates since your last check.
-  The --clear FLAG only advances the local poll cursor (marks items seen on
-  this machine). The 'clear' SUBCOMMAND dismisses items server-side. They are
-  different operations.
-  Use --since to look back without affecting the cursor.
+  Task events belong to their workspace: read them with
+  \`rip workspace changes <workspace>\`.
 `)
   .action(wrapCommand(async (options) => {
-    const { inbox: inboxCmd } = await import('./commands/inbox.js');
-    await inboxCmd(options);
-  }));
-
-inboxCommand
-  .command('clear')
-  .argument('<id...>', 'One or more inbox subject ids (bare, or prefixed thread:<id> / artifact:<id>)')
-  .description('Dismiss inbox items server-side (clear). Reverses on new activity.')
-  .option('--type <thread|artifact>', 'Subject type for bare (unprefixed) ids')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip inbox clear thread:<id>
-  $ rip inbox clear artifact:<id> thread:<id>       # mixed batch via prefixes
-  $ rip inbox clear <id1> <id2> --type thread       # bare ids + --type
-
-  Each id is either prefixed (thread:<id> / artifact:<id>) or bare. Bare ids
-  use --type. If an id is bare and --type is not given, the command errors
-  rather than guessing the type. Hits the agent inbox endpoint (POST
-  /v0/inbox/clear). Clearing is reversible — items resurface on new activity.
-`)
-  .action(wrapCommand(async (ids: string[], options: { type?: string }) => {
-    const { inboxClear } = await import('./commands/inbox-clear.js');
-    await inboxClear(ids, options);
-  }));
-
-inboxCommand
-  .command('delete')
-  .argument('<id...>', 'One or more inbox subject ids (bare, or prefixed thread:<id> / artifact:<id>)')
-  .description('Permanently delete owned inbox items (owner-only). Non-owned items are skipped.')
-  .option('--type <thread|artifact>', 'Subject type for bare (unprefixed) ids')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip inbox delete thread:<id>
-  $ rip inbox delete artifact:<id> thread:<id>      # mixed batch via prefixes
-  $ rip inbox delete <id1> <id2> --type artifact    # bare ids + --type
-
-  Permanently destroys threads/artifacts you own. Items you do not own (or
-  that no longer exist) are reported as skipped, not deleted. Each id is either
-  prefixed (thread:<id> / artifact:<id>) or bare; bare ids use --type. Hits the
-  agent inbox endpoint (POST /v0/inbox/delete).
-`)
-  .action(wrapCommand(async (ids: string[], options: { type?: string }) => {
-    const { inboxDelete } = await import('./commands/inbox-delete.js');
-    await inboxDelete(ids, options);
+    const { activity } = await import('./commands/activity.js');
+    await activity(options);
   }));
 
 // ── search command ────────────────────────────────────────────────
 program
   .command('search')
   .argument('<query>', 'Search text')
-  .description('Full-text search across threads and artifacts')
-  .option('--type <type>', 'Filter: thread or artifact')
+  .description('Full-text search across artifacts')
   .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
-  .option('--state <state>', 'Thread state: open or closed')
-  .option('--intent <intent>', 'Filter by last message intent')
-  .option('--ref <uuid>', 'Filter threads referencing this artifact')
   .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table')
   .option('--archived', 'Search only archived artifacts')
   .option('--include-archived', 'Include archived artifacts in search results')
@@ -1682,9 +831,8 @@ program
   .addHelpText('after', `
 EXAMPLES:
   $ rip search "quarterly report"
-  $ rip search "deploy" --type thread --state open
   $ rip search "chart" --artifact-type chart --since 7
-  $ rip search "proposal" --intent propose --limit 10
+  $ rip search "proposal" --limit 10
   $ rip search "old report" --archived
   $ rip search "report" --include-archived
   $ rip search "how do we handle auth failures" --mode semantic
@@ -1695,317 +843,19 @@ EXAMPLES:
     await search(query, options);
   }));
 
-// ── tour command ─────────────────────────────────────────────────────
-const tourCmd = program
-  .command('tour')
-  .description('Interactive tour of Tokenrip')
-  .option('--for-agent', 'Print a one-shot script for agents to follow')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip tour              # start or resume the human tour
-  $ rip tour next         # advance to the next step
-  $ rip tour next <id>    # advance, passing an ID captured from the previous step
-  $ rip tour restart      # wipe state and start over
-  $ rip tour --for-agent  # print a one-shot script an agent can follow
-`)
-  .action(wrapCommand((options: { forAgent?: boolean }) => tour({ agent: options.forAgent })));
-
-tourCmd
-  .command('next [id]')
-  .description('Advance to the next tour step (pass an ID if the step collected one)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip tour next
-  $ rip tour next 550e8400-e29b-41d4-a716-446655440000
-`)
-  .action(wrapCommand((id: string | undefined) => tourNext(id)));
-
-tourCmd
-  .command('restart')
-  .description('Wipe tour state and start over from step 1')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip tour restart
-`)
-  .action(wrapCommand(() => tourRestart()));
-
-// ── msg commands ─────────────────────────────────────────────────────
-const msg = program.command('msg').description('Send and read messages');
-
-msg
-  .command('send')
-  .argument('<body>', 'Message text')
-  .option('--to <recipient>', 'Recipient: agent ID, contact name, or alias')
-  .option('--thread <id>', 'Reply to existing thread')
-  .option('--artifact <uuid>', 'Comment on an artifact')
-  .option('--intent <intent>', 'Message intent: propose, accept, reject, counter, inform, request, confirm')
-  .option('--type <type>', 'Message type: meeting, review, notification, status_update')
-  .option('--data <json>', 'Structured JSON payload')
-  .option('--in-reply-to <id>', 'Message ID being replied to')
-  .option('--version-id <uuid>', 'Artifact version this message refers to')
-  .description('Send a message to an agent, thread, or artifact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip msg send --to alice "Can you generate the Q3 report?"
-  $ rip msg send --to rip1x9a2... "Ready" --intent request
-  $ rip msg send --thread 550e8400-... "Looks good" --intent accept
-  $ rip msg send --artifact 550e8400-... "Approved for distribution"
-`)
-  .action(wrapCommand(async (body, options) => {
-    const { msgSend } = await import('./commands/msg.js');
-    await msgSend(body, options);
-  }));
-
-msg
-  .command('list')
-  .option('--thread <id>', 'Thread ID to read messages from')
-  .option('--artifact <uuid>', 'Artifact ID to read comments from')
-  .option('--since <sequence>', 'Show messages after this sequence number')
-  .option('--limit <n>', 'Max messages to return (default: 50, max: 200)')
-  .description('List messages in a thread or comments on an artifact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip msg list --thread 550e8400-...
-  $ rip msg list --artifact 550e8400-...
-  $ rip msg list --thread 550e8400-... --since 10 --limit 20
-`)
-  .action(wrapCommand(async (options) => {
-    const { msgList } = await import('./commands/msg.js');
-    await msgList(options);
-  }));
-
-// ── thread commands ──────────────────────────────────────────────────
-const thread = program.command('thread').description('Manage threads');
-
-thread
-  .command('list')
-  .option('--state <state>', 'Filter by state: open or closed')
-  .option('--limit <n>', 'Max threads to return (default: 50, max: 200)')
-  .description('List all threads you participate in')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread list
-  $ rip thread list --state open
-  $ rip thread list --state closed --limit 10
-`)
-  .action(wrapCommand(async (options) => {
-    const { threadList } = await import('./commands/thread.js');
-    await threadList(options);
-  }));
-
-thread
-  .command('create')
-  .option('--collaborators <agents>', 'Comma-separated agent IDs, contact names, or aliases')
-  .option('--message <text>', 'Initial message body')
-  .option('--refs <refs>', 'Comma-separated artifact IDs or URLs to link')
-  .option('--artifact <uuid>', 'Convenience: link a single artifact to the thread')
-  .option('--title <title>', 'Thread title (stored in metadata)')
-  .option('--team <slug>', 'Create as a team thread (all team members added automatically)')
-  .option('--tour-welcome', 'Trigger @tokenrip welcome message (tour only)')
-  .description('Create a new thread')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread create --collaborators alice,bob
-  $ rip thread create --collaborators alice --message "Kickoff"
-  $ rip thread create --collaborators alice --refs 550e8400-...,https://figma.com/file/xyz
-  $ rip thread create --collaborators alice --artifact 550e8400-... --title "Review"
-`)
-  .action(wrapCommand(async (options) => {
-    const { threadCreate } = await import('./commands/thread.js');
-    await threadCreate(options);
-  }));
-
-thread
-  .command('get')
-  .argument('<id>', 'Thread ID')
-  .option('--messages', 'Include thread messages')
-  .option('--limit <n>', 'Max messages to fetch (requires --messages)')
-  .description('View thread details and collaborators')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread get 550e8400-e29b-41d4-a716-446655440000
-  $ rip thread get 550e8400-... --messages
-  $ rip thread get 550e8400-... --messages --limit 50
-`)
-  .action(wrapCommand(async (id, options) => {
-    const { threadGet } = await import('./commands/thread.js');
-    await threadGet(id, options);
-  }));
-
-thread
-  .command('close')
-  .argument('<id>', 'Thread ID')
-  .option('--resolution <message>', 'Resolution message')
-  .description('Close a thread with an optional resolution')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread close 550e8400-...
-  $ rip thread close 550e8400-... --resolution "Resolved: shipped in v2.1"
-`)
-  .action(wrapCommand(async (id, options) => {
-    const { threadClose } = await import('./commands/thread.js');
-    await threadClose(id, options);
-  }));
-
-thread
-  .command('add-collaborator')
-  .argument('<id>', 'Thread ID')
-  .argument('<agent>', 'Agent ID, alias, or contact name')
-  .description('Add a collaborator to a thread')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread add-collaborator 550e8400-... rip1x9a2f...
-  $ rip thread add-collaborator 550e8400-... alice
-`)
-  .action(wrapCommand(async (id, agent) => {
-    const { threadAddCollaborator } = await import('./commands/thread.js');
-    await threadAddCollaborator(id, agent);
-  }));
-
-thread
-  .command('add-refs')
-  .argument('<id>', 'Thread ID')
-  .argument('<refs>', 'Comma-separated artifact IDs or URLs to link')
-  .description('Add linked resources (artifacts or URLs) to a thread')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread add-refs 550e8400-... aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
-  $ rip thread add-refs 550e8400-... https://figma.com/file/abc,https://docs.google.com/xyz
-  $ rip thread add-refs 550e8400-... aaaaaaaa-...,https://figma.com/file/abc
-`)
-  .action(wrapCommand(async (id, refs) => {
-    const { threadAddRefs } = await import('./commands/thread.js');
-    await threadAddRefs(id, refs);
-  }));
-
-thread
-  .command('remove-ref')
-  .argument('<id>', 'Thread ID')
-  .argument('<refId>', 'Ref ID to remove (from thread get output)')
-  .description('Remove a linked resource from a thread')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread remove-ref 550e8400-... ffffffff-1111-2222-3333-444444444444
-`)
-  .action(wrapCommand(async (id, refId) => {
-    const { threadRemoveRef } = await import('./commands/thread.js');
-    await threadRemoveRef(id, refId);
-  }));
-
-thread
-  .command('share')
-  .argument('<id>', 'Thread ID to generate a share link for')
-  .option('--expires <duration>', 'Token expiry: 30m, 1h, 7d, 30d, etc.')
-  .option('--for <agentId>', 'Restrict token to a specific agent (rip1...)')
-  .description('Generate a shareable link to view a thread')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread share 727fb4f2-29a5-4afc-840e-f606a783fade
-  $ rip thread share 727fb4f2-... --expires 7d
-`)
-  .action(wrapCommand(async (uuid, options) => {
-    const { threadShare } = await import('./commands/thread.js');
-    await threadShare(uuid, options);
-  }));
-
-thread
-  .command('delete')
-  .argument('<id>', 'Thread ID to permanently delete (admin only)')
-  .description('Hard-delete a thread and all its messages (admin only)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip thread delete 727fb4f2-29a5-4afc-840e-f606a783fade
-`)
-  .action(wrapCommand(async (id) => {
-    const { threadDelete } = await import('./commands/thread.js');
-    await threadDelete(id);
-  }));
-
-// ── contacts commands ────────────────────────────────────────────────
-const contacts = program.command('contacts').description('Manage agent contacts (syncs with server when possible)');
-
-contacts
-  .command('add')
-  .argument('<name>', 'Short name for this contact')
-  .argument('<agent-id>', 'Agent ID (starts with rip1)')
-  .option('--alias <alias>', 'Agent alias (e.g. alice)')
-  .option('--notes <text>', 'Notes about this contact')
-  .description('Add or update a contact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip contacts add alice rip1x9a2f... --alias alice
-  $ rip contacts add bob rip1k7m3d... --notes "Report generator"
-`)
-  .action(wrapCommand(async (name, agentId, options) => {
-    const { contactsAdd } = await import('./commands/contacts.js');
-    await contactsAdd(name, agentId, options);
-  }));
-
-contacts
-  .command('list')
-  .description('List all contacts')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip contacts list
-`)
-  .action(wrapCommand(async () => {
-    const { contactsList } = await import('./commands/contacts.js');
-    await contactsList();
-  }));
-
-contacts
-  .command('resolve')
-  .argument('<name>', 'Contact name to look up')
-  .description('Resolve a contact name to an agent ID')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip contacts resolve alice
-`)
-  .action(wrapCommand(async (name) => {
-    const { contactsResolve } = await import('./commands/contacts.js');
-    await contactsResolve(name);
-  }));
-
-contacts
-  .command('remove')
-  .argument('<name>', 'Contact name to remove')
-  .description('Remove a contact')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip contacts remove alice
-`)
-  .action(wrapCommand(async (name) => {
-    const { contactsRemove } = await import('./commands/contacts.js');
-    await contactsRemove(name);
-  }));
-
-contacts
-  .command('sync')
-  .description('Sync contacts with the server (requires API key)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip contacts sync
-
-  Pulls your contacts from the server and merges with local contacts.
-`)
-  .action(wrapCommand(async () => {
-    const { contactsSync } = await import('./commands/contacts.js');
-    await contactsSync();
-  }));
-
 // ── operator commands ───────────────────────────────────────────────
 program
   .command('operator-link')
-  .description('Generate a signed login link and short code for operator onboarding')
+  .description('Generate a signed link and short code to link this agent to an operator account')
   .option('--expires <duration>', 'Link expiry (default: 5m). E.g. 5m, 1h, 1d')
   .addHelpText('after', `
 EXAMPLES:
   $ rip operator-link
   $ rip operator-link --expires 1h
 
-Generates a signed URL (click to login/register) and a 6-digit code (for MCP auth
-or cross-device use). The URL is signed locally with your Ed25519 key. The code is
-generated via the server and can be entered at tokenrip.com/login.
+Generates a signed URL and a 6-digit code for linking this agent to a signed-in
+operator account. The URL is signed locally with your Ed25519 key. The code is
+generated via the server and can be entered at tokenrip.com/operator/connect.
 `)
   .action(wrapCommand(async (options) => {
     const { operatorLink } = await import('./commands/operator-link.js');
@@ -2091,94 +941,6 @@ EXAMPLES:
 `)
   .action(wrapCommand(configShow));
 
-// ── cred commands ────────────────────────────────────────────────────
-const cred = program
-  .command('cred')
-  .description('Manage tool credentials (local file by default, or --server for account-scoped)');
-
-cred
-  .command('set')
-  .argument('<kind>', 'Credential kind / tool name (e.g. "twitter", "reddit")')
-  .allowUnknownOption(true)
-  .description('Save a credential. Pass each field as --<name>=<value>.')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip cred set twitter --api-key=abc --api-secret=xyz
-  $ rip cred set reddit --token=def
-  $ rip cred set email-outbound --postmark-api-key=pm --server
-
-NOTES:
-  Local mode (default) camel-cases long-option names into JSON keys:
-    --api-key  -> apiKey
-    --api-secret -> apiSecret
-  The credentials file is written with mode 0600.
-
-  --server stores the credential account-scoped on the backend (requires auth).
-  In --server mode option names are kept snake_case to match the backend schema:
-    --postmark-api-key -> postmark_api_key
-`)
-  .action(wrapCommand(async (kind: string, _opts: unknown, cmd: { args: string[] }) => {
-    const { credSet } = await import('./commands/cred.js');
-    // commander gives us the positional + every unknown option in cmd.args
-    // when allowUnknownOption is enabled. Drop the leading <kind>, then pull
-    // out our own `--server` flag (it must not be treated as a field).
-    const rest = cmd.args.slice(1);
-    const server = rest.includes('--server');
-    const rawArgs = rest.filter((a) => a !== '--server');
-    await credSet(kind, rawArgs, { server });
-  }));
-
-cred
-  .command('get')
-  .argument('<kind>', 'Credential kind to retrieve')
-  .option('--server', 'Read from the server (account-scoped) instead of locally')
-  .description('Print the stored credential as JSON. Exits 1 if missing.')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip cred get twitter
-  $ rip cred get twitter | jq .consumerKey
-  $ rip cred get email-outbound --server   # prints { "configured": true } or exits 1
-
-NOTES:
-  --server checks existence only — the backend never returns the secret value.
-`)
-  .action(wrapCommand(async (kind: string, opts: { server?: boolean }) => {
-    const { credGet } = await import('./commands/cred.js');
-    await credGet(kind, { server: opts.server });
-  }));
-
-cred
-  .command('list')
-  .option('--server', 'Target the server (account-scoped) instead of the local file')
-  .description('List the kinds of credentials currently stored')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip cred list
-
-NOTES:
-  --server is not supported for listing (no server list endpoint). Use
-  \`rip cred get <kind> --server\` to check a specific kind.
-`)
-  .action(wrapCommand(async (opts: { server?: boolean }) => {
-    const { credList } = await import('./commands/cred.js');
-    await credList({ server: opts.server });
-  }));
-
-cred
-  .command('unset')
-  .argument('<kind>', 'Credential kind to remove')
-  .option('--server', 'Remove from the server (account-scoped) instead of locally')
-  .description('Remove a stored credential')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip cred unset twitter
-  $ rip cred unset email-outbound --server
-`)
-  .action(wrapCommand(async (kind: string, opts: { server?: boolean }) => {
-    const { credUnset } = await import('./commands/cred.js');
-    await credUnset(kind, { server: opts.server });
-  }));
-
 // ── connection commands ──────────────────────────────────────────────
 // Repeatable `--header k=v` / `--query k=v` collector.
 const collectKv = (v: string, prev: string[] = []): string[] => prev.concat(v);
@@ -2201,7 +963,7 @@ connection
   .option('--query <kv>', 'Static default query key=value (repeatable)', collectKv, [])
   .option('--rate-limit-per-min <n>', 'Per-minute rate limit')
   .option('--daily-quota <n>', 'Daily request quota')
-  .option('--team <slug>', 'Create a team-owned connection (team owner only)')
+  .option('--team <slug>', 'Create a team-owned connection (any current team member)')
   .description('Create a connection')
   .addHelpText('after', `
 EXAMPLES:
@@ -2241,7 +1003,7 @@ connection
   .option('--secret <value>', 'New secret (prefer --secret-env / --secret-stdin)')
   .option('--secret-env <VAR>', 'Read the new secret from an environment variable')
   .option('--secret-stdin', 'Read the new secret from stdin')
-  .option('--team <slug>', 'Team-owned connection (team owner only)')
+  .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
   .description('Rotate a connection secret')
   .action(wrapCommand(async (id, options) => {
     const { connectionRotate } = await import('./commands/connection.js');
@@ -2251,7 +1013,7 @@ connection
 connection
   .command('disable')
   .argument('<id>', 'Connection id')
-  .option('--team <slug>', 'Team-owned connection (team owner only)')
+  .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
   .description('Disable a connection (frees the name)')
   .action(wrapCommand(async (id, options) => {
     const { connectionDisable } = await import('./commands/connection.js');
@@ -2261,7 +1023,7 @@ connection
 connection
   .command('rm')
   .argument('<id>', 'Connection id')
-  .option('--team <slug>', 'Team-owned connection (team owner only)')
+  .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
   .description('Delete a connection')
   .action(wrapCommand(async (id, options) => {
     const { connectionRemove } = await import('./commands/connection.js');
@@ -2270,23 +1032,156 @@ connection
 
 connection
   .command('call')
-  .requiredOption('--mount <id>', 'Mount UUID whose grants authorize this call')
-  .requiredOption('--connection <name>', 'Name of a connection granted to the mount')
+  .requiredOption('--connection <name>', 'Connection name (personal, or of --team)')
   .requiredOption('--method <M>', 'HTTP method (GET/POST/PUT/PATCH/DELETE)')
   .requiredOption('--path <path>', "Path under the connection's base URL")
+  .option('--team <slug>', 'Call a team connection (you must be a current member)')
   .option('--body <json>', 'JSON request body')
   .option('--query <json>', 'JSON object of query params')
   .option('--header <kv>', 'Extra request header key=value (repeatable)', collectKv, [])
-  .description('Invoke an external API through a granted connection (auth injected server-side)')
+  .description('Invoke an external API through a connection you own or your team owns (auth injected server-side)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip connection call --mount <mount-id> --connection minimax \\
+  $ rip connection call --team quintel --connection minimax \\
       --method POST --path /v1/messages \\
       --body '{"model":"MiniMax-M2.5","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}'
+  $ rip connection call --connection my-posthog --method GET --path /api/projects
 `)
   .action(wrapCommand(async (options) => {
     const { connectionCall } = await import('./commands/connection.js');
     await connectionCall(options);
+  }));
+
+// ── task commands ────────────────────────────────────────────────────
+const collectResult = (v: string, prev: string[] = []): string[] => prev.concat(v);
+
+const task = program
+  .command('task')
+  .description('Work queue — file, claim and complete tasks in a workspace');
+
+task
+  .command('list')
+  .requiredOption('--workspace-id <id>', 'The workspace whose tasks to list')
+  .option('--status <list>', "Comma list of open,claimed,done,dismissed or 'all' (default open,claimed)")
+  .option('--kind <kind>', 'Only tasks of this kind')
+  .option('--mine', 'Only tasks suggested to or claimed by you')
+  .option('--since <iso>', 'Only tasks created after this ISO timestamp')
+  .option('--limit <n>', 'Page size (max 200)')
+  .option('--cursor <cursor>', 'Continue from a previous page')
+  .description('List tasks')
+  .action(wrapCommand(async (options) => {
+    const { taskList } = await import('./commands/task.js');
+    await taskList(options);
+  }));
+
+task
+  .command('show')
+  .argument('<id>', 'Task id')
+  .description('Show one task with its results')
+  .action(wrapCommand(async (id) => {
+    const { taskShow } = await import('./commands/task.js');
+    await taskShow(id);
+  }));
+
+task
+  .command('update')
+  .argument('<id>', 'Task id')
+  .requiredOption('--expected-revision <n>', 'Current task revision')
+  .option('--title <title>', 'Replace the title')
+  .option('--body <markdown>', 'Replace the body')
+  .option('--assignee <who>', 'Suggested assignee — account id or alias')
+  .option('--audience <audience>', 'Visibility: internal or shared')
+  .option('--workspace-session-id <uuid>', 'Attribute the write to an active workspace session')
+  .description('Update task metadata')
+  .action(wrapCommand(async (id, options) => {
+    const { taskUpdate } = await import('./commands/task.js');
+    await taskUpdate(id, options);
+  }));
+
+task
+  .command('add')
+  .argument('<title>', 'Task title')
+  .requiredOption('--workspace-id <id>', 'The workspace to file the task in')
+  .option('--audience <audience>', 'Workspace audience: internal | shared')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .option('--assignee <who>', 'Suggested assignee — account id or alias (a workspace editor)')
+  .option('--kind <kind>', 'Task kind (lowercase slug, e.g. process-call)')
+  .option('--body <markdown>', 'Details')
+  .option('--due <iso>', 'Due date (informational)')
+  .option('--payload <json>', 'Kind-specific JSON payload')
+  .description('File a task')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task add "Review pricing page copy" --workspace-id 4f2c1b90-... --assignee alek
+  $ rip task add "Renew domain" --workspace-id 4f2c1b90-... --due 2026-10-01
+`)
+  .action(wrapCommand(async (title, options) => {
+    const { taskAdd } = await import('./commands/task.js');
+    await taskAdd(title, options);
+  }));
+
+task
+  .command('claim')
+  .argument('<id>', 'Task id')
+  .option('--lease-hours <n>', 'Lease length in hours (default 2, max 72)')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Claim a task (holds a lease; re-claiming your own extends it)')
+  .action(wrapCommand(async (id, options) => {
+    const { taskClaim } = await import('./commands/task.js');
+    await taskClaim(id, options);
+  }));
+
+task
+  .command('touch')
+  .argument('<id>', 'Task id')
+  .option('--lease-hours <n>', 'New lease length in hours')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Extend the lease on a task you hold')
+  .action(wrapCommand(async (id, options) => {
+    const { taskTouch } = await import('./commands/task.js');
+    await taskTouch(id, options);
+  }));
+
+task
+  .command('release')
+  .argument('<id>', 'Task id')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Release your claim (workspace admins may release any claim)')
+  .action(wrapCommand(async (id, options) => {
+    const { taskRelease } = await import('./commands/task.js');
+    await taskRelease(id, options);
+  }));
+
+task
+  .command('done')
+  .argument('<id>', 'Task id')
+  .option('--result <type:id>', 'Attach a result: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Complete a task you hold')
+  .action(wrapCommand(async (id, options) => {
+    const { taskDone } = await import('./commands/task.js');
+    await taskDone(id, options);
+  }));
+
+task
+  .command('dismiss')
+  .argument('<id>', 'Task id')
+  .option('--reason <text>', 'Why')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Dismiss a task (reopenable)')
+  .action(wrapCommand(async (id, options) => {
+    const { taskDismiss } = await import('./commands/task.js');
+    await taskDismiss(id, options);
+  }));
+
+task
+  .command('reopen')
+  .argument('<id>', 'Task id')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Reopen a done or dismissed task')
+  .action(wrapCommand(async (id, options) => {
+    const { taskReopen } = await import('./commands/task.js');
+    await taskReopen(id, options);
   }));
 
 // ── team commands ────────────────────────────────────────────────────
@@ -2343,6 +1238,10 @@ team
 EXAMPLES:
   $ rip team add my-team rip1x9a2f...
   $ rip team add my-team alice
+
+  An agent under your operator is added directly. An agent under another
+  operator is not: you get a one-time invite token (valid 7 days) to send it,
+  and it joins with: rip team accept-invite <token>
 `)
   .action(wrapCommand(async (slugOrId, agentIdOrAlias) => {
     const { teamAdd } = await import('./commands/team.js');
@@ -2397,7 +1296,7 @@ CAUTION:
 team
   .command('invite')
   .argument('<slug-or-id>', 'Team slug or ID')
-  .description('Generate a one-time invite link for the team')
+  .description('Generate a one-time invite token for the team (7 days; the recipient runs rip team accept-invite <token>)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip team invite my-team
@@ -2473,19 +1372,19 @@ EXAMPLES:
 const workspace = program
   .command('workspace')
   .alias('ws')
-  .description('Workspaces — owned namespaces for notes + included primitives');
+  .description('Workspaces — internal/shared collaboration over artifacts, folders, and tasks');
 
 workspace
   .command('create')
   .argument('<slug>', 'Workspace slug (unique within your account or team)')
   .option('--name <name>', 'Display name (defaults to slug)')
   .option('--description <text>', 'Workspace description')
-  .option('--team <slug>', 'Make this a team-owned workspace')
+  .option('--team-id <uuid>', 'Make this a team-owned workspace (the team id from `rip team list`; team owners and admins only)')
   .description('Create a workspace')
   .addHelpText('after', `
 EXAMPLES:
   $ rip workspace create research --name "Research"
-  $ rip workspace create roadmap --team acme
+  $ rip workspace create roadmap --team-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
 `)
   .action(wrapCommand(async (slug, options) => {
     const { workspaceCreate } = await import('./commands/workspace.js');
@@ -2502,7 +1401,7 @@ workspace
 
 workspace
   .command('show')
-  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<workspace>', 'Workspace id (UUID)')
   .description('Show a workspace')
   .action(wrapCommand(async (ws) => {
     const { workspaceShow } = await import('./commands/workspace.js');
@@ -2510,8 +1409,16 @@ workspace
   }));
 
 workspace
+  .command('update')
+  .argument('<workspace>', 'Workspace UUID')
+  .option('--name <name>', 'New display name')
+  .option('--description <text>', 'New description')
+  .description('Update workspace metadata')
+  .action(wrapCommand(async (ws, options) => { const { workspaceUpdate } = await import('./commands/workspace.js'); await workspaceUpdate(ws, options); }));
+
+workspace
   .command('archive')
-  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<workspace>', 'Workspace id (UUID)')
   .description('Archive a workspace')
   .action(wrapCommand(async (ws) => {
     const { workspaceArchive } = await import('./commands/workspace.js');
@@ -2519,52 +1426,34 @@ workspace
   }));
 
 workspace
+  .command('restore')
+  .argument('<workspace>', 'Workspace UUID')
+  .description('Restore an archived workspace')
+  .action(wrapCommand(async (ws) => { const { workspaceRestore } = await import('./commands/workspace.js'); await workspaceRestore(ws); }));
+
+workspace
   .command('delete')
-  .argument('<workspace>', 'Workspace id or slug')
-  .description('Delete a workspace (destroys owned items; unfiles linked ones)')
+  .argument('<workspace>', 'Workspace id (UUID)')
+  .description('Delete an archived workspace that holds no artifacts')
   .action(wrapCommand(async (ws) => {
     const { workspaceDelete } = await import('./commands/workspace.js');
     await workspaceDelete(ws);
   }));
 
-workspace
-  .command('capture')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<text>', 'Raw note text')
-  .description('Drop a zero-friction capture note into a workspace')
-  .action(wrapCommand(async (ws, text) => {
-    const { workspaceCapture } = await import('./commands/workspace.js');
-    await workspaceCapture(ws, text);
-  }));
-
-workspace
-  .command('search')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<query>', 'Full-text search query')
-  .description('Full-text search notes in a workspace')
-  .action(wrapCommand(async (ws, query) => {
-    const { workspaceSearch } = await import('./commands/workspace.js');
-    await workspaceSearch(ws, query);
-  }));
-
-workspace
-  .command('worklist')
-  .argument('<workspace>', 'Workspace id or slug')
-  .option('--stale-capture-days <n>', 'Captures older than N days count as stale (default 7)')
-  .option('--stale-top-tier-days <n>', 'Top-tier notes untouched > N days count as stale (default 30)')
-  .description('Consolidation work-list: stale captures, orphans, promotion candidates, stale top-tier')
-  .action(wrapCommand(async (ws, options) => {
-    const { workspaceWorklist } = await import('./commands/workspace.js');
-    await workspaceWorklist(ws, { staleCaptureDays: options.staleCaptureDays, staleTopTierDays: options.staleTopTierDays });
-  }));
-
 // workspace member subgroup
 const workspaceMember = workspace.command('member').description('Manage workspace members');
 workspaceMember
+  .command('set-role')
+  .argument('<workspace>', 'Workspace UUID')
+  .argument('<account-id>', 'External account UUID')
+  .requiredOption('--role <role>', 'viewer | editor')
+  .description('Change an external member role')
+  .action(wrapCommand(async (ws, accountId, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(ws, accountId, options.role); }));
+workspaceMember
   .command('add')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<account>', 'Account id to add')
-  .option('--role <role>', 'viewer | editor | admin (default editor)')
+  .argument('<workspace>', 'Workspace id (UUID)')
+  .argument('<account>', 'Account id or alias to add')
+  .option('--role <role>', 'viewer | editor (default editor)')
   .description('Add a member to a workspace')
   .action(wrapCommand(async (ws, account, options) => {
     const { workspaceMemberAdd } = await import('./commands/workspace.js');
@@ -2572,7 +1461,7 @@ workspaceMember
   }));
 workspaceMember
   .command('remove')
-  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<workspace>', 'Workspace id (UUID)')
   .argument('<account>', 'Account id to remove')
   .description('Remove a member from a workspace')
   .action(wrapCommand(async (ws, account) => {
@@ -2581,443 +1470,36 @@ workspaceMember
   }));
 workspaceMember
   .command('list')
-  .argument('<workspace>', 'Workspace id or slug')
+  .argument('<workspace>', 'Workspace id (UUID)')
   .description('List workspace members')
   .action(wrapCommand(async (ws) => {
     const { workspaceMemberList } = await import('./commands/workspace.js');
     await workspaceMemberList(ws);
   }));
 
-// workspace item subgroup
-const workspaceItem = workspace.command('item').description('Include primitives in a workspace');
-workspaceItem
-  .command('add')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<item>', 'Artifact public id')
-  .option('--ownership <ownership>', 'owned | linked (default linked)')
-  .option('--kind <kind>', 'Item kind (default artifact)')
-  .description('Include an item in a workspace')
-  .action(wrapCommand(async (ws, item, options) => {
-    const { workspaceItemAdd } = await import('./commands/workspace.js');
-    await workspaceItemAdd(ws, item, options);
-  }));
-workspaceItem
-  .command('link')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<item>', 'Artifact public id')
-  .option('--kind <kind>', 'Item kind (default artifact)')
-  .description('Link (reference) an item into a workspace')
-  .action(wrapCommand(async (ws, item, options) => {
-    const { workspaceItemAdd } = await import('./commands/workspace.js');
-    await workspaceItemAdd(ws, item, { ...options, ownership: 'linked' });
-  }));
-workspaceItem
-  .command('list')
-  .argument('<workspace>', 'Workspace id or slug')
-  .description('List items in a workspace')
-  .action(wrapCommand(async (ws) => {
-    const { workspaceItemList } = await import('./commands/workspace.js');
-    await workspaceItemList(ws);
-  }));
-workspaceItem
-  .command('remove')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<item>', 'Artifact public id')
-  .option('--kind <kind>', 'Item kind (default artifact)')
-  .description('Remove an item from a workspace')
-  .action(wrapCommand(async (ws, item, options) => {
-    const { workspaceItemRemove } = await import('./commands/workspace.js');
-    await workspaceItemRemove(ws, item, options);
-  }));
+workspace
+  .command('adopt')
+  .argument('<workspace>', 'Workspace UUID')
+  .argument('<item>', 'Artifact identifier or folder UUID')
+  .requiredOption('--audience <audience>', 'internal | shared')
+  .option('--kind <kind>', 'artifact | folder', 'artifact')
+  .option('--destination-folder-id <uuid>', 'Destination workspace folder UUID')
+  .option('--workspace-session-id <uuid>', 'Attribute the write to a live workspace session')
+  .description('Move standalone content into workspace authority; sharing exposes full artifact history')
+  .action(wrapCommand(async (ws, item, options) => { const { workspaceAdopt } = await import('./commands/workspace.js'); await workspaceAdopt(ws, item, options); }));
 
-// workspace note subgroup
-const workspaceNote = workspace.command('note').description('Manage native notes');
-workspaceNote
-  .command('set')
-  .argument('<workspace>', 'Workspace id or slug')
-  .option('--title <title>', 'Note title')
-  .option('--body <body>', 'Note body')
-  .option('--slug <slug>', 'Existing note slug to update (omit to create)')
-  .option('--maturity <state>', 'Set the note maturity (must be in the workspace ladder)')
-  .option('--source-artifact <publicId>', 'publicId of the source artifact this note is an atom of (create only)')
-  .description('Create or update a note')
-  .action(wrapCommand(async (ws, options) => {
-    const { workspaceNoteSet } = await import('./commands/workspace.js');
-    await workspaceNoteSet(ws, options);
-  }));
-workspaceNote
-  .command('get')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<slug>', 'Note slug')
-  .description('Get a note')
-  .action(wrapCommand(async (ws, slug) => {
-    const { workspaceNoteGet } = await import('./commands/workspace.js');
-    await workspaceNoteGet(ws, slug);
-  }));
-workspaceNote
-  .command('list')
-  .argument('<workspace>', 'Workspace id or slug')
-  .option('--archived', 'List only archived notes')
-  .option('--include-archived', 'Include archived notes alongside active ones')
-  .description('List notes in a workspace')
-  .action(wrapCommand(async (ws, options) => {
-    const { workspaceNoteList } = await import('./commands/workspace.js');
-    await workspaceNoteList(ws, { archived: options.archived, includeArchived: options.includeArchived });
-  }));
-workspaceNote
-  .command('promote')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<slug>', 'Note slug')
-  .description('Promote a note one maturity step (gated by the workspace promotion rule)')
-  .action(wrapCommand(async (ws, slug) => {
-    const { workspaceNotePromote } = await import('./commands/workspace.js');
-    await workspaceNotePromote(ws, slug);
-  }));
-workspaceNote
-  .command('archive')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<slug>', 'Note slug')
-  .description('Archive a note (hide it from the default list; restore with unarchive)')
-  .action(wrapCommand(async (ws, slug) => {
-    const { workspaceNoteArchive } = await import('./commands/workspace.js');
-    await workspaceNoteArchive(ws, slug);
-  }));
-workspaceNote
-  .command('unarchive')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<slug>', 'Note slug')
-  .description('Restore an archived note')
-  .action(wrapCommand(async (ws, slug) => {
-    const { workspaceNoteUnarchive } = await import('./commands/workspace.js');
-    await workspaceNoteUnarchive(ws, slug);
-  }));
-workspaceNote
-  .command('delete')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<slug>', 'Note slug')
-  .description('Permanently delete a note (also removes its links)')
-  .action(wrapCommand(async (ws, slug) => {
-    const { workspaceNoteDelete } = await import('./commands/workspace.js');
-    await workspaceNoteDelete(ws, slug);
-  }));
+const workspacePinGroup = workspace.command('pin').description('Manage ordered markdown context pins');
+workspacePinGroup.command('add').argument('<workspace>').argument('<artifact-id>').option('--position <n>').action(wrapCommand(async (ws, artifactId, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(ws, artifactId, options); }));
+workspacePinGroup.command('remove').argument('<workspace>').argument('<artifact-id>').action(wrapCommand(async (ws, artifactId) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(ws, artifactId); }));
 
-// workspace link subgroup
-const workspaceLinkGroup = workspace.command('link').description('Manage note -> note links');
-workspaceLinkGroup
-  .command('add')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<from>', 'Source note slug')
-  .argument('<to>', 'Target note slug')
-  .option('--relation <relation>', 'Relation label')
-  .description('Link one note to another')
-  .action(wrapCommand(async (ws, from, to, options) => {
-    const { workspaceLink } = await import('./commands/workspace.js');
-    await workspaceLink(ws, from, to, options);
-  }));
-workspaceLinkGroup
-  .command('remove')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<from>', 'Source note slug')
-  .argument('<to>', 'Target note slug')
-  .description('Remove a note -> note link')
-  .action(wrapCommand(async (ws, from, to) => {
-    const { workspaceUnlink } = await import('./commands/workspace.js');
-    await workspaceUnlink(ws, from, to);
-  }));
-workspaceLinkGroup
-  .command('list')
-  .argument('<workspace>', 'Workspace id or slug')
-  .argument('<slug>', 'Note slug')
-  .description('List inbound and outbound links for a note')
-  .action(wrapCommand(async (ws, slug) => {
-    const { workspaceLinks } = await import('./commands/workspace.js');
-    await workspaceLinks(ws, slug);
-  }));
-
-// ── brain commands ──────────────────────────────────────────────────
-// A brain IS a workspace with semantic search on. These commands are a thin
-// facade over `/v0/brains/*` — the same BrainService the MCP + operator
-// surfaces call. Capture deposits an artifact; search recalls notes + chunks.
-const brain = program
-  .command('brain')
-  .alias('br')
-  .description('Brains — shared memory: deposit knowledge, recall it across sessions')
-  .addHelpText('after', `
-A brain is a workspace with semantic recall. These \`brain\` commands are the
-knowledge- and lifecycle-facing verbs; any \`rip ws\` command also works on a
-brain by its slug (e.g. note maturity, note links, raw worklist).
-`);
-
-brain
-  .command('create')
-  .argument('<slug>', 'Brain slug (unique within your account or team)')
-  .option('--name <name>', 'Display name (defaults to slug)')
-  .option('--description <text>', 'Brain description')
-  .option('--team <slug>', 'Make this a team-owned brain')
-  .option('--instructions <alias>', 'Artifact alias/id of a "how to use this brain" doc')
-  .option('--write-policy <policy>', 'open | gate-editors | gate-all (intake gate; default open)')
-  .option('--atomize-playbook <alias>', 'Artifact alias overriding the system-default atomize playbook')
-  .option('--consolidate-playbook <alias>', 'Artifact alias overriding the system-default consolidate playbook')
-  .option('--visibility <level>', 'private | unlisted | public (default private)')
-  .description('Create a brain (a semantic workspace)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip brain create marketing --name "Marketing"
-  $ rip brain create marketing --instructions search-first-doc
-`)
-  .action(wrapCommand(async (slug, options) => {
-    const { brainCreate } = await import('./commands/brain.js');
-    await brainCreate(slug, options);
-  }));
-
-brain
-  .command('visibility')
-  .argument('<slug>', 'Brain slug')
-  .argument('<level>', 'private | unlisted | public')
-  .description("Set a brain's public read access")
-  .action(wrapCommand(async (slug, level) => {
-    const { brainVisibility } = await import('./commands/brain.js');
-    await brainVisibility(slug, level);
-  }));
-
-brain
-  .command('load')
-  .argument('<brain>', 'Brain id or slug')
-  .option('--command <command>', 'Load a refinement playbook as flow: atomize | consolidate')
-  .description('Load a brain envelope — instructions, working set, and index')
-  .action(wrapCommand(async (br, options) => {
-    const { brainLoad } = await import('./commands/brain.js');
-    await brainLoad(br, options);
-  }));
-
-brain
-  .command('consolidate')
-  .argument('<brain>', 'Brain id or slug')
-  .description('Load the consolidate playbook as flow (promote / fuse / supersede on a cadence)')
-  .action(wrapCommand(async (br) => {
-    const { brainConsolidate } = await import('./commands/brain.js');
-    await brainConsolidate(br);
-  }));
-
-brain
-  .command('atomize')
-  .argument('<brain>', 'Brain id or slug')
-  .description('Load the atomize playbook as flow (decompose a source into atoms)')
-  .action(wrapCommand(async (br) => {
-    const { brainAtomize } = await import('./commands/brain.js');
-    await brainAtomize(br);
-  }));
-
-brain
-  .command('search')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<query>', 'Search query')
-  .option('--mode <mode>', 'hybrid | keyword | semantic (default hybrid)')
-  .option('--include-superseded', 'Include retired (superseded) notes, flagged')
-  .option('--expand <n>', 'Inline the full source body for the top-N hits (1–10)')
-  .description('Search a brain — unified hybrid over notes + source chunks')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip brain search marketing "draft Wexler at 7.2%"
-  $ rip brain search marketing "margin floor" --mode semantic
-`)
-  .action(wrapCommand(async (br, query, options) => {
-    const { brainSearch } = await import('./commands/brain.js');
-    await brainSearch(br, query, options);
-  }));
-
-brain
-  .command('capture')
-  .argument('<brain>', 'Brain id or slug')
-  .option('--content <text>', 'Inline content / claim to record (required)')
-  .option('--title <title>', 'Short title (derived from the content if omitted)')
-  .option('--zone <zone>', 'signal | doctrine | output (default doctrine)')
-  .option('--type <type>', 'Claim shape: claim | thesis | proof-point | one-liner')
-  .option('--supersedes <slug>', 'Slug of a note this claim retires (fact-correction)')
-  .option('--mode <mode>', 'sync (embed inline) | async (reconciler picks it up, default)')
-  .description('Record knowledge into a brain as a zoned note (routed by write policy)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip brain capture marketing \\
-    --content "We never take deals under 8% margin." --zone doctrine --mode sync
-`)
-  .action(wrapCommand(async (br, options) => {
-    const { brainCapture } = await import('./commands/brain.js');
-    await brainCapture(br, options);
-  }));
-
-brain
-  .command('inbox')
-  .argument('<brain>', 'Brain id or slug')
-  .description('List the brain inbox — items staged for review (editor+)')
-  .action(wrapCommand(async (br) => {
-    const { brainInbox } = await import('./commands/brain.js');
-    await brainInbox(br);
-  }));
-
-brain
-  .command('inbox-resolve')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<item>', 'Inbox item ref (note slug / artifact publicId)')
-  .argument('<action>', 'accept | reject | merge')
-  .option('--zone <zone>', 'On accept, set the note zone')
-  .option('--maturity <maturity>', 'On accept, promote the note to this maturity')
-  .option('--target <slug>', 'On merge, the target note slug to link into')
-  .description('Resolve a staged inbox item (editor+)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip brain inbox-resolve acme 2026-06-15-margin-floor accept
-  $ rip brain inbox-resolve acme draft-note merge --target canonical-note
-`)
-  .action(wrapCommand(async (br, item, action, options) => {
-    const { brainInboxResolve } = await import('./commands/brain.js');
-    await brainInboxResolve(br, item, action, options);
-  }));
-
-brain
-  .command('list')
-  .description('List your brains')
-  .action(wrapCommand(async () => {
-    const { brainList } = await import('./commands/brain.js');
-    await brainList();
-  }));
-
-brain
-  .command('show')
-  .argument('<brain>', 'Brain id or slug')
-  .description('Show a brain — detail + counts (sources / notes / members)')
-  .action(wrapCommand(async (br) => {
-    const { brainShow } = await import('./commands/brain.js');
-    await brainShow(br);
-  }));
-
-const brainInstructions = brain
-  .command('instructions')
-  .description("Get or set a brain's operating instructions (the routing contract)");
-
-brainInstructions
-  .command('get')
-  .argument('<brain>', 'Brain id or slug')
-  .description('Show the brain\'s instructions (or the recommended scaffold if unset)')
-  .action(wrapCommand(async (br) => {
-    const { brainInstructionsGet } = await import('./commands/brain.js');
-    await brainInstructionsGet(br);
-  }));
-
-brainInstructions
-  .command('set')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('[text]', 'Instructions text (inline, auto-managed + versioned). Omit when using --artifact')
-  .option('--artifact <alias>', 'Pin an existing artifact alias/id instead of inline text')
-  .description("Set the brain's instructions — what it is, when to query it, how")
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip brain instructions set dogs "I cover dog care. Query me about breeds, training, health."
-  $ rip brain instructions set dogs --artifact dog-routing-guide
-`)
-  .action(wrapCommand(async (br, text, options) => {
-    const { brainInstructionsSet } = await import('./commands/brain.js');
-    await brainInstructionsSet(br, text, options);
-  }));
-
-brain
-  .command('playbook')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<command>', 'atomize | consolidate')
-  .requiredOption('--artifact <alias>', 'Artifact alias/id to pin as this brain\'s playbook')
-  .description('Override a brain\'s atomize/consolidate playbook')
-  .action(wrapCommand(async (br, command, options) => {
-    const { brainPlaybookSet } = await import('./commands/brain.js');
-    await brainPlaybookSet(br, command, options);
-  }));
-
-const brainSource = brain
-  .command('source')
-  .description('Manage a brain\'s source documents (artifacts / folders)');
-
-brainSource
-  .command('add')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<item>', 'Artifact public id (or folder slug/id with --kind folder)')
-  .option('--kind <kind>', 'artifact (default) | folder')
-  .option('--ownership <ownership>', 'linked (default) | owned')
-  .description('Add a source document to the brain')
-  .action(wrapCommand(async (br, item, options) => {
-    const { brainSourceAdd } = await import('./commands/brain.js');
-    await brainSourceAdd(br, item, options);
-  }));
-
-brainSource
-  .command('list')
-  .argument('<brain>', 'Brain id or slug')
-  .description('List the brain\'s source documents')
-  .action(wrapCommand(async (br) => {
-    const { brainSourceList } = await import('./commands/brain.js');
-    await brainSourceList(br);
-  }));
-
-brainSource
-  .command('remove')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<item>', 'Artifact public id (or folder slug/id with --kind folder)')
-  .option('--kind <kind>', 'artifact (default) | folder')
-  .description('Remove a source document from the brain')
-  .action(wrapCommand(async (br, item, options) => {
-    const { brainSourceRemove } = await import('./commands/brain.js');
-    await brainSourceRemove(br, item, options);
-  }));
-
-const brainMember = brain
-  .command('member')
-  .description('Manage a brain\'s members');
-
-brainMember
-  .command('add')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<account>', 'Agent id or saved contact name')
-  .option('--role <role>', 'viewer (default) | editor | admin')
-  .description('Add a member to the brain')
-  .action(wrapCommand(async (br, account, options) => {
-    const { brainMemberAdd } = await import('./commands/brain.js');
-    await brainMemberAdd(br, account, options);
-  }));
-
-brainMember
-  .command('list')
-  .argument('<brain>', 'Brain id or slug')
-  .description('List the brain\'s members')
-  .action(wrapCommand(async (br) => {
-    const { brainMemberList } = await import('./commands/brain.js');
-    await brainMemberList(br);
-  }));
-
-brainMember
-  .command('remove')
-  .argument('<brain>', 'Brain id or slug')
-  .argument('<account>', 'Agent id of the member to remove')
-  .description('Remove a member from the brain')
-  .action(wrapCommand(async (br, account) => {
-    const { brainMemberRemove } = await import('./commands/brain.js');
-    await brainMemberRemove(br, account);
-  }));
-
-brain
-  .command('archive')
-  .argument('<brain>', 'Brain id or slug')
-  .description('Archive a brain (hide from listings; recoverable)')
-  .action(wrapCommand(async (br) => {
-    const { brainArchive } = await import('./commands/brain.js');
-    await brainArchive(br);
-  }));
-
-brain
-  .command('delete')
-  .argument('<brain>', 'Brain id or slug')
-  .description('Delete a brain (owned items destroyed, linked items unfiled)')
-  .action(wrapCommand(async (br) => {
-    const { brainDelete } = await import('./commands/brain.js');
-    await brainDelete(br);
-  }));
+workspace.command('load').argument('<workspace>').requiredOption('--operation-id <id>', 'Retry identity').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Start or resume a credential-bound workspace session and load bounded context').action(wrapCommand(async (ws, options) => { const { operationId, ...page } = options; const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, operationId, page); }));
+const workspaceSession = workspace.command('session').description('Manage credential-bound workspace sessions');
+workspaceSession.command('end').argument('<workspace>').argument('<session-id>').option('--summary <text>').option('--handoff-artifact-id <id>').action(wrapCommand(async (ws, sessionId, options) => { const { workspaceSessionEnd } = await import('./commands/workspace.js'); await workspaceSessionEnd(ws, sessionId, options); }));
+const workspaceView = workspace.command('view').description('Inspect or explicitly navigate a paired browser view');
+workspaceView.command('context').argument('<workspace>').argument('<session-id>').action(wrapCommand(async (ws, sessionId) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws, sessionId); }));
+workspaceView.command('open').argument('<workspace>').argument('<session-id>').argument('<artifact-id>').requiredOption('--operation-id <id>').requiredOption('--expected-context-generation <n>').action(wrapCommand(async (ws, sessionId, artifactId, options) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); await workspaceViewOpen(ws, sessionId, artifactId, options.operationId, options.expectedContextGeneration); }));
+workspace.command('changes').argument('<workspace>').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
+workspace.command('ack').argument('<workspace>').requiredOption('--delivery-token <token>').description('Acknowledge one delivered workspace change page').action(wrapCommand(async (ws, options) => { const { workspaceChangesAck } = await import('./commands/workspace.js'); await workspaceChangesAck(ws, options.deliveryToken); }));
 
 // ── folder commands ─────────────────────────────────────────────────
 const folder = program
@@ -3028,6 +1510,9 @@ folder
   .command('create')
   .argument('<slug>', 'Folder slug (lowercase, alphanumeric, hyphens)')
   .option('--team <slug>', 'Create as a team folder')
+  .option('--workspace <workspace-id>', 'Create inside a workspace')
+  .option('--audience <audience>', 'Workspace audience: internal | shared')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Create a new folder')
   .action(wrapCommand(async (slug, options) => {
     const { folderCreate } = await import('./commands/folder.js');
@@ -3037,6 +1522,7 @@ folder
 folder
   .command('list')
   .option('--team <slug>', 'List team folders')
+  .option('--workspace <workspace-id>', 'List visible folders in a workspace')
   .description('List folders')
   .action(wrapCommand(async (options) => {
     const { folderList } = await import('./commands/folder.js');
@@ -3069,11 +1555,6 @@ CAUTION:
   By default, artifacts in the folder are archived and remain accessible.
   With --delete-contents, every artifact in the folder is permanently
   destroyed before the folder is removed. This action cannot be undone.
-
-NOTES:
-  Returns FOLDER_LOCKED (HTTP 409) for system-managed agent or mount
-  folders — those can't be deleted directly. Delete the owning agent or
-  unmount the mount instead.
 `)
   .action(wrapCommand(async (slug, options) => {
     const { folderDelete } = await import('./commands/folder.js');
@@ -3086,15 +1567,34 @@ folder
   .argument('<new-slug>', 'New folder slug')
   .option('--team <slug>', 'Rename a team folder')
   .description('Rename a folder')
-  .addHelpText('after', `
-NOTES:
-  Returns FOLDER_LOCKED (HTTP 409) for system-managed agent or mount
-  folders — those are renamed automatically when the agent slug changes
-  and can't be renamed directly.
-`)
   .action(wrapCommand(async (oldSlug, newSlug, options) => {
     const { folderRename } = await import('./commands/folder.js');
     await folderRename(oldSlug, newSlug, options);
+  }));
+
+folder
+  .command('update')
+  .argument('<folder-id>', 'Workspace folder UUID')
+  .requiredOption('--workspace <workspace-id>', 'Workspace UUID')
+  .requiredOption('--audience <audience>', 'internal | shared')
+  .requiredOption('--expected-workspace-revision <n>', 'Live folder workspace revision')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Change a workspace folder audience')
+  .action(wrapCommand(async (folderId, options) => {
+    const { folderUpdate } = await import('./commands/folder.js');
+    await folderUpdate(folderId, options);
+  }));
+
+folder
+  .command('share-contents')
+  .argument('<folder-id>', 'Workspace folder UUID')
+  .requiredOption('--workspace <workspace-id>', 'Workspace UUID')
+  .requiredOption('--expected-workspace-revision <n>', 'Live folder workspace revision')
+  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .description('Atomically share a workspace folder and all current child artifacts')
+  .action(wrapCommand(async (folderId, options) => {
+    const { folderShareContents } = await import('./commands/folder.js');
+    await folderShareContents(folderId, options);
   }));
 
 runMigrations();

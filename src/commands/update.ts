@@ -6,6 +6,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatVersionCreated } from '../formatters.js';
+import { parseNonNegativeInteger } from '../input.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
@@ -13,8 +14,11 @@ type ContentType = (typeof VALID_TYPES)[number];
 export async function update(
   uuid: string,
   filePath: string,
-  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; dryRun?: boolean },
+  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; audience?: 'internal' | 'shared'; expectedWorkspaceRevision?: string; workspaceSessionId?: string; dryRun?: boolean },
 ): Promise<void> {
+  const expectedWorkspaceRevision = options.expectedWorkspaceRevision === undefined
+    ? undefined
+    : parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
@@ -38,6 +42,10 @@ export async function update(
     const body: Record<string, unknown> = { type: options.type, content };
     if (options.description) body.description = options.description;
     if (options.context) body.creatorContext = options.context;
+    if (options.expectedVersionId) body.expectedVersionId = options.expectedVersionId;
+    if (options.audience) body.audience = options.audience;
+    if (expectedWorkspaceRevision !== undefined) body.expectedWorkspaceRevision = expectedWorkspaceRevision;
+    if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
     result = data.data;
@@ -47,6 +55,10 @@ export async function update(
     form.append('file', fs.createReadStream(absPath));
     if (options.description) form.append('description', options.description);
     if (options.context) form.append('creatorContext', options.context);
+    if (options.expectedVersionId) form.append('expectedVersionId', options.expectedVersionId);
+    if (options.audience) form.append('audience', options.audience);
+    if (expectedWorkspaceRevision !== undefined) form.append('expectedWorkspaceRevision', String(expectedWorkspaceRevision));
+    if (options.workspaceSessionId) form.append('workspaceSessionId', options.workspaceSessionId);
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, form, {
       headers: form.getHeaders(),
@@ -64,6 +76,8 @@ export async function update(
     const patchBody: Record<string, unknown> = {};
     if (options.title !== undefined) patchBody.title = options.title;
     if (options.alias !== undefined) patchBody.alias = options.alias;
+    if (typeof result.workspaceRevision === 'number') patchBody.expectedWorkspaceRevision = result.workspaceRevision;
+    if (options.workspaceSessionId !== undefined) patchBody.workspaceSessionId = options.workspaceSessionId;
     const { data: patched } = await client.patch(`/v0/artifacts/${uuid}`, patchBody);
     result = { ...result, title: patched.data.title ?? result.title, alias: patched.data.alias };
   }

@@ -83,8 +83,7 @@ export async function authClaim(
   }
 
   // publicKey is recoverable from the bech32 accountId. secretKey is empty —
-  // this identity was minted server-side, the same as `rip auth login` does
-  // for OAuth-bound agents (`apps/cli/src/commands/auth-login.ts`).
+  // this identity was minted server-side when the operator created the claim.
   const publicKey = accountIdToPublicKey(agentId);
 
   const store = loadIdentities();

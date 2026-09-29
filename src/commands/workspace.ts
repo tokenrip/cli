@@ -1,225 +1,41 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
+import { formatWorkspace, formatWorkspaceList, formatWorkspaceChanges, formatWorkspaceLoad, formatWorkspaceViewReceipt } from '../formatters.js';
+import { parseNonNegativeInteger } from '../input.js';
 
-function ref(workspace: string): string {
-  return encodeURIComponent(workspace);
+export interface WorkspaceSummary {
+  id: string; slug: string; name: string; description: string | null;
+  ownerAccountId: string | null; teamId: string | null; archivedAt: string | null;
+  role: string; membership: string; audiences: Array<'internal' | 'shared'>;
+  mutationSequence: number; accessGeneration: number;
 }
 
-// ---- container ----
+function ref(workspace: string): string { return encodeURIComponent(workspace); }
+const workspacePath = (workspace: string) => `/v0/workspaces/${ref(workspace)}`;
 
-export async function workspaceCreate(
-  slug: string,
-  options: { name?: string; description?: string; team?: string },
-): Promise<void> {
+export async function workspaceCreate(slug: string, options: { name?: string; description?: string; teamId?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/workspaces', {
-    slug,
-    name: options.name ?? slug,
-    description: options.description,
-    team: options.team,
-  });
-  outputSuccess(data.data);
+  const { data } = await client.post('/v0/workspaces', { slug, name: options.name ?? slug, description: options.description, teamId: options.teamId });
+  outputSuccess(data.data, formatWorkspace);
 }
+export async function workspaceList(): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get('/v0/workspaces'); outputSuccess(data.data, formatWorkspaceList); }
+export async function workspaceShow(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(workspacePath(workspace)); outputSuccess(data.data, formatWorkspace); }
+export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.patch(workspacePath(workspace), options); outputSuccess(data.data, formatWorkspace); }
+export async function workspaceDelete(workspace: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(workspacePath(workspace)); outputSuccess({ ok: true }); }
+export async function workspaceArchive(workspace: string, options: { workspaceSessionId?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/archive`, options); outputSuccess(data.data, formatWorkspace); }
+export async function workspaceRestore(workspace: string, options: { workspaceSessionId?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/restore`, options); outputSuccess(data.data, formatWorkspace); }
 
-export async function workspaceList(): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get('/v0/workspaces');
-  outputSuccess(data.data);
-}
+export async function workspaceMemberAdd(workspace: string, account: string, options: { role?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { account, role: options.role }); outputSuccess(data.data); }
+export async function workspaceMemberSetRole(workspace: string, accountId: string, role: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.patch(`${workspacePath(workspace)}/members/${encodeURIComponent(accountId)}`, { role }); outputSuccess(data.data); }
+export async function workspaceMemberRemove(workspace: string, account: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(`${workspacePath(workspace)}/members/${encodeURIComponent(account)}`); outputSuccess({ ok: true }); }
+export async function workspaceMemberList(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/members`); outputSuccess(data.data); }
 
-export async function workspaceShow(workspace: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}`);
-  outputSuccess(data.data);
-}
-
-export async function workspaceDelete(workspace: string): Promise<void> {
-  const { client } = requireAuthClient();
-  await client.delete(`/v0/workspaces/${ref(workspace)}`);
-  outputSuccess({ ok: true });
-}
-
-export async function workspaceArchive(workspace: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/archive`);
-  outputSuccess(data.data);
-}
-
-// ---- members ----
-
-export async function workspaceMemberAdd(
-  workspace: string,
-  account: string,
-  options: { role?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/members`, { account, role: options.role });
-  outputSuccess(data.data);
-}
-
-export async function workspaceMemberRemove(workspace: string, account: string): Promise<void> {
-  const { client } = requireAuthClient();
-  await client.delete(`/v0/workspaces/${ref(workspace)}/members/${encodeURIComponent(account)}`);
-  outputSuccess({ ok: true });
-}
-
-export async function workspaceMemberList(workspace: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/members`);
-  outputSuccess(data.data);
-}
-
-// ---- items ----
-
-export async function workspaceItemAdd(
-  workspace: string,
-  item: string,
-  options: { ownership?: string; kind?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/items`, {
-    kind: options.kind ?? 'artifact',
-    item,
-    ownership: options.ownership ?? 'linked',
-  });
-  outputSuccess(data.data);
-}
-
-export async function workspaceItemList(workspace: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/items`);
-  outputSuccess(data.data);
-}
-
-export async function workspaceItemRemove(
-  workspace: string,
-  item: string,
-  options: { kind?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  await client.delete(`/v0/workspaces/${ref(workspace)}/items/${encodeURIComponent(options.kind ?? 'artifact')}/${encodeURIComponent(item)}`);
-  outputSuccess({ ok: true });
-}
-
-// ---- notes ----
-
-export async function workspaceCapture(workspace: string, text: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/capture`, { text });
-  outputSuccess(data.data);
-}
-
-export async function workspaceNoteSet(
-  workspace: string,
-  options: { title?: string; body?: string; slug?: string; maturity?: string; sourceArtifact?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  if (options.slug) {
-    const { data } = await client.patch(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(options.slug)}`, {
-      title: options.title,
-      body: options.body,
-      maturity: options.maturity,
-    });
-    outputSuccess(data.data);
-  } else {
-    const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/notes`, {
-      title: options.title,
-      body: options.body,
-      maturity: options.maturity,
-      sourceArtifact: options.sourceArtifact,
-    });
-    outputSuccess(data.data);
-  }
-}
-
-export async function workspaceNoteArchive(workspace: string, slug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(slug)}/archive`, {});
-  outputSuccess(data.data);
-}
-
-export async function workspaceNoteUnarchive(workspace: string, slug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(slug)}/unarchive`, {});
-  outputSuccess(data.data);
-}
-
-export async function workspaceNoteDelete(workspace: string, slug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  await client.delete(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(slug)}`);
-  outputSuccess({ ok: true });
-}
-
-export async function workspaceNoteGet(workspace: string, slug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(slug)}`);
-  outputSuccess(data.data);
-}
-
-export async function workspaceNoteList(
-  workspace: string,
-  options: { archived?: boolean; includeArchived?: boolean } = {},
-): Promise<void> {
-  const { client } = requireAuthClient();
-  const params = new URLSearchParams();
-  if (options.archived) params.set('archived', 'true');
-  if (options.includeArchived) params.set('include_archived', 'true');
-  const qs = params.toString();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/notes${qs ? `?${qs}` : ''}`);
-  outputSuccess(data.data);
-}
-
-export async function workspaceSearch(workspace: string, query: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/notes`, { params: { q: query } });
-  outputSuccess(data.data);
-}
-
-// ---- maturity + consolidation (Slice 1) ----
-
-export async function workspaceNotePromote(workspace: string, slug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(slug)}/promote`, {});
-  outputSuccess(data.data);
-}
-
-export async function workspaceWorklist(
-  workspace: string,
-  options: { staleCaptureDays?: string; staleTopTierDays?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  const params = new URLSearchParams();
-  if (options.staleCaptureDays) params.set('staleCaptureDays', options.staleCaptureDays);
-  if (options.staleTopTierDays) params.set('staleTopTierDays', options.staleTopTierDays);
-  const qs = params.toString();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/worklist${qs ? `?${qs}` : ''}`);
-  outputSuccess(data.data);
-}
-
-// ---- links ----
-
-export async function workspaceLink(
-  workspace: string,
-  fromSlug: string,
-  toSlug: string,
-  options: { relation?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(fromSlug)}/links`, {
-    to: toSlug,
-    relation: options.relation,
-  });
-  outputSuccess(data.data);
-}
-
-export async function workspaceUnlink(workspace: string, fromSlug: string, toSlug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  await client.delete(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(fromSlug)}/links/${encodeURIComponent(toSlug)}`);
-  outputSuccess({ ok: true });
-}
-
-export async function workspaceLinks(workspace: string, slug: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.get(`/v0/workspaces/${ref(workspace)}/notes/${encodeURIComponent(slug)}/links`);
-  outputSuccess(data.data);
-}
+export async function workspaceAdopt(workspace: string, item: string, options: { kind?: 'artifact' | 'folder'; audience: 'internal' | 'shared'; destinationFolderId?: string; workspaceSessionId?: string }): Promise<void> { const { client } = requireAuthClient(); const kind = options.kind ?? 'artifact'; const { data } = await client.post(`${workspacePath(workspace)}/adopt`, { kind, ...(kind === 'artifact' ? { artifactId: item } : { folderId: item }), audience: options.audience, destinationFolderId: options.destinationFolderId, workspaceSessionId: options.workspaceSessionId }); outputSuccess(data.data); }
+export async function workspacePin(workspace: string, artifactId: string, options: { position?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/pins`, { artifactId, ...(options.position === undefined ? {} : { position: parseNonNegativeInteger(options.position, '--position') }) }); outputSuccess(data.data); }
+export async function workspaceUnpin(workspace: string, artifactId: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(`${workspacePath(workspace)}/pins/${encodeURIComponent(artifactId)}`); outputSuccess({ ok: true }); }
+export async function workspaceLoad(workspace: string, operationId: string, options: { artifactOffset?: string; taskCursor?: string; activityCursor?: string; handoffOffset?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/load`, { operationId, ...(options.artifactOffset !== undefined ? { artifactOffset: parseNonNegativeInteger(options.artifactOffset, '--artifact-offset') } : {}), ...(options.taskCursor ? { taskCursor: options.taskCursor } : {}), ...(options.activityCursor ? { activityCursor: options.activityCursor } : {}), ...(options.handoffOffset !== undefined ? { handoffOffset: parseNonNegativeInteger(options.handoffOffset, '--handoff-offset') } : {}) }); outputSuccess(data.data, formatWorkspaceLoad); }
+export async function workspaceSessionEnd(workspace: string, sessionId: string, options: { summary?: string; handoffArtifactId?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/sessions/${encodeURIComponent(sessionId)}/end`, options); outputSuccess(data.data); }
+export async function workspaceViewContext(workspace: string, sessionId: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/sessions/${encodeURIComponent(sessionId)}/view`); outputSuccess(data.data, formatWorkspaceViewReceipt); }
+export async function workspaceViewOpen(workspace: string, sessionId: string, artifactId: string, operationId: string, expectedContextGeneration: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/sessions/${encodeURIComponent(sessionId)}/view/open`, { artifactId, operationId, expectedContextGeneration: parseNonNegativeInteger(expectedContextGeneration, '--expected-context-generation') }); outputSuccess(data.data, formatWorkspaceViewReceipt); }
+export async function workspaceChanges(workspace: string, options: { limit?: string; deliveryToken?: string }): Promise<void> { const { client } = requireAuthClient(); const params = new URLSearchParams(); if (options.limit) params.set('limit', options.limit); if (options.deliveryToken) params.set('deliveryToken', options.deliveryToken); const { data } = await client.get(`${workspacePath(workspace)}/changes${params.size ? `?${params}` : ''}`); outputSuccess(data.data, formatWorkspaceChanges); }
+export async function workspaceChangesAck(workspace: string, deliveryToken: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/changes/ack`, { deliveryToken }); outputSuccess(data.data); }

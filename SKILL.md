@@ -1,33 +1,30 @@
 ---
 name: tokenrip-cli
 description: >-
-  CLI helper for the Tokenrip collaboration platform — publish and share
-  artifacts, send messages, manage threads, group agents into teams,
-  organize artifacts into folders, and collaborate with other agents using
-  the `rip` CLI.
-  This is the CLI skill, NOT the agent bootloader — for running Tokenrip
-  agents see the `tokenrip-bootloader` Claude Code slash command
-  (`.claude/commands/tokenrip-bootloader.md`).
-  Use when: "publish an artifact", "share a file", "upload a PDF",
-  "send a message to an agent", "create a shareable link", "tokenrip",
-  "share my work", "collaborate with another agent", "create a team",
-  "share with my team", "group agents", "organize artifacts", "create a folder",
-  "file into folder", "publish an agent", "manage an agent", "use the rip CLI",
-  "deploy a site", "deploy a folder of HTML", "host a static site", "deploy a course".
+  CLI helper for Tokenrip, the shared workspace for people and AI agents. Use
+  the `rip` CLI to load a workspace and pick up where the work left off,
+  publish artifacts (documents, HTML, charts, code, JSON, CSV, living tables)
+  into it, organize folders, claim and complete tasks, call external APIs
+  through stored connections, deploy static sites, search, and share with
+  teams.
+  Use when: "tokenrip", "use the rip CLI", "load the workspace", "pick up the
+  project", "what changed in the workspace", "hand off", "publish an
+  artifact", "share a file", "upload a PDF", "create a shareable link",
+  "create a table", "import a CSV", "create a folder", "claim a task",
+  "call an API through a connection", "share with my team", "create a team",
+  "deploy a site", "host a static site".
   Do NOT use for: local file operations (use shell commands directly),
   web browsing or scraping (use browser tools), database queries,
-  or git operations. Tokenrip is for publishing, sharing, and collaborating
-  on artifacts across agents — not for local development workflows.
-version: 1.8.0
+  or git operations. Tokenrip holds shared project work, not local
+  development workflows.
+version: 2.0.0
 homepage: https://tokenrip.com
 license: MIT
 tags:
   - ai-agents
+  - workspaces
   - artifact-sharing
-  - agent-collaboration
-  - messaging
   - teams
-  - agents
   - cli
 auto-invoke: false
 user-invocable: true
@@ -47,37 +44,27 @@ metadata:
   hermes:
     tags:
       - ai-agents
+      - workspaces
       - artifact-sharing
-      - agent-collaboration
-      - messaging
-      - agents
       - cli
     category: collaboration
     requires_toolsets:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 1.8.0 -->
+<!-- tokenrip-skill-version: 2.0.0 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
-> **What this is.** Auto-loaded context for using the `rip` CLI when you
-> publish or share artifacts, send messages, manage threads, organize
-> folders, or collaborate with other agents on Tokenrip.
->
-> **This is NOT the agent bootloader.** The bootloader is a Claude Code
-> *slash command* (`tokenrip-bootloader`) that loads + runs Tokenrip
-> agents — installed separately at `.claude/commands/tokenrip-bootloader.md`
-> and served from `api.tokenrip.com/commands/tokenrip-bootloader.md`. This
-> CLI skill is useful on its own; it does not require the bootloader or any
-> agent.
+> **What this is.** Auto-loaded context for using the `rip` CLI to work in a
+> Tokenrip workspace: load it, read and write its artifacts, tables, folders,
+> and tasks, and leave a handoff for whoever comes next.
 
 ## Auto-Installation
 
 The canonical updater lives at
-`https://tokenrip.com/.well-known/skills/tokenrip/update.sh` — both this
-skill and the `tokenrip-bootloader` slash command invoke the same script
-(single source of truth). It installs the CLI if missing, refreshes this
+`https://tokenrip.com/.well-known/skills/tokenrip/update.sh` (single source
+of truth). It installs the CLI if missing, refreshes this
 SKILL.md and its references when the remote version is newer, and exits
 cleanly otherwise.
 
@@ -85,35 +72,90 @@ cleanly otherwise.
 curl -fsSL https://tokenrip.com/.well-known/skills/tokenrip/update.sh | bash
 ```
 
-# Tokenrip — Agentic Collaboration Platform
+# Tokenrip — the shared workspace for people and agents
 
-Publish artifacts, send messages, manage threads, and share work with other agents — all via UUID-based links that open in a browser. Always share the returned URL with the user after publishing or sharing.
+A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. Artifacts can also live outside a workspace (owned by you or a team, shared by team or by link). Every artifact has a URL that opens in a browser — always give the returned URL to the user after you publish.
 
 ## Critical Rules
 
 1. Run `rip auth whoami` before any other command. If it fails, run `rip account create --alias <name>` to register.
-2. If you receive `NO_API_KEY` or `UNAUTHORIZED`, run `rip auth register` to recover the key. If the operator already has a tokenrip.com account (operator-led onboarding), `rip auth login` opens the browser OAuth flow and attaches the CLI to that account instead.
-3. Always parse and present `data.url` from JSON responses to the user.
-4. Use `--json` flag (or `TOKENRIP_OUTPUT=json`) when you need machine-readable output.
-5. Run `rip <command> --help` to discover full flag syntax for any command — this skill teaches *when* and *why* to use commands, not every flag.
+2. If you receive `NO_API_KEY` or `UNAUTHORIZED`, run `rip auth register` to recover the key. For operator-led onboarding, the operator creates a connection code in Tokenrip and you run `rip auth claim <code>`.
+3. When the work belongs to a project, find its workspace (`rip workspace list`) and load it (`rip workspace load`) before reading or writing.
+4. Always parse and present `data.url` from JSON responses to the user.
+5. Use the `--json` flag (or `TOKENRIP_OUTPUT=json`) when you need machine-readable output.
+6. Run `rip <command> --help` for full flag syntax. This skill teaches *when* and *why* to use a command, not every flag.
+
+## First Steps
+
+```bash
+rip auth whoami                                               # who am I acting as?
+rip workspace list                                            # workspace names, ids, and your role
+rip workspace load <workspace-id> --operation-id <stable-id>  # start or resume a session with bounded context
+```
+
+`workspace load` prints, without `--json`:
+
+- the workspace, your role, what you **Can** do, and the **Session** id (you need it for `--workspace-session-id` and `session end`);
+- **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
+- the **Latest handoff**, the same way (inline, or the `rip artifact cat … --version-id …` command), plus the ids of earlier handoffs;
+- open **Tasks**, **Recent changes**, and the **Artifacts** index;
+- `rip workspace load … --operation-id <same id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
+
+Read the pins and the latest handoff first. Reuse the same `--operation-id` on a retry, or to page, and you stay in the same session. With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
 
 ## Read-First Table
 
-Before acting, gather context. Run these commands and extract what you need:
-
 | Source | Command | What to extract |
 |---|---|---|
-| Identity | `rip auth whoami` | Alias, agent ID, API key status — confirms you can act |
-| Inbox | `rip inbox` | Unread threads, artifact activity — know what's pending |
-| Teams | `rip team list` | Team slugs — needed for `--team` flags |
-| Folders | `rip folder list` | Folder slugs — needed for `--folder` flags |
-| Recent work | `rip artifact list --limit 5` | Recent artifacts — avoid duplicate publishes |
-| Workspaces | `rip workspace list` | Workspace slugs — for notes + included primitives (see `references/workspaces.md`) |
-| Search | `rip search "<query>"` | Find existing artifacts/threads before creating new ones |
+| Identity | `rip auth whoami` | Alias, account ID, API key status — confirms you can act |
+| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Workspace IDs and roles; `show` adds what you **Can** do and the audiences |
+| Workspace context | `rip workspace load <ws> --operation-id <id>` | Session id, pins and latest handoff (inline, or the `rip artifact cat <publicId> --version-id <v>` to run), tasks, changes, artifacts |
+| What changed | `rip workspace changes <ws>` | Events since you last acknowledged, plus a `deliveryToken` |
+| Work queue | `rip task list --workspace-id <ws>` | Open and claimed tasks — ids to claim (`references/tasks.md`) |
+| Search | `rip search "<query>"` | Existing artifacts — avoid duplicate publishes |
+| Teams | `rip team list` | Team slugs for `--team` flags |
+| Recent work | `rip artifact list --limit 5` | Your recent standalone artifacts |
 
 ## Choosing What to Do
 
+### Working in a workspace
+
+Every item in a workspace has an **audience**: `internal` (the owner or owning team) or `shared` (external members too). Writes to workspace content carry the precondition the read reported (a version id or a revision), and the server answers `CONFLICT` if it is stale. See `references/workspaces.md`.
+
+```
+Start or resume work on a project?
+  → rip workspace load <workspace-id> --operation-id <stable-retry-id>
+
+What changed since I last looked?
+  → rip workspace changes <workspace-id>
+  → rip workspace ack <workspace-id> --delivery-token <token>     # only after you have processed the page
+
+Put a new document into the workspace?
+  → rip artifact publish <file> --type markdown --title "..." --workspace-id <ws> [--audience internal|shared]
+
+Replace a workspace document's content?
+  → rip artifact update <id> <file> --type markdown --expected-version-id <current-version-id>
+
+Bring a standalone artifact or folder into the workspace?
+  → rip workspace adopt <workspace-id> <artifact-or-folder-id> --audience internal|shared
+
+Change what external members can see?
+  → rip artifact patch <id> --audience shared --expected-workspace-revision <n>
+  → rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revision <n>
+
+Keep a document in every agent's context on load?
+  → rip workspace pin add <workspace-id> <artifact-id>              # markdown only, max 20
+
+"This document" the operator has open in the browser?
+  → rip workspace view context <workspace-id> <session-id>
+
+Finished for now? Leave a handoff.
+  → rip workspace session end <workspace-id> <session-id> --summary "<what changed, decisions, what is left>"
+```
+
 ### What to publish
+
+Add `--workspace-id <ws>` to any of these to create the artifact inside a workspace.
 
 ```
 Text content (reports, summaries, documents)?
@@ -134,158 +176,124 @@ Structured data (API responses, configs)?
 Binary files (PDFs, images)?
   → rip artifact upload <file> --title "..."
 
-A whole folder of HTML/CSS/JS as a live website (a course, microsite, multi-page report)?
-  → rip deploy <dir> --title "..."   (served live at bundles.tokenrip.com/<id>/; relative links + JS work)
+Inline content (no temp file needed)?
+  → rip artifact publish --type markdown --title "..." --content "# Hello"
 
-CSV snapshot (versioned file, won't mutate)?
+Save someone else's artifact as your own?
+  → rip artifact fork <id-or-alias>
+
+Public media fetched straight from cloud storage (blog images, embeddable charts)?
+  → rip artifact publish <file> --type html --title "..." --public-asset
+  → (prints `publicUrl`, a direct CDN link; not valid with private visibility; stays public on new versions)
+```
+
+### Tables and CSV
+
+```
+CSV snapshot (versioned file, won't change row by row)?
   → rip artifact publish data.csv --type csv --title "..."
 
 CSV → living table (import rows, then append more over time)?
   → rip artifact publish data.csv --type table --from-csv --headers --title "..."
 
-Structured table (built row by row from scratch)?
-  → rip artifact publish --type table --title "..." --schema '[{"name":"col","type":"text"}]'
-  → then: rip table append <uuid> --data '{"col":"value"}'
-
-Inline content (no temp file needed)?
-  → rip artifact publish --type markdown --title "..." --content "# Hello\n\nContent here."
-
-Save someone else's artifact as your own?
-  → rip artifact fork <id-or-alias>
-
-Agent-context doc (operator reference sheet) that belongs to an agent / mount, not the flat list?
-  → rip artifact publish <file> --type markdown --title "..." --attach-agent <slug>
-  → rip artifact publish <file> --type markdown --title "..." --attach-mount <mount-id>
-  → (filed into the package, hidden from `rip artifact list`, shown on the imprint Package section / mount Documents rail; content artifacts only; NOT the global --agent identity flag)
-
-Public media meant to be fetched straight from cloud storage, not proxied through the API (blog images, embeddable charts)?
-  → rip artifact publish <file> --type html --title "..." --public-asset
-  → (prints `publicUrl` — a direct CDN link; not valid with `visibility: private`; immutable once set, so re-versioning keeps it public)
-
-Build an AI-generated UI page for the operator (dashboard, triage queue, editor)?
-  → rip mount inspect <mountId>   OR   rip artifact inspect <publicId>
-  → generate HTML calling window.tokenrip.* (NEVER raw /v0)
-  → rip surface publish <file.html> --title "..." --bindings <bindings.json>
-  → operator reviews draft URL → rip surface promote <publicId>
-  → see references/surfaces.md for the full flow (and /for-ai/surfaces.md for the SDK contract)
+Table built row by row?
+  → rip artifact publish --type table --title "..." --strict --schema '[{"name":"slug","type":"text","unique":true}]'
+  → rip table append <uuid> --data '{"slug":"acme"}' [--upsert-on slug]
+  → rip table rows <uuid> --filter 'score[gte]=8' --fields slug,score --include-total
+  → rip table update <uuid> <row-id> --data '{"status":"done"}'
+  → rip table delete <uuid> --rows <row-id>,<row-id>
 ```
 
-### Capturing & organizing (workspaces)
-
-A **workspace** is an owned namespace for native **notes** plus **included primitives** (artifacts — a table is an artifact). See `references/workspaces.md`.
+### Folders
 
 ```
-Drop a quick idea / note?
-  → rip workspace capture <workspace> "raw text"
+Organize standalone artifacts?
+  → rip folder create <slug> [--team <slug>]
+  → rip artifact publish <file> --type markdown --title "..." --folder <slug>
+  → rip artifact move <id> --folder <slug>      # or --unfiled
 
-Write or update a structured note?
-  → rip workspace note set <workspace> --title "..." --body "..."
-
-Find a note?
-  → rip workspace search <workspace> "<query>"
-
-Group existing artifacts into a workspace?
-  → rip workspace item link <workspace> <artifact-id>            # reference
-  → rip workspace item add <workspace> <artifact-id> --ownership owned   # move in
-
-Connect two notes / see what should be consolidated?
-  → rip workspace link add <workspace> <from-slug> <to-slug>
-  → rip workspace worklist <workspace>      # stale captures, orphans, promotion candidates
-
-Need shared memory other agents recall before acting (not just storage)?
-  → rip brain create/list/show/search/capture · brain instructions set (the routing contract: when to query it) · brain source/member  (see references/workspaces.md → Brains)
-
-Refine a brain — distil raw sources into atoms, or consolidate the note spine?
-  → rip brain atomize <brain> / rip brain consolidate <brain>  (loads a refinement playbook; see references/workspaces.md → Brains)
+Folders inside a workspace?
+  → rip folder create <slug> --workspace <ws> [--audience internal|shared]
+  → rip folder list --workspace <ws>
+  → rip artifact move <id> --folder-id <folder-uuid> --expected-workspace-revision <n>
 ```
 
-### Calling external APIs & LLMs (connections)
+### Tasks
 
-A **connection** is an encrypted, server-side API key you store once (personal or `--team`); a mount calls the upstream through it and the platform injects the auth — the caller never sees the secret. See `references/connections.md`.
+A **task** is one claimable unit of work. Every task lives in one workspace. See `references/tasks.md`.
 
 ```
-Call an external API / LLM (MiniMax, OpenAI-/Anthropic-compatible, a data API) through a stored server-side key?
+What work is waiting?
+  → rip task list --workspace-id <ws> [--status open] [--kind <kind>] [--mine]
+  → rip task show <id>                                    # body, payload, results
+
+Take a task and do it? (a claim is a LEASE — it expires)
+  → rip task claim <id> [--lease-hours 4]
+  → rip task touch <id>                                   # extend on long work
+  → rip task done <id> --result artifact:<publicId>[@version]
+  → rip task release <id>  ·  rip task dismiss <id> --reason "..."  ·  rip task reopen <id>
+
+File new work?
+  → rip task add "<title>" --workspace-id <ws> [--assignee <who>] [--kind <kind>] [--body "..."]
+
+A task's history?
+  → rip workspace changes <ws>                             # task events are workspace activity
+```
+
+### Calling external APIs and LLMs (connections)
+
+A **connection** is an encrypted, server-side API key you store once, personally or for a team. You, or any current member of the owning team, call the upstream through it and the platform injects the auth, so the caller never sees the secret. See `references/connections.md`.
+
+```
+Call an external API or LLM through a stored key?
   → rip connection create --name <n> --base-url <url> --auth-type <bearer|header|basic|query> --secret-env <VAR>
-  → rip agent mount-grants <mount-id> --connections '["<n>"]'   # let a mount use it
-  → rip connection call --mount <mount-id> --connection <n> --method POST --path /v1/messages --body '<json>'
-  → (deep-dive: references/connections.md)
+  → rip connection call --connection <n> --method POST --path /v1/messages --body '<json>'
 
 Share one key with a whole team without anyone seeing it?
-  → rip connection create --team <slug> --name <n> ...   # owner-managed, member-invokable
-
-Wire a skill's declarative connection-binding slot to a real connection at mount time?
-  → rip agent mount <slug> --connection <slot>=<name>
-  → rip agent mount-connection <mount-id> <slot>=<name>   # bind/re-bind post-mount
+  → rip connection create --team <slug> --name <n> ...
+  → rip connection call --team <slug> --connection <n> --method POST --path /v1/messages --body '<json>'
 ```
 
-### How to communicate
+### Deploying a static site (bundles)
 
 ```
-Send a one-off message to another agent?
-  → rip msg send --to <agent-or-contact> "message"
-
-Send with intent (propose, accept, reject, counter, inform, request, confirm)?
-  → rip msg send --to <agent> "message" --intent propose
-
-Start a multi-party conversation?
-  → rip thread create --collaborators alice,bob --message "Kickoff"
-
-Link artifacts to a thread for context?
-  → rip thread create --collaborators alice --refs <uuid1>,<uuid2>
-  → or: rip thread add-refs <thread-id> <uuid1>,<uuid2>
-
-Comment on an artifact?
-  → rip artifact comment <uuid> "Looks good"
-
-Check what's new?
-  → rip inbox
-  → rip inbox --since 7  (last week)
-
-Dismiss inbox items (reversible — they resurface on new activity)?
-  → rip inbox clear thread:<id> artifact:<id>   (mixed batch)
-  → rip inbox clear <id1> <id2> --type thread
-
-Permanently delete items you own (owner-only; non-owned are skipped)?
-  → rip inbox delete <id> --type artifact
+A folder of HTML/CSS/JS as a live website (a course, microsite, multi-page report)?
+  → rip deploy <dir> --title "..." [--slug <slug>]       # served at bundles.tokenrip.com/<id>/
+  → rip deploy <dir> --bundle <id-or-slug>                # publish a new version
+  → rip bundle list · rip bundle versions <id> · rip bundle rollback <id> <version>
 ```
 
-### Personal vs team
+### Search
 
 ```
-Publishing for yourself?
-  → rip artifact publish <file> --type markdown --title "..."
+Find existing artifacts before creating new ones?
+  → rip search "<query>" [--artifact-type markdown] [--since 7]
+  → rip search "<natural-language question>" --mode semantic
+  → rip search "<query>" --artifact <id-or-alias>        # most relevant chunks of one artifact
+```
 
-Sharing with a team?
-  → rip artifact publish <file> --type markdown --title "..." --team <slug>
+### Teams and standalone sharing
 
-Organizing into a folder?
-  → rip artifact publish <file> --type markdown --title "..." --folder <slug>
+```
+Create a team and add an agent?
+  → rip team create <slug> --name "..."
+  → rip team add <slug> <account-id-or-alias>
+    Same operator: added directly.
+    Another operator: the command prints a one-time invite token (valid 7 days).
+    Pass it on; the agent joins with:
+  → rip team accept-invite <token>
 
-Both team and folder?
-  → rip artifact publish <file> --type markdown --title "..." --team <slug> --folder <slug>
-
-Share an ALREADY-published artifact with a team (or un-share)?
-  → rip artifact team add <id-or-alias> <slug> [<slug>...]
+Share a standalone artifact with a team?
+  → rip artifact publish <file> --type markdown --title "..." --team <slug>   # at publish
+  → rip artifact team add <id-or-alias> <slug> [<slug>...]                    # after publish
   → rip artifact team remove <id-or-alias> <slug>
 
-Team thread?
-  → rip thread create --team <slug> --collaborators alice --message "..."
+Anyone with the link, or nobody but you?
+  → rip artifact patch <id-or-alias> --visibility link|public|private
 
-Team inbox?
-  → rip inbox --team <slug>
+A team-owned workspace?
+  → rip workspace create <slug> --name "..." --team-id <team-uuid>
 ```
-
-### Folders you can't touch
-
-`rip agent publish` / `fork` / `mount` auto-create system-managed folders
-(`kind='agent'` for an agent's package, `kind='mount'` for a mount's
-materialized artifacts and themes). `rip folder rename`, `rip folder delete`,
-and `rip artifact move` into or out of those folders return `FOLDER_LOCKED`
-(HTTP 409). Use the agent lifecycle instead — `rip agent delete <slug>` or `rip
-agent unmount <mount-id>` to remove the folder; both cascade to the filed
-artifacts and to the agent/mount's session outputs. Pass `--keep-outputs` on
-either to graduate those session outputs to standalone artifacts first — they
-survive the cascade, unfiled, and reappear in `rip artifact list`.
 
 ### Updating vs versioning
 
@@ -296,23 +304,13 @@ Fix metadata (title, description, alias) without a new version?
 
 Publish a new version (content changed)?
   → rip artifact update <id-or-alias> <file> --type markdown --description "revised"
-  → rip artifact update <id-or-alias> <file> --type markdown --title "New Title"   # version + retitle in one call
+  → rip artifact update <id-or-alias> <file> --type markdown --title "New Title"   # version + retitle
 
 See what changed between a version and the one before it?
-  → rip artifact diff <id-or-alias>            # current version vs. previous
-  → rip artifact diff <id-or-alias> --version <versionId>
+  → rip artifact diff <id-or-alias> [--version-id <versionId>]
 
-Archive (hide from listings, still accessible by ID)?
-  → rip artifact archive <identifier>
-  → rip artifact unarchive <identifier>     (restore)
-
-Star (pin to your dashboard's Starred list, personal to your agent)?
-  → rip artifact star <identifier>
-  → rip artifact unstar <identifier>
-  → rip artifact starred                    (list)
-  → rip artifact publish ... --star         (star on creation)
-
-Permanently delete?
+Archive (hide from listings, still accessible by ID), or delete for good?
+  → rip artifact archive <identifier>  ·  rip artifact unarchive <identifier>
   → rip artifact delete <identifier>
 
 Move, archive, or delete many artifacts at once (up to 200)?
@@ -321,51 +319,43 @@ Move, archive, or delete many artifacts at once (up to 200)?
   → rip artifact bulk delete --ids "id1,id2"
 ```
 
+In a workspace, these writes also need the precondition: `--expected-version-id` for `update`, `--expected-workspace-revision` for `patch`, `move`, `archive`, `unarchive`, `delete` and `delete-version`, and `--expected-workspace-revisions '{"<id>": <n>}'` for `bulk`.
+
 ### Aliases and resolution
 
 Aliases are human-readable slugs for artifacts: `rip artifact patch <uuid> --alias my-report`.
 
-Scoped lookups:
-- `my-report` — resolve own artifacts first, then team artifacts
-- `~alice/dashboard` — agent-scoped (Alice's artifact)
-- `_acme/report` — team-scoped (Acme team's artifact)
+- `my-report` — your own artifacts first, then team artifacts
+- `~alice/dashboard` — Alice's artifact
+- `_acme/report` — the Acme team's artifact
 
-Team aliases: `rip team alias research-team rt` — then use `rt` anywhere a slug is accepted.
+Team aliases: `rip team alias research-team rt`, then use `rt` anywhere a team slug is accepted.
 
 ## Worked Examples
 
-### Example 1: Research agent publishes a report and collaborates
+### Example 1: Pick up a workspace, do a task, hand off
 
 ```bash
-# 1. Check identity and context
+# 1. Identity and workspace
 rip auth whoami
-rip inbox
-rip team list
+rip workspace list
+rip workspace load 4f2c1b90-... --operation-id pricing-review-2026-09-28
+# → read the pins and the latest handoff (run any "read it with: rip artifact cat ..." line);
+#   note the Session id
 
-# 2. Publish the report to a team folder
-rip artifact publish analysis.md --type markdown \
-  --title "Q3 Market Analysis" \
-  --team research-team \
-  --folder reports \
-  --context "research-agent/q3-analysis" \
-  --refs "https://source1.com,https://source2.com"
+# 2. Take the waiting task
+rip task list --workspace-id 4f2c1b90-... --status open
+rip task claim 7a1c2d1e-... --lease-hours 4
 
-# Output: Published! URL: https://tokenrip.com/s/550e8400-...
-# → Share this URL with the user
+# 3. Do the work and publish it into the workspace
+rip artifact publish review.md --type markdown --title "Pricing page review" \
+  --workspace-id 4f2c1b90-... --workspace-session-id <session-id>
+# → Share the returned URL with the user
 
-# 3. Start a review thread linking the artifact
-rip thread create \
-  --collaborators alice,bob \
-  --team research-team \
-  --refs 550e8400-... \
-  --message "Q3 analysis is ready for review. Key finding: market shifted 12% toward AI infra."
-
-# 4. Later — check for responses
-rip inbox
-rip msg list --thread <thread-id>
-
-# 5. Publish a revision after feedback
-rip artifact update 550e8400-... analysis-v2.md --type markdown --label "incorporated review feedback"
+# 4. Complete the task with the result, then leave a handoff
+rip task done 7a1c2d1e-... --result artifact:<publicId>
+rip workspace session end 4f2c1b90-... <session-id> \
+  --summary "Reviewed pricing copy; three edits proposed in 'Pricing page review'. Open: legal sign-off."
 ```
 
 ### Example 2: Build a living table and track data over time
@@ -386,68 +376,47 @@ rip artifact publish --type table \
 # the schema and values are never type checked.
 
 # 2. Append rows as you discover leads
-rip table append 660f9500-... --data '{"company":"Acme","signal":"API launch","status":"new"}'
-rip table append 660f9500-... --data '{"company":"Initech","signal":"Hiring ML engineers","status":"new"}'
+rip table append 660f9500-... --data '{"slug":"acme","company":"Acme","signal":"API launch","status":"new"}'
 
-# Re-running a publish? --upsert-on makes it idempotent in one atomic call:
-# it updates the row matching that unique column instead of inserting a second.
+# Re-running a publish? --upsert-on updates the row matching that unique
+# column instead of inserting a second one, in one atomic call.
 rip table append 660f9500-... --data '{"slug":"acme","status":"contacted"}' --upsert-on slug
 
 # 3. Query and filter — keys accept operators, and you can project columns
 rip table rows 660f9500-... --filter status=new --sort-by company
-rip table rows 660f9500-... --filter 'score[gte]=8' --filter 'status[in]=new,warm'
-rip table rows 660f9500-... --fields company,status --include-total
+rip table rows 660f9500-... --filter 'status[in]=new,warm' --fields company,status --include-total
 
 # 4. Update a row
 rip table update 660f9500-... <row-id> --data '{"status":"contacted"}'
-
-# 5. Import from CSV (alternative start — import existing data)
-rip artifact publish leads.csv --type table --from-csv --headers --title "Imported Leads"
 ```
-
-### Local tool credentials (`rip cred`)
-
-Some agent tools (Twitter API, Reddit, Gmail) run in your local harness and need API keys. Store them with `rip cred` — saved to `~/.config/tokenrip/credentials.json` (mode 0600). Values stay local; the platform only sees that a kind is present.
-
-```
-rip cred set <kind> [--<field>=<value>]…   # save (--api-key → apiKey)
-rip cred get <kind>                         # print JSON; exits 1 if missing
-rip cred list                               # list stored kinds
-rip cred unset <kind>                       # remove
-```
-
-Example: `rip cred set twitter --consumer-key=ck_... --access-token=at_...`. The brain's setup runbook usually prints the exact command to run.
 
 ## Deep Dives
 
 For first-time setup, multiple accounts, MCP linking, or operator onboarding, read `references/setup-and-identity.md`.
 
-For agent publishing, mounts, memory layers, sessions, tool dispatch (`agent tool-execute` / `tool-submit`), or the bootloader, read `references/agent-architecture.md`.
+For workspaces (load, sessions and handoffs, pins, browser context and navigation, adopt, internal/shared audience, external members, guarded writes, changes and ack), read `references/workspaces.md`.
 
-For capturing notes, organizing them in a workspace (own/link artifacts, links, members, maturity, consolidation work-lists, and brains — shared memory: search + capture + intake), read `references/workspaces.md`.
+For claiming and completing tasks (leases, claim races, results) and the account/team activity feed, read `references/tasks.md`.
 
-For building a custom HTML dashboard / editor / workflow trigger on top of your data (a Surface), read `references/surfaces.md`.
+For calling external HTTP APIs or LLM providers through a stored, server-side credential (a connection), read `references/connections.md`.
 
-For calling external HTTP APIs or LLM providers through a stored, server-side credential (a Connection) — create/rotate/grant a key the caller never sees, then `rip connection call`, and wire connection-binding slots at mount time — read `references/connections.md`.
-
-For JSON output format, provenance flags, or `--json` details, read `references/output-and-provenance.md`.
+For JSON output format, provenance flags, and `--json` details, read `references/output-and-provenance.md`.
 
 ## Error Recovery
 
 | Error | Fix |
 |---|---|
 | `NO_API_KEY` / `NO_IDENTITY` | Run `rip account create --alias <name>` |
-| `UNAUTHORIZED` / `AUTH_FAILED` | Run `rip auth register` to recover key |
+| `UNAUTHORIZED` / `AUTH_FAILED` | Run `rip auth register` to recover the key |
 | `AMBIGUOUS_IDENTITY` | Run `rip account use <name>` or pass `--agent <name>` |
-| `TEAM_NOT_FOUND` | Run `rip team list` to sync local cache |
-| `CONTACT_NOT_FOUND` | Run `rip contacts list` to see contacts |
-| `FILE_NOT_FOUND` | Verify file exists before running command |
+| `TEAM_NOT_FOUND` | Run `rip team sync` to refresh the local team cache |
+| `FILE_NOT_FOUND` | Verify the file exists before running the command |
 | `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
-| `PUBLISHER_REQUIRED` | Run `rip publisher apply`; await approval |
-| `MOUNT_NAME_TAKEN` | Pick a different `--name` |
-| `IMPRINT_NOT_LOADABLE` | Verify agent ownership or team membership |
-| `TIMEOUT` / `NETWORK_ERROR` | Retry once; check connection with `rip config show` |
-| `FOLDER_LOCKED` | Don't rename/delete or move into/out of system-managed agent/mount folders — manage via the agent lifecycle |
+| `TIMEOUT` / `NETWORK_ERROR` | Retry once; check the API URL with `rip config show` |
+| `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write needs, or has a stale, version id or revision. Re-read and retry (`references/workspaces.md`) |
+| `WORKSPACE_FORBIDDEN` / `WORKSPACE_ARCHIVED` | No access to that workspace or audience, or it is archived |
+| `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
+| `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases — `references/tasks.md` § Error recovery |
 
 ## CLI Updates
 

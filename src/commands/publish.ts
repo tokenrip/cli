@@ -10,6 +10,11 @@ import { resolveTeam, resolveTeams } from '../teams.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'table', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
+function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; workspaceSessionId?: string }): void {
+  if (options.workspaceId) body.workspaceId = options.workspaceId;
+  if (options.audience) body.audience = options.audience;
+  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+}
 
 /**
  * Standard create-response payload. Echoes both `id` and `publicId` (same
@@ -22,7 +27,6 @@ function artifactCreatedPayload(
   data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; publicUrl?: string },
   url: string,
   aliasFallback: string | undefined,
-  starred: boolean,
 ): Record<string, unknown> {
   const alias = data.alias ?? aliasFallback ?? null;
   return {
@@ -34,7 +38,6 @@ function artifactCreatedPayload(
     type: data.type,
     currentVersionId: data.currentVersionId,
     publicUrl: data.publicUrl ?? null,
-    ...(starred ? { starred: true } : {}),
   };
 }
 
@@ -55,23 +58,16 @@ export async function publish(
     team?: string;
     folder?: string;
     metadata?: string;
-    star?: boolean;
-    attachAgent?: string;
-    attachMount?: string;
     publicAsset?: boolean;
     visibility?: string;
     strict?: boolean;
+    workspaceId?: string;
+    audience?: 'internal' | 'shared';
+    workspaceSessionId?: string;
   },
 ): Promise<void> {
   if (!VALID_TYPES.includes(options.type as ContentType)) {
     throw new CliError('INVALID_TYPE', `Type must be one of: ${VALID_TYPES.join(', ')}`);
-  }
-
-  // --attach-agent and --attach-mount are mutually exclusive package-attach
-  // targets. The server enforces this too, but a client-side guard gives a
-  // friendlier error.
-  if (options.attachAgent && options.attachMount) {
-    throw new CliError('INVALID_ARGS', 'Provide either --attach-agent or --attach-mount, not both.');
   }
 
   let parsedMetadata: Record<string, unknown> | undefined;
@@ -129,20 +125,14 @@ export async function publish(
     }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
-    if (options.attachAgent) body.agent = options.attachAgent;
-    if (options.attachMount) body.mount = options.attachMount;
     if (options.publicAsset) body.public_asset = true;
     if (options.visibility) body.visibility = options.visibility;
+    addWorkspaceFields(body, options);
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    let starred = false;
-    if (options.star) {
-      await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
-      starred = true;
-    }
     outputSuccess(
-      artifactCreatedPayload(data.data, url, options.alias, starred),
+      artifactCreatedPayload(data.data, url, options.alias),
       formatArtifactCreated,
     );
     return;
@@ -181,23 +171,17 @@ export async function publish(
     }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
-    if (options.attachAgent) body.agent = options.attachAgent;
-    if (options.attachMount) body.mount = options.attachMount;
     // No public_asset here: the backend rejects table + public asset with
     // PUBLIC_ASSET_UNSUPPORTED, so sending it could only ever surface as a
     // server error.
     if (options.visibility) body.visibility = options.visibility;
     if (options.strict) body.strict = true;
+    addWorkspaceFields(body, options);
 
     const { client, config } = requireAuthClient();
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    let starred = false;
-    if (options.star) {
-      await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
-      starred = true;
-    }
-    outputSuccess(artifactCreatedPayload(data.data, url, options.alias, starred), formatArtifactCreated);
+    outputSuccess(artifactCreatedPayload(data.data, url, options.alias), formatArtifactCreated);
     return;
   }
 
@@ -234,20 +218,14 @@ export async function publish(
     }
     if (options.folder) body.folder = options.folder;
     if (parsedMetadata) body.metadata = parsedMetadata;
-    if (options.attachAgent) body.agent = options.attachAgent;
-    if (options.attachMount) body.mount = options.attachMount;
     // Same as the CSV table path above — public assets are not valid on tables.
     if (options.visibility) body.visibility = options.visibility;
     if (options.strict) body.strict = true;
+    addWorkspaceFields(body, options);
 
     const { data } = await client.post('/v0/artifacts', body);
     const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    let starred = false;
-    if (options.star) {
-      await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
-      starred = true;
-    }
-    outputSuccess(artifactCreatedPayload(data.data, url, options.alias, starred), formatArtifactCreated);
+    outputSuccess(artifactCreatedPayload(data.data, url, options.alias), formatArtifactCreated);
     return;
   }
 
@@ -283,18 +261,12 @@ export async function publish(
   }
   if (options.folder) body.folder = options.folder;
   if (parsedMetadata) body.metadata = parsedMetadata;
-  if (options.attachAgent) body.agent = options.attachAgent;
-  if (options.attachMount) body.mount = options.attachMount;
   if (options.publicAsset) body.public_asset = true;
   if (options.visibility) body.visibility = options.visibility;
+  addWorkspaceFields(body, options);
 
   const { data } = await client.post('/v0/artifacts', body);
 
   const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-  let starred = false;
-  if (options.star) {
-    await client.post(`/v0/artifacts/${encodeURIComponent(data.data.id)}/star`);
-    starred = true;
-  }
-  outputSuccess(artifactCreatedPayload(data.data, url, options.alias, starred), formatArtifactCreated);
+  outputSuccess(artifactCreatedPayload(data.data, url, options.alias), formatArtifactCreated);
 }

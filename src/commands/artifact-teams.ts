@@ -5,7 +5,7 @@
 // Why this exists (Moa debrief §3.4): previously the only way to set an
 // artifact's team was at publish time (`publish --team`). An already-published
 // artifact with `teams: []` could not be team-scoped — `artifact patch` has no
-// `--team`, and `artifact share` only mints capability links. The sole route
+// `--team`. The sole route
 // was delete + republish-with-`--team`. These verbs close that gap.
 
 import { requireAuthClient } from '../auth-client.js';

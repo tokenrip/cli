@@ -1,6 +1,8 @@
 import type { AxiosInstance } from 'axios';
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
+import { parseNonNegativeInteger } from '../input.js';
+import { CliError } from '../errors.js';
 import { resolveTeam } from '../teams.js';
 
 /**
@@ -23,8 +25,16 @@ export async function resolveFolderId(
   return data.data.id;
 }
 
-export async function folderCreate(slug: string, options: { team?: string }): Promise<void> {
+export async function folderCreate(slug: string, options: { team?: string; workspace?: string; audience?: 'internal' | 'shared'; workspaceSessionId?: string }): Promise<void> {
   const { client } = requireAuthClient();
+  if (options.team && options.workspace) throw new CliError('INVALID_SCOPE', 'Choose either --team or --workspace');
+  if (options.workspace) {
+    const { data } = await client.post(`/v0/workspaces/${encodeURIComponent(options.workspace)}/folders`, {
+      slug, audience: options.audience, workspaceSessionId: options.workspaceSessionId,
+    });
+    outputSuccess(data.data);
+    return;
+  }
   if (options.team) {
     const teamSlug = resolveTeam(options.team);
     const { data } = await client.post(`/v0/teams/${encodeURIComponent(teamSlug)}/folders`, { slug });
@@ -35,8 +45,14 @@ export async function folderCreate(slug: string, options: { team?: string }): Pr
   }
 }
 
-export async function folderList(options: { team?: string }): Promise<void> {
+export async function folderList(options: { team?: string; workspace?: string }): Promise<void> {
   const { client } = requireAuthClient();
+  if (options.team && options.workspace) throw new CliError('INVALID_SCOPE', 'Choose either --team or --workspace');
+  if (options.workspace) {
+    const { data } = await client.get('/v0/folders', { params: { workspaceId: options.workspace } });
+    outputSuccess(data.data);
+    return;
+  }
   if (options.team) {
     const teamSlug = resolveTeam(options.team);
     const { data } = await client.get(`/v0/teams/${encodeURIComponent(teamSlug)}/folders`);
@@ -86,21 +102,52 @@ export async function folderRename(oldSlug: string, newSlug: string, options: { 
   }
 }
 
-export async function artifactMove(uuid: string, options: { folder?: string; team?: string; unfiled?: boolean }): Promise<void> {
+export async function folderUpdate(
+  folderId: string,
+  options: { workspace: string; audience: 'internal' | 'shared'; expectedWorkspaceRevision: string; workspaceSessionId?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.patch(
+    `/v0/workspaces/${encodeURIComponent(options.workspace)}/folders/${encodeURIComponent(folderId)}`,
+    {
+      audience: options.audience,
+      expectedWorkspaceRevision: parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision'),
+      workspaceSessionId: options.workspaceSessionId,
+    },
+  );
+  outputSuccess(data.data);
+}
+
+export async function folderShareContents(
+  folderId: string,
+  options: { workspace: string; expectedWorkspaceRevision: string; workspaceSessionId?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.post(
+    `/v0/workspaces/${encodeURIComponent(options.workspace)}/folders/${encodeURIComponent(folderId)}/share-contents`,
+    {
+      expectedWorkspaceRevision: parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision'),
+      workspaceSessionId: options.workspaceSessionId,
+    },
+  );
+  outputSuccess(data.data);
+}
+
+export async function artifactMove(uuid: string, options: { folder?: string; folderId?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevision?: string; workspaceSessionId?: string }): Promise<void> {
   const { client } = requireAuthClient();
 
   if (options.unfiled) {
-    await client.patch(`/v0/artifacts/${uuid}`, { folderId: null });
+    await client.patch(`/v0/artifacts/${uuid}`, { folderId: null, expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), workspaceSessionId: options.workspaceSessionId });
     outputSuccess({ id: uuid, folder_id: null });
     return;
   }
 
-  if (!options.folder) {
-    throw new Error('Provide --folder <slug> or --unfiled');
+  if (!options.folder && !options.folderId) {
+    throw new Error('Provide --folder <slug>, --folder-id <uuid>, or --unfiled');
   }
 
-  const folderId = await resolveFolderId(client, options.folder, options.team);
+  const folderId = options.folderId ?? await resolveFolderId(client, options.folder!, options.team);
 
-  const { data } = await client.patch(`/v0/artifacts/${uuid}`, { folderId });
+  const { data } = await client.patch(`/v0/artifacts/${uuid}`, { folderId, expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), workspaceSessionId: options.workspaceSessionId });
   outputSuccess(data.data);
 }

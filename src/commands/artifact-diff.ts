@@ -5,12 +5,12 @@ import { parseArtifactId } from '../parse-artifact-id.js';
 
 export async function artifactDiff(
   input: string,
-  options: { version?: string },
+  options: { versionId?: string },
 ): Promise<void> {
   const uuid = parseArtifactId(input);
   const { client } = optionalAuthClient();
 
-  let versionId = options.version;
+  let versionId = options.versionId;
   if (!versionId) {
     const { data } = await client.get(`/v0/artifacts/${uuid}`);
     versionId = data.data.currentVersionId;

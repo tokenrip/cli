@@ -36,14 +36,6 @@ export function accountIdToPublicKey(accountId: string): string {
 /** @deprecated use accountIdToPublicKey */
 export const agentIdToPublicKey = accountIdToPublicKey;
 
-export interface CapabilityTokenOptions {
-  sub: string;
-  iss: string;
-  perm: string[];
-  exp?: number;
-  aud?: string;
-}
-
 export function sign(data: Buffer, secretKeyHex: string): Buffer {
   const rawKey = Buffer.from(secretKeyHex, 'hex');
   const derKey = Buffer.concat([PKCS8_ED25519_PREFIX, rawKey]);
@@ -57,9 +49,3 @@ export function signPayload(payload: Record<string, unknown>, secretKeyHex: stri
   return `${payloadB64}.${signature.toString('base64url')}`;
 }
 
-export function createCapabilityToken(opts: CapabilityTokenOptions, secretKeyHex: string): string {
-  const payload: Record<string, unknown> = { sub: opts.sub, iss: opts.iss, perm: opts.perm };
-  if (opts.exp != null) payload.exp = opts.exp;
-  if (opts.aud != null) payload.aud = opts.aud;
-  return signPayload(payload, secretKeyHex);
-}

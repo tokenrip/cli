@@ -72,7 +72,7 @@ export const formatBundleVersions: Formatter = (data) => {
 export const formatArtifactCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
   // `id` and `publicId` carry the same value; the rest of the platform
-  // (agent / surface responses) keys on `publicId`. We echo the alias too so
+  // (agent responses) keys on `publicId`. We echo the alias too so
   // a caller that just set one can confirm it. See packages/cli/CLAUDE.md.
   if (data.id) lines.push(`  ID:      ${data.id}`);
   if (data.alias) lines.push(`  Alias:   ${data.alias}`);
@@ -171,86 +171,43 @@ export const formatAuthKey: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatInbox: Formatter = (data) => {
+/**
+ * `rip activity` — the server already rendered each row's sentence, so this only
+ * groups them under day headers. Grouping is what makes a long feed scannable;
+ * re-deriving the sentence client-side would mean two vocabularies to keep in
+ * step, so `text` is printed verbatim.
+ */
+export const formatActivity: Formatter = (data) => {
+  const events = ((data as any).events ?? []) as Array<{
+    createdAt: string;
+    text: string;
+    subject?: { type?: string; id?: string };
+  }>;
+  if (events.length === 0) return 'No activity.';
+
   const lines: string[] = [];
-  const threads = (data as any).threads ?? [];
-  const artifacts = (data as any).artifacts ?? [];
-
-  if (threads.length > 0) {
-    lines.push(`THREADS (${threads.length})`);
-    for (const t of threads) {
-      const count = t.new_message_count ? `+${t.new_message_count} msg${t.new_message_count > 1 ? 's' : ''}` : 'no new';
-      const intent = t.last_intent ? `  last: ${t.last_intent}` : '';
-      const preview = t.last_body_preview ? `  "${t.last_body_preview}"` : '';
-      const ago = formatTimeAgo(new Date(t.updated_at));
-      lines.push(`  ${t.thread_id}  ${count.padEnd(10)}${intent}${preview}  ${ago}`);
+  let day: string | null = null;
+  for (const e of events) {
+    // Rows arrive newest-first, so a change of day is always a new header.
+    const d = e.createdAt.slice(0, 10);
+    if (d !== day) {
+      if (day !== null) lines.push('');
+      lines.push(d);
+      day = d;
     }
-  } else {
-    lines.push('THREADS (none)');
+    // The sentence names the thing; the ref is what you paste into the next command
+    // (e.g. `--subject connection:<id>`). Whole, never a prefix — see
+    // CLAUDE.md §Output correctness.
+    const ref = e.subject?.type && e.subject?.id ? `  ${e.subject.type}:${e.subject.id}` : '';
+    lines.push(`  ${e.text}${ref}`);
   }
 
-  lines.push('');
-
-  if (artifacts.length > 0) {
-    lines.push(`ARTIFACTS (${artifacts.length})`);
-    for (const a of artifacts) {
-      const title = a.title ?? '(untitled)';
-      const versions = `+${a.new_version_count} ver${a.new_version_count > 1 ? 's' : ''}`;
-      const ago = formatTimeAgo(new Date(a.updated_at));
-      lines.push(`  ${title.padEnd(20)}  v${a.latest_version}  ${versions}  ${ago}  (${a.artifact_id})`);
-    }
-  } else {
-    lines.push('ARTIFACTS (none)');
-  }
-
-  return lines.join('\n');
-};
-
-export const formatThreadList: Formatter = (data) => {
-  const threads = (data as any).threads ?? [];
-  const total = (data as any).total ?? threads.length;
-
-  if (threads.length === 0) return 'No threads.';
-
-  const lines = [`${total} thread(s):\n`];
-  for (const t of threads) {
-    const state = t.state === 'closed' ? '[closed]' : '[open]  ';
-    const collaborators = `${t.collaborator_count} collaborator${t.collaborator_count !== 1 ? 's' : ''}`;
-    const preview = t.last_message_preview ? `"${t.last_message_preview}"` : '(no messages)';
-    const ago = t.updated_at ? formatTimeAgo(new Date(t.updated_at)) : '';
-    lines.push(`  ${state}  ${t.thread_id}  ${collaborators.padEnd(16)}  ${preview}  ${ago}`);
-  }
-
-  return lines.join('\n');
-};
-
-export const formatContacts: Formatter = (data) => {
-  const contacts = data as unknown as Record<string, { agent_id: string; alias?: string; notes?: string }>;
-  const entries = Object.entries(contacts);
-  if (entries.length === 0) return 'No contacts.';
-  const lines = [`${entries.length} contact(s):\n`];
-  lines.push(`${'NAME'.padEnd(16)} ${'AGENT ID'.padEnd(40)} ${'ALIAS'.padEnd(16)} NOTES`);
-  for (const [name, c] of entries) {
-    const alias = c.alias || '—';
-    const notes = c.notes || '';
-    lines.push(`${name.padEnd(16)} ${c.agent_id.padEnd(40)} ${alias.padEnd(16)} ${notes}`);
+  const next = (data as any).nextCursor;
+  if (next) {
+    lines.push('');
+    lines.push(`More: rerun with --cursor ${next}`);
   }
   return lines.join('\n');
-};
-
-export const formatContactResolved: Formatter = (data) => {
-  return `${data.name}: ${data.agent_id}`;
-};
-
-export const formatContactSaved: Formatter = (data) => {
-  const lines = [`Contact "${data.name}" saved`];
-  if (data.agent_id) lines.push(`  Agent: ${data.agent_id}`);
-  if (data.alias) lines.push(`  Alias: ${data.alias}`);
-  return lines.join('\n');
-};
-
-export const formatContactRemoved: Formatter = (data) => {
-  return data.message as string || `Contact "${data.name}" removed`;
 };
 
 export const formatConfigShow: Formatter = (data) => {
@@ -260,62 +217,6 @@ export const formatConfigShow: Formatter = (data) => {
   if (data.apiKey) lines.push(`  API Key:       ${data.apiKey}`);
   if (data.outputFormat) lines.push(`  Output format: ${data.outputFormat}`);
   if (data.configFile) lines.push(`  Config file:   ${data.configFile}`);
-  return lines.join('\n');
-};
-
-export const formatMessageSent: Formatter = (data) => {
-  const lines: string[] = [];
-  if (data.thread_id) lines.push(`Thread: ${data.thread_id}`);
-  if (data.message_id) lines.push(`Message: ${data.message_id}`);
-  if (data.id) lines.push(`Message: ${data.id}`);
-  if (data.sequence) lines.push(`Sequence: #${data.sequence}`);
-  return lines.join('\n');
-};
-
-export const formatMessages: Formatter = (data) => {
-  const messages = data as unknown as Array<{
-    sequence: number;
-    body: string;
-    intent?: string;
-    sender?: { agent_id?: string; user_id?: string };
-    created_at: string;
-  }>;
-  if (!Array.isArray(messages) || messages.length === 0) return 'No messages.';
-  const lines: string[] = [];
-  for (const m of messages) {
-    const sender = m.sender?.agent_id || m.sender?.user_id || 'unknown';
-    const intent = m.intent ? `  [${m.intent}]` : '';
-    const ago = formatTimeAgo(new Date(m.created_at));
-    lines.push(`#${m.sequence}  ${sender}  ${ago}${intent}`);
-    lines.push(`    ${m.body}`);
-    lines.push('');
-  }
-  return lines.join('\n').trimEnd();
-};
-
-export const formatShareLink: Formatter = (data) => {
-  const lines = ['Share link generated'];
-  if (data.url) lines.push(`  URL:   ${data.url}`);
-  if (data.token) lines.push(`  Token: ${data.token}`);
-  const perm = data.perm as unknown as string[];
-  if (Array.isArray(perm)) lines.push(`  Perms: ${perm.join(', ')}`);
-  if (data.exp) lines.push(`  Expires: ${new Date((data.exp as number) * 1000).toISOString()}`);
-  if (data.aud) lines.push(`  For: ${data.aud}`);
-  return lines.join('\n');
-};
-
-export const formatThreadCreated: Formatter = (data) => {
-  const lines = ['Thread created'];
-  if (data.id) lines.push(`  ID:           ${data.id}`);
-  if (data.url) lines.push(`  URL:          ${data.url}`);
-  const collaborators = data.collaborators as unknown as Array<{ agent_id?: string }>;
-  if (Array.isArray(collaborators)) {
-    lines.push(`  Collaborators: ${collaborators.length}`);
-  }
-  const refs = data.refs as unknown as Array<{ type: string; target_id: string }>;
-  if (Array.isArray(refs) && refs.length > 0) {
-    lines.push(`  Linked:       ${refs.length}`);
-  }
   return lines.join('\n');
 };
 
@@ -379,75 +280,6 @@ export const formatVersionMetadata: Formatter = (data) => {
   if (data.sizeBytes) lines.push(`  Size:     ${formatBytes(data.sizeBytes as number)}`);
   if (data.createdAt) lines.push(`  Created:  ${data.createdAt}`);
   return lines.join('\n');
-};
-
-export const formatThreadDetails: Formatter = (data) => {
-  const lines = [`Thread ${data.id}`];
-  if (data.created_by) lines.push(`  Created by:    ${data.created_by}`);
-  const collaborators = data.collaborators as unknown as Array<{ agent_id?: string; user_id?: string; role?: string }>;
-  if (Array.isArray(collaborators)) {
-    lines.push(`  Collaborators:  ${collaborators.length}`);
-    for (const p of collaborators) {
-      const id = p.agent_id || p.user_id || 'anonymous';
-      const role = p.role ? ` (${p.role})` : '';
-      lines.push(`    - ${id}${role}`);
-    }
-  }
-  const refs = data.refs as unknown as Array<{ id: string; type: string; target_id: string }>;
-  if (Array.isArray(refs) && refs.length > 0) {
-    lines.push(`  Linked:        ${refs.length}`);
-    for (const r of refs) {
-      lines.push(`    - [${r.type}] ${r.target_id}`);
-    }
-  }
-  if (data.resolution) lines.push(`  Resolution:    ${JSON.stringify(data.resolution)}`);
-  if (data.created_at) lines.push(`  Created:       ${data.created_at}`);
-  if (data.updated_at) lines.push(`  Updated:       ${data.updated_at}`);
-
-  const messages = data.messages as unknown as Array<{
-    sequence?: number;
-    body?: string;
-    intent?: string;
-    sender?: { agent_id?: string; user_id?: string };
-    created_at?: string;
-  }>;
-  if (Array.isArray(messages) && messages.length > 0) {
-    lines.push(`  Messages:      ${messages.length}`);
-    for (const m of messages) {
-      const sender = m.sender?.agent_id || m.sender?.user_id || 'anonymous';
-      const intent = m.intent ? `[${m.intent}] ` : '';
-      lines.push(`    #${m.sequence} ${sender}: ${intent}${m.body}`);
-    }
-  }
-
-  return lines.join('\n');
-};
-
-export const formatThreadClosed: Formatter = (data) => {
-  const lines = [`Thread ${data.id} closed`];
-  if (data.resolution) lines.push(`  Resolution: ${JSON.stringify(data.resolution)}`);
-  return lines.join('\n');
-};
-
-export const formatCollaboratorAdded: Formatter = (data) => {
-  const lines = ['Collaborator added'];
-  if (data.thread_id) lines.push(`  Thread:  ${data.thread_id}`);
-  if (data.agent_id) lines.push(`  Agent:   ${data.agent_id}`);
-  return lines.join('\n');
-};
-
-export const formatRefsAdded: Formatter = (data) => {
-  const refs = data as unknown as Array<{ id: string; type: string; target_id: string }>;
-  if (!Array.isArray(refs) || refs.length === 0) return 'No refs added.';
-  const lines = [`Added ${refs.length} ref(s):`];
-  for (const r of refs) {
-    lines.push(`  [${r.type}] ${r.target_id}  (${r.id})`);
-  }
-  return lines.join('\n');
-};
-
-export const formatRefRemoved: Formatter = (data) => {
-  return `Removed ref ${data.ref_id} from thread ${data.thread_id}`;
 };
 
 export const formatWhoami: Formatter = (data) => {
@@ -518,20 +350,10 @@ export const formatSearchResults: Formatter = (data) => {
   for (const r of results) {
     const title = r.title || '(untitled)';
     const ago = formatTimeAgo(new Date(r.updated_at));
-    if (r.type === 'thread') {
-      const state = r.thread?.state === 'closed' ? '[closed]' : '[open]  ';
-      const intent = r.thread?.last_intent ? `  last: ${r.thread.last_intent}` : '';
-      const collaborators = r.thread?.collaborator_count != null
-        ? `${r.thread.collaborator_count} collaborator${r.thread.collaborator_count !== 1 ? 's' : ''}`
-        : '';
-      lines.push(`  thread  ${state}  ${r.id}  ${collaborators.padEnd(16)}${intent}  ${ago}`);
-      if (title !== '(untitled)') lines.push(`          ${title}`);
-    } else {
-      const artifactType = (r.artifact?.artifact_type ?? '').padEnd(10);
-      const versions = r.artifact?.version_count ? `v${r.artifact.version_count}` : '';
-      lines.push(`  artifact   ${artifactType}  ${r.id}  ${title}  ${versions}  ${ago}`);
-      if (r.url) lines.push(`          ${r.url}`);
-    }
+    const artifactType = (r.artifact?.artifact_type ?? '').padEnd(10);
+    const versions = r.artifact?.version_count ? `v${r.artifact.version_count}` : '';
+    lines.push(`  artifact   ${artifactType}  ${r.id}  ${title}  ${versions}  ${ago}`);
+    if (r.url) lines.push(`          ${r.url}`);
     if (r.match_section) lines.push(`          § ${r.match_section}`);
     if (r.snippet) lines.push(`          ${formatSnippet(r.snippet)}`);
   }
@@ -578,9 +400,22 @@ export const formatTeamDetails: Formatter = (data) => {
 };
 
 export const formatTeamInvite: Formatter = (data) => {
-  const lines = ['Invite link generated'];
+  const lines = ['Invite token generated (pass it on; the recipient runs rip team accept-invite <token>)'];
   if (data.token) lines.push(`  Token:   ${data.token}`);
   if (data.expires_in) lines.push(`  Expires: ${data.expires_in}`);
+  return lines.join('\n');
+};
+
+export const formatTeamMemberAdded: Formatter = (data) => {
+  if (!data.invited) return 'Agent added to the team.';
+  const lines = ['Invite created (the agent belongs to another operator, so it was not added directly).'];
+  if (data.inviteToken) {
+    lines.push(`  Token:   ${data.inviteToken}`);
+    lines.push('  Expires: 7 days');
+    lines.push('');
+    lines.push('Send the token to the agent. It joins with:');
+    lines.push(`  rip team accept-invite ${data.inviteToken}`);
+  }
   return lines.join('\n');
 };
 
@@ -648,242 +483,6 @@ function formatTimeAgo(date: Date): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-// ── Mounted-agents v2 ────────────────────────────────────────────────
-
-export const formatMount: Formatter = (data) => {
-  const lines = [`Mount: ${data.name || '(default)'}`];
-  if (data.id) lines.push(`  ID:           ${data.id}`);
-  if (data.imprintSlug) lines.push(`  Imprint:      ${data.imprintSlug}`);
-  if (data.imprintVersionAtCreate) lines.push(`  Created at:   imprint v${data.imprintVersionAtCreate}`);
-  if (data.contextArtifactPublicId) lines.push(`  Context:      ${data.contextArtifactPublicId}`);
-  if (data.ownerAgentId) lines.push(`  Owner agent:  ${data.ownerAgentId}`);
-  if (data.teamId) lines.push(`  Team:         ${data.teamId}`);
-  if (data.createdByAgentId) lines.push(`  Created by:   ${data.createdByAgentId}`);
-  if (data.createdAt) lines.push(`  Created:      ${data.createdAt}`);
-  return lines.join('\n');
-};
-
-export const formatMountList: Formatter = (data) => {
-  const mounts = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(mounts) || mounts.length === 0) return 'No mounts.';
-  const lines = [`${mounts.length} mount(s):\n`];
-  for (const m of mounts) {
-    const label = m.name || '(default)';
-    const scope = m.teamId ? `team:${m.teamId}` : 'personal';
-    lines.push(`  ${String(label).padEnd(24)} ${scope}`);
-    if (m.id) lines.push(`    id:      ${m.id}`);
-    if (m.imprintSlug) lines.push(`    imprint: ${m.imprintSlug}`);
-  }
-  return lines.join('\n');
-};
-
-export const formatUnmounted: Formatter = (data) => {
-  return `Unmounted: ${data.id}`;
-};
-
-export const formatAgentPublished: Formatter = (data) => {
-  const lines = [`Published ${data.slug} as v${data.publishedVersion ?? '?'}`];
-  if (data.isPublished) lines.push('  Public listing: yes');
-  if (data.publisherId) lines.push(`  Publisher:      ${data.publisherId}`);
-  return lines.join('\n');
-};
-
-export const formatAgentDryRun: Formatter = (data) => {
-  const slug = data.slug ?? '(unknown)';
-  const errors = (data.errors as Array<{ code: string; message: string }>) ?? [];
-  const resolved = data.resolved as
-    | {
-        brainArtifacts?: Array<{ alias: string; publicId: string }>;
-        memoryTablesCount?: number;
-        memoryArtifactsCount?: number;
-        workflowTablesCount?: number;
-      }
-    | undefined;
-
-  if (data.ok === false) {
-    const lines = [`Validation failed for ${slug} (${errors.length} error${errors.length === 1 ? '' : 's'})`, ''];
-    for (const err of errors) {
-      lines.push(`  [${err.code}] ${err.message}`);
-    }
-    return lines.join('\n');
-  }
-
-  const lines = [`Validation passed for ${slug}`];
-  if (resolved?.brainArtifacts && resolved.brainArtifacts.length > 0) {
-    lines.push('');
-    lines.push('Brain artifacts resolved:');
-    const longestAlias = Math.max(...resolved.brainArtifacts.map((b) => b.alias.length));
-    for (const ba of resolved.brainArtifacts) {
-      lines.push(`  ${ba.alias.padEnd(longestAlias)}  ${ba.publicId}`);
-    }
-  }
-  const counts: Array<[string, number | undefined]> = [
-    ['Memory tables', resolved?.memoryTablesCount],
-    ['Memory artifacts', resolved?.memoryArtifactsCount],
-    ['Workflow tables', resolved?.workflowTablesCount],
-  ];
-  const nonZero = counts.filter(([, n]) => typeof n === 'number' && n > 0);
-  if (nonZero.length > 0) {
-    lines.push('');
-    const longestLabel = Math.max(...nonZero.map(([label]) => label.length));
-    for (const [label, n] of nonZero) {
-      lines.push(`  ${label.padEnd(longestLabel)}  ${n}`);
-    }
-  }
-  return lines.join('\n');
-};
-
-export const formatAgent: Formatter = (data) => {
-  const manifest = data.manifest as any;
-  const lines = [`Mounted agent: ${data.slug}`];
-  if (data.publishedVersion) lines.push(`  Version:       v${data.publishedVersion}`);
-  if (data.manifestVersion) lines.push(`  Manifest:      v${data.manifestVersion}`);
-  if (data.ownerAgentId) lines.push(`  Owner agent:   ${data.ownerAgentId}`);
-  if (data.ownerTeamId) lines.push(`  Owner team:    ${data.ownerTeamId}`);
-  if (typeof data.isPublished === 'boolean') lines.push(`  Listed:        ${data.isPublished ? 'yes' : 'no'}`);
-  if (manifest?.display?.displayName) lines.push(`  Display:       ${manifest.display.displayName}`);
-  if (manifest?.display?.tagline) lines.push(`  Tagline:       ${manifest.display.tagline}`);
-  if (manifest?.mountIntake?.starterArtifactAlias) lines.push(`  Mount intake:  ${manifest.mountIntake.starterArtifactAlias}`);
-  const brain = manifest?.brain?.artifacts ?? [];
-  if (Array.isArray(brain) && brain.length > 0) {
-    lines.push('');
-    lines.push('Brain:');
-    for (const artifact of brain) lines.push(`  ${artifact.role}: ${artifact.alias}`);
-  }
-  return lines.join('\n');
-};
-
-export const formatAgentList: Formatter = (data) => {
-  const agents = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(agents) || agents.length === 0) return 'No mounted agents.';
-  const lines = [`${agents.length} mounted agent(s):\n`];
-  for (const agent of agents) {
-    const manifest = agent.manifest as any;
-    const name = manifest?.display?.displayName ?? agent.slug;
-    const version = agent.publishedVersion ? ` v${agent.publishedVersion}` : '';
-    const listed = agent.isPublished ? ' listed' : ' draft';
-    lines.push(`  ${String(agent.slug).padEnd(28)}${version}${listed}  ${name}`);
-  }
-  return lines.join('\n');
-};
-
-export const formatAgentScaffold: Formatter = (data) => {
-  const lines = [`Forked: ${data.slug}`];
-  if (data.path) lines.push(`  Path:      ${data.path}`);
-  if (data.nextStep) lines.push(`  Next:      ${data.nextStep}`);
-  return lines.join('\n');
-};
-
-export const formatImprintArtifacts: Formatter = (data) => {
-  return formatArtifactRows(data as unknown as Array<Record<string, unknown>>, 'imprint artifact');
-};
-
-export const formatMountArtifacts: Formatter = (data) => {
-  return formatArtifactRows(data as unknown as Array<Record<string, unknown>>, 'mount artifact');
-};
-
-export const formatMountDrillIn: Formatter = (data) => {
-  const mount = (data as any).mount ?? {};
-  const imprint = (data as any).imprint ?? {};
-  const contextArtifact = (data as any).contextArtifact;
-  const lines = [`Mount: ${mount.name || '(default)'}`];
-  if (mount.id) lines.push(`  ID:          ${mount.id}`);
-  if (imprint.slug) {
-    const current = imprint.publishedVersion ? ` v${imprint.publishedVersion}` : '';
-    lines.push(`  Imprint:     ${imprint.slug}${current}`);
-  }
-  if (mount.imprintVersionAtCreate) lines.push(`  Created at:  imprint v${mount.imprintVersionAtCreate}`);
-  if (contextArtifact) {
-    lines.push('');
-    lines.push('Context:');
-    if (contextArtifact.alias) lines.push(`  Alias:       ${contextArtifact.alias}`);
-    if (contextArtifact.publicId) lines.push(`  Artifact ID:    ${contextArtifact.publicId}`);
-    if (contextArtifact.version) lines.push(`  Version:     v${contextArtifact.version}`);
-    if (contextArtifact.sizeBytes != null) lines.push(`  Size:        ${formatBytes(contextArtifact.sizeBytes)}`);
-    // show-mount returns context metadata only — the body lives behind a
-    // dedicated endpoint. Point there so verification doesn't dead-end on
-    // "0 chars" (Moa debrief §3.7).
-    if (mount.id) lines.push(`  Body:        run \`rip agent mount-context ${mount.id}\``);
-  }
-  const layers = (data as any).layers;
-  if (layers) {
-    lines.push('');
-    lines.push(`Layers: shared ${countLayer(layers.shared)}, team ${countLayer(layers.team)}, private ${countLayer(layers.private)}`);
-  }
-  return lines.join('\n');
-};
-
-export const formatMountContext: Formatter = (data) => {
-  if (data.updatedVersion) {
-    const lines = [`Mount context updated to v${data.updatedVersion}`];
-    const artifact = (data as any).contextArtifact;
-    if (artifact?.publicId) lines.push(`  Artifact ID: ${artifact.publicId}`);
-    return lines.join('\n');
-  }
-  return String(data.content ?? '');
-};
-
-export const formatTheme: Formatter = (data) => {
-  const t = ((data as Record<string, unknown>).theme ?? data) as Record<string, unknown>;
-  const cur = t.isCurrent ? ' (current)' : '';
-  const lines = [`Theme: ${t.slug}${t.name ? ` — ${t.name}` : ''}${cur}`];
-  if (t.archivedAt) lines.push(`  archived: ${t.archivedAt}`);
-  if (t.stateArtifactPublicId) lines.push(`  state artifact: ${t.stateArtifactPublicId}`);
-  if (t.summary) lines.push(`\n${t.summary}`);
-  return lines.join('\n');
-};
-
-export const formatThemeList: Formatter = (data) => {
-  const themes = ((data as Record<string, unknown>).themes ?? []) as Record<string, unknown>[];
-  if (!Array.isArray(themes) || themes.length === 0) return 'No themes.';
-  const lines = [`${themes.length} theme(s):\n`];
-  for (const t of themes) {
-    const cur = t.isCurrent ? ' (current)' : '';
-    const arch = t.archivedAt ? ' [archived]' : '';
-    lines.push(`  ${String(t.slug).padEnd(24)}${t.name ? ` ${String(t.name)}` : ''}${cur}${arch}`);
-    if (t.stateArtifactPublicId) lines.push(`    state: ${t.stateArtifactPublicId}`);
-  }
-  return lines.join('\n');
-};
-
-export const formatPublisher: Formatter = (data) => {
-  const lines = [`Publisher: ${data.displayName || '(unnamed)'}`];
-  if (data.id) lines.push(`  ID:           ${data.id}`);
-  if (data.status) lines.push(`  Status:       ${data.status}`);
-  if (typeof data.isApproved === 'boolean') lines.push(`  Approved:     ${data.isApproved ? 'yes' : 'no'}`);
-  if (data.contactEmail) lines.push(`  Contact:      ${data.contactEmail}`);
-  if (data.websiteUrl) lines.push(`  Website:      ${data.websiteUrl}`);
-  if (data.agentId) lines.push(`  Owner agent:  ${data.agentId}`);
-  if (data.teamId) lines.push(`  Owner team:   ${data.teamId}`);
-  if (data.bio) lines.push(`  Bio:          ${data.bio}`);
-  if (data.rejectionReason) lines.push(`  Reject why:   ${data.rejectionReason}`);
-  // Friendly "no publisher yet" shape from the CLI:
-  if (data.status === 'none' && data.message) lines.push(`  ${data.message}`);
-  return lines.join('\n');
-};
-
-function formatArtifactRows(rows: Array<Record<string, unknown>>, label: string): string {
-  if (!Array.isArray(rows) || rows.length === 0) return `No ${label}s.`;
-  const lines = [`${rows.length} ${label}(s):\n`];
-  for (const row of rows) {
-    lines.push(`  ${String(row.kind ?? '').padEnd(22)} ${String(row.logicalKey ?? '').padEnd(24)} ${row.alias ?? '(no alias)'}`);
-    if (row.publicId) lines.push(`    id:      ${row.publicId}`);
-    if (row.type) lines.push(`    type:    ${row.type}${row.version ? ` v${row.version}` : ''}`);
-    if (row.title) lines.push(`    title:   ${row.title}`);
-    if (row.materialization === 'on-first-load' && !row.publicId) {
-      lines.push(`    status:  materializes on first load`);
-    }
-  }
-  return lines.join('\n');
-}
-
-function countLayer(layer: any): string {
-  if (!layer) return '0';
-  const tables = Array.isArray(layer.tables) ? layer.tables.length : 0;
-  const memoryArtifacts = Array.isArray(layer.memoryArtifacts) ? layer.memoryArtifacts.length : 0;
-  return String(tables + memoryArtifacts);
-}
-
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -925,140 +524,6 @@ export const formatVersionDiff: Formatter = (data) => {
   return header + '\n' + lines.join('\n');
 };
 
-// ── brain formatters ────────────────────────────────────────────────
-// A brain IS a workspace with semantic recall. These render the `rip brain`
-// surface in human mode; --json still passes the data verbatim.
-
-/** Single-brain summary: create / show / visibility / instructions-set / playbook-set. */
-export const formatBrain: Formatter = (data) => {
-  const lines = [`Brain: ${data.name ?? '(unnamed)'}${data.slug ? `  (${data.slug})` : ''}`];
-  if (data.description) lines.push(`  Description:  ${data.description}`);
-  if (data.visibility) lines.push(`  Visibility:   ${data.visibility}`);
-  if (data.writePolicy) lines.push(`  Write policy: ${data.writePolicy}`);
-  if (data.embeddingEnabled !== undefined) lines.push(`  Semantic:     ${data.embeddingEnabled ? 'on' : 'off'}`);
-  const counts = data.counts as { sources?: number; notes?: number; members?: number } | undefined;
-  if (counts) lines.push(`  Sources: ${counts.sources ?? 0} · Notes: ${counts.notes ?? 0} · Members: ${counts.members ?? 0}`);
-  if (data.hasInstructions !== undefined) lines.push(`  Instructions: ${data.hasInstructions ? 'set' : 'none — set with `rip brain instructions set`'}`);
-  if (typeof data.instructions === 'string') lines.push(`  Instructions updated (${(data.instructions as string).length} chars).`);
-  if (data.warning) lines.push(`\n⚠ ${data.warning}`);
-  return lines.join('\n');
-};
-
-/** `rip brain list` — array of brain summaries. */
-export const formatBrainList: Formatter = (data) => {
-  const brains = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(brains) || brains.length === 0) return 'No brains found. Create one with `rip brain create <slug>`.';
-  const lines = [`${brains.length} brain(s):\n`];
-  for (const b of brains) {
-    lines.push(`  ${String(b.name ?? '(unnamed)')}  (${b.slug})  [${b.visibility ?? 'private'}]`);
-  }
-  return lines.join('\n');
-};
-
-/** `rip brain instructions get` — content or the recommended scaffold. */
-export const formatBrainInstructions: Formatter = (data) => {
-  if (data.content == null) {
-    const scaffold = (data.scaffold as string | undefined) ?? '';
-    return `No instructions set.\n\nRecommended starting point (set with \`rip brain instructions set <brain> "<text>"\`):\n\n${scaffold}`;
-  }
-  const tag = data.autoManaged ? 'inline, auto-managed' : 'pinned artifact';
-  const head = `Instructions (${tag}${data.alias ? `, alias: ${data.alias}` : ''}${data.artifactId ? `, id: ${data.artifactId}` : ''}):`;
-  return `${head}\n\n${data.content}`;
-};
-
-/** `rip brain search` — ranked note + source hits. */
-export const formatBrainSearch: Formatter = (data) => {
-  const results = (data.results ?? []) as Array<Record<string, unknown>>;
-  const mode = data.mode ? ` [${data.mode}]` : '';
-  if (!results.length) return `No results${mode}.`;
-  const lines = [`${data.total ?? results.length} result(s)${mode}:\n`];
-  for (const r of results) {
-    const isNote = r.kind === 'note';
-    const label = isNote ? 'note' : 'source';
-    const id = isNote ? r.slug : r.id;
-    const brain = r.brain ? ` {${r.brain}}` : '';
-    lines.push(`  [${label}] ${r.title ?? '(untitled)'}  (${id})${brain}`);
-    const snippet = (r.snippet ?? r.body) as string | undefined;
-    if (snippet) lines.push(`      ${String(snippet).replace(/\s+/g, ' ').slice(0, 160)}`);
-    if (r.expandedContent) lines.push(`      [expanded ${String(r.expandedContent).length} chars]`);
-  }
-  return lines.join('\n');
-};
-
-/** `rip brain load` — the brain envelope. */
-export const formatBrainLoad: Formatter = (data) => {
-  const lines = [`Brain: ${data.name ?? '(unnamed)'}${data.slug ? `  (${data.slug})` : ''}`];
-  if (data.instructions) lines.push(`\n## When to use this brain\n${data.instructions}`);
-  const workingSet = (data.workingSet ?? []) as Array<{ slug?: string; title?: string }>;
-  if (workingSet.length) {
-    lines.push(`\nWorking set (${workingSet.length}):`);
-    for (const n of workingSet) lines.push(`  - ${n.title ?? n.slug ?? '(untitled)'}  (${n.slug})`);
-  }
-  const index = data.index as { entries?: unknown[]; counts?: Record<string, number> } | undefined;
-  if (index?.entries) lines.push(`\nIndex: ${index.entries.length} entr(ies)`);
-  const flow = data.flow as { command?: string; alias?: string } | null | undefined;
-  if (flow) lines.push(`\nFlow [${flow.command}]: ${flow.alias}`);
-  if (data.sessionToken) lines.push(`\nSession: ${data.sessionToken}`);
-  return lines.join('\n');
-};
-
-/** `rip brain capture` — note deposit result. */
-export const formatBrainCapture: Formatter = (data) =>
-  `Captured note: ${data.noteSlug}  (intake: ${data.intake}, ingest: ${data.ingest})`;
-
-/** `rip brain inbox` — staged items awaiting review. */
-export const formatBrainInbox: Formatter = (data) => {
-  const items = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(items) || items.length === 0) return 'Inbox empty — nothing staged for review.';
-  const lines = [`${items.length} pending item(s):\n`];
-  for (const it of items) {
-    lines.push(`  [${it.kind}] ${it.title ?? '(untitled)'}  (${it.ref})${it.zone ? `  zone: ${it.zone}` : ''}`);
-  }
-  return lines.join('\n');
-};
-
-/** `rip brain inbox-resolve` — resolution result. */
-export const formatBrainInboxResolve: Formatter = (data) =>
-  `${data.action}: ${data.item}${data.intake ? `  (intake: ${data.intake})` : ''}`;
-
-/** `rip brain source list` — the brain's source documents. */
-export const formatBrainSources: Formatter = (data) => {
-  const items = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(items) || items.length === 0) return 'No sources. Add one with `rip brain source add <brain> <item>`.';
-  const lines = [`${items.length} source(s):\n`];
-  for (const it of items) {
-    lines.push(`  [${it.kind}] ${it.item}  (${it.ownership}, ${it.intakeStatus})`);
-  }
-  return lines.join('\n');
-};
-
-/** `rip brain source add/remove` — single source change. */
-export const formatBrainSource: Formatter = (data) => {
-  if (data.removed) return `Removed source: ${data.removed}`;
-  return `Added source: ${data.item}  (${data.kind}, ${data.ownership}, ${data.intakeStatus})`;
-};
-
-/** `rip brain member list` — the brain's members. */
-export const formatBrainMembers: Formatter = (data) => {
-  const members = data as unknown as Record<string, unknown>[];
-  if (!Array.isArray(members) || members.length === 0) return 'No members.';
-  const lines = [`${members.length} member(s):\n`];
-  for (const m of members) lines.push(`  ${m.accountId}  —  ${m.role}`);
-  return lines.join('\n');
-};
-
-/** `rip brain member add/remove` — single member change. */
-export const formatBrainMember: Formatter = (data) => {
-  if (data.removed) return `Removed member: ${data.removed}`;
-  return `Added member: ${data.accountId}  (${data.role})`;
-};
-
-/** `rip brain delete` / `rip brain archive` — lifecycle confirmation. */
-export const formatBrainLifecycle: Formatter = (data) => {
-  if (data.deleted) return `Deleted brain: ${data.deleted}`;
-  return `Archived brain: ${data.slug ?? ''}`.trimEnd();
-};
-
 /** `rip connection get/create/rotate/disable` — one connection (secret never shown). */
 export const formatConnection: Formatter = (data) => {
   const c = data as Record<string, any>;
@@ -1090,3 +555,186 @@ export const formatConnectionList: Formatter = (data) => {
     })
     .join('\n');
 };
+
+/** `rip task list` — one row per task. */
+export const formatTaskList: Formatter = (data) => {
+  const tasks = ((data as any).tasks ?? []) as Array<Record<string, any>>;
+  const nextCursor = (data as any).nextCursor as string | null;
+  if (tasks.length === 0) return 'No tasks.';
+  const lines = tasks.map((t) => {
+    const who = t.claimedById ? `→ ${t.claimedById}` : t.suggestedAssigneeId ? `? ${t.suggestedAssigneeId}` : '';
+    const kind = t.kind ?? '-';
+    return `${String(t.status).padEnd(9)} ${String(kind).padEnd(16)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]`;
+  });
+  // The cursor only encodes (createdAt, id), so it has to be replayed against the
+  // same filters — printing a bare command would silently paginate a different query.
+  if (nextCursor) lines.push(`\nMore: re-run with the same filters plus --cursor ${nextCursor}`);
+  return lines.join('\n');
+};
+
+/** `rip task show` — one task with results. */
+export const formatTask: Formatter = (data) => {
+  const t = data as Record<string, any>;
+  const lines = [
+    `${t.title}`,
+    `ID:         ${t.id}`,
+    `Workspace:  ${t.workspaceId} (${t.audience})`,
+    `Revision:   ${t.revision ?? '-'}`,
+    `Status:     ${t.status}`,
+    `Kind:       ${t.kind ?? '-'}`,
+  ];
+  if (t.suggestedAssigneeId) lines.push(`Suggested:  ${t.suggestedAssigneeId}`);
+  if (t.claimedById) lines.push(`Claimed by: ${t.claimedById}${t.claimedVia ? ` (${t.claimedVia})` : ''}  lease until ${t.leaseExpiresAt}`);
+  if (t.completedById) lines.push(`Completed:  ${t.completedById} at ${t.completedAt}`);
+  if (t.dismissedById) lines.push(`Dismissed:  ${t.dismissedById}${t.dismissReason ? ` — ${t.dismissReason}` : ''}`);
+  if (t.dueAt) lines.push(`Due:        ${t.dueAt}`);
+  lines.push(`Created:    ${t.createdAt} by ${t.createdById}`);
+  if (t.body) lines.push('', t.body);
+  if (t.payload && Object.keys(t.payload).length) lines.push('', 'Payload:', JSON.stringify(t.payload, null, 2));
+  const results = (t.results ?? []) as Array<Record<string, any>>;
+  if (results.length) {
+    lines.push('', 'Results:');
+    for (const r of results) {
+      lines.push(`  ${r.type} ${r.targetId}${r.version != null ? ` v${r.version}` : ''}${r.orphaned ? '  (orphaned)' : ''}`);
+    }
+  }
+  return lines.join('\n');
+};
+
+/** The `true` capability names, so an agent sees what it may do without `--json`. */
+function capabilityList(capabilities: unknown): string | null {
+  if (!capabilities || typeof capabilities !== 'object') return null;
+  const allowed = Object.entries(capabilities as Record<string, unknown>).filter(([, v]) => v === true).map(([k]) => k);
+  return allowed.length ? allowed.join(', ') : 'none';
+}
+
+/** Workspace output keeps every durable handle copyable in human mode. */
+export const formatWorkspace: Formatter = (data) => {
+  const w = data as Record<string, any>;
+  const can = capabilityList(w.capabilities);
+  return [
+    `${w.name} [${w.id}]`,
+    `Slug:       ${w.slug}`,
+    `Owner:      ${w.ownerAccountId ?? (w.teamId ? `team ${w.teamId}` : '-')}`,
+    `Access:     ${w.membership}/${w.role}`,
+    ...(can ? [`Can:        ${can}`] : []),
+    `Audiences:  ${Array.isArray(w.audiences) ? w.audiences.join(', ') : '-'}`,
+    `Sequence:   ${w.mutationSequence ?? '-'}`,
+    `Generation: ${w.accessGeneration ?? '-'}`,
+    `Archived:   ${w.archivedAt ?? 'no'}`,
+    ...(w.description ? ['', String(w.description)] : []),
+  ].join('\n');
+};
+
+export const formatWorkspaceList: Formatter = (data) => {
+  const rows = data as unknown as Array<Record<string, any>>;
+  if (!rows.length) return 'No workspaces.';
+  return rows.map(w => `${w.name}  ${w.membership}/${w.role}  [${w.id}]  slug=${w.slug}`).join('\n');
+};
+
+/**
+ * A pinned or handoff document: inline markdown is printed whole; a large one
+ * arrives as a content reference, so print the exact command that reads it.
+ */
+function loadDocumentLines(doc: Record<string, any>): string[] {
+  const content = (doc.content ?? {}) as Record<string, any>;
+  const head = `  ${doc.title ?? '(untitled)'}  [${doc.publicId}]`;
+  if (typeof content.content === 'string') {
+    return [head, ...content.content.split('\n').map((line: string) => `    ${line}`)];
+  }
+  const versionId = content.versionId ?? doc.currentVersionId;
+  const size = content.totalBytes != null ? `${content.totalBytes} bytes, ` : '';
+  const read = versionId
+    ? `rip artifact cat ${doc.publicId} --version-id ${versionId}`
+    : `rip artifact cat ${doc.publicId}`;
+  return [head, `    (${size}not inline) read it with: ${read}`];
+}
+
+/** One `rip workspace load` section: a blank line, the heading, then its rows or `(none)`. */
+function loadSection(heading: string, rows: string[]): string[] {
+  return ['', heading, ...(rows.length ? rows : ['  (none)'])];
+}
+
+/**
+ * `rip workspace load` in human mode is the first thing an agent reads, so it
+ * carries everything the load returned: pins (inline or with the command that
+ * reads them), the latest handoff, open tasks, recent changes, the artifact
+ * index, and the exact flags that page each list further.
+ */
+export const formatWorkspaceLoad: Formatter = (data) => {
+  const value = data as Record<string, any>;
+  const workspace = (value.workspace ?? {}) as Record<string, any>;
+  const workspaceId = workspace.id ?? value.workspaceId ?? '-';
+  const session = (value.session ?? {}) as Record<string, any>;
+  const lines = [
+    `Workspace: ${workspace.name ?? '-'} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}${workspace.archived ? '  (archived)' : ''}`,
+    `Session:   ${session.id ?? '-'} (${session.status ?? session.state ?? 'active'})`,
+  ];
+  const can = capabilityList(workspace.capabilities);
+  if (can) lines.push(`Can:       ${can}`);
+  if (value.browserLink) lines.push(`Browser:   ${value.browserLink}`);
+  if (workspace.description) lines.push('', String(workspace.description));
+
+  const pins: Array<Record<string, any>> = Array.isArray(value.pins) ? value.pins : [];
+  lines.push(...loadSection(`Pinned (${pins.length}):`, pins.flatMap((pin) => loadDocumentLines(pin))));
+
+  const handoffs = value.handoffs ?? {};
+  const handoffItems: Array<Record<string, any>> = Array.isArray(handoffs.items) ? handoffs.items : [];
+  lines.push(...loadSection('Latest handoff:', handoffItems.length ? loadDocumentLines(handoffItems[0]) : []));
+  if (handoffItems.length > 1) lines.push(`  ${handoffItems.length - 1} earlier: ${handoffItems.slice(1).map((h) => h.publicId).join(', ')}`);
+
+  const tasks = value.tasks ?? {};
+  const taskItems: Array<Record<string, any>> = Array.isArray(tasks.items) ? tasks.items : [];
+  lines.push(...loadSection(
+    `Tasks (${taskItems.length}${tasks.hasMore ? '+' : ''}):`,
+    taskItems.map((t) => `  ${t.status ?? '-'}  ${t.title ?? '(untitled)'}  [${t.id}]`),
+  ));
+
+  const activity = value.activity ?? {};
+  const activityItems: Array<Record<string, any>> = Array.isArray(activity.items) ? activity.items : [];
+  lines.push(...loadSection(
+    `Recent changes (${activityItems.length}${activity.hasMore ? '+' : ''}):`,
+    activityItems.map((e) => `  ${e.createdAt ?? '-'}  ${e.type ?? 'change'}  ${e.subject?.type ?? '-'}:${e.subject?.id ?? '-'}`),
+  ));
+  if (activity.refresh === 'required') lines.push('  Access changed: re-read before continuing.');
+  if (activity.historyGap) lines.push('  History gap: older changes were pruned.');
+
+  const artifacts = value.artifacts ?? {};
+  const artifactItems: Array<Record<string, any>> = Array.isArray(artifacts.items) ? artifacts.items : [];
+  lines.push(...loadSection(
+    `Artifacts (${artifactItems.length}${artifacts.hasMore ? '+' : ''}):`,
+    artifactItems.map((a) => `  ${a.title ?? '(untitled)'}  [${a.publicId ?? a.id}]  ${a.type ?? '-'} ${a.audience ?? ''}`.trimEnd()),
+  ));
+
+  const more: string[] = [];
+  if (artifacts.nextOffset != null) more.push(`--artifact-offset ${artifacts.nextOffset}`);
+  if (tasks.nextCursor != null) more.push(`--task-cursor ${tasks.nextCursor}`);
+  if (activity.nextCursor != null) more.push(`--activity-cursor ${activity.nextCursor}`);
+  if (handoffs.nextOffset != null) more.push(`--handoff-offset ${handoffs.nextOffset}`);
+  if (more.length) {
+    lines.push('', 'More (reuse the same --operation-id to stay in this session):');
+    for (const flag of more) lines.push(`  rip workspace load ${workspaceId} --operation-id <same id> ${flag}`);
+  }
+  return lines.join('\n');
+};
+
+export const formatWorkspaceChanges: Formatter = (data) => {
+  const value = data as Record<string, any>;
+  const items = Array.isArray(value.items) ? value.items : [];
+  const lines = items.map((item: Record<string, any>) => `${item.sequence ?? '-'}  ${item.type ?? 'change'}  ${item.subject?.type ?? '-'}:${item.subject?.id ?? '-'}`);
+  lines.push(`Delivery token: ${value.deliveryToken ?? '-'}`);
+  if (value.nextCursor != null) lines.push(`Next cursor: ${value.nextCursor}`);
+  return lines.join('\n');
+};
+
+export const formatWorkspaceViewReceipt: Formatter = (data) => {
+  const value = data as Record<string, any>;
+  return [
+    `Status:     ${value.status ?? (value.connected ? 'connected' : 'disconnected')}`,
+    `Workspace:  ${value.workspaceId ?? '-'}`,
+    `Session:    ${value.sessionId ?? '-'}`,
+    `Artifact:   ${value.artifactId ?? value.savedArtifactId ?? '-'}`,
+    `Generation: ${value.contextGeneration ?? value.expectedContextGeneration ?? '-'}`,
+  ].join('\n');
+};
+

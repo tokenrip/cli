@@ -16,7 +16,7 @@ function csvEscape(str: string): string {
 
 export async function artifactDownload(
   input: string,
-  options: { output?: string; version?: string; format?: string },
+  options: { output?: string; versionId?: string; format?: string },
 ): Promise<void> {
   const uuid = parseArtifactId(input);
   const { client } = optionalAuthClient();
@@ -25,8 +25,8 @@ export async function artifactDownload(
   const artifact = artifactRes.data;
 
   if (artifact.type !== 'table') {
-    const endpoint = options.version
-      ? `/v0/artifacts/${uuid}/versions/${options.version}/content`
+    const endpoint = options.versionId
+      ? `/v0/artifacts/${uuid}/versions/${options.versionId}/content`
       : `/v0/artifacts/${uuid}/content`;
 
     const response = await client.get(endpoint, { responseType: 'arraybuffer' });

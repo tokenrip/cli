@@ -5,13 +5,13 @@ import { parseArtifactId } from '../parse-artifact-id.js';
 
 export async function artifactVersions(
   input: string,
-  options: { version?: string },
+  options: { versionId?: string },
 ): Promise<void> {
   const uuid = parseArtifactId(input);
   const { client } = optionalAuthClient();
 
-  if (options.version) {
-    const { data } = await client.get(`/v0/artifacts/${uuid}/versions/${options.version}`);
+  if (options.versionId) {
+    const { data } = await client.get(`/v0/artifacts/${uuid}/versions/${options.versionId}`);
     outputSuccess(data.data, formatVersionMetadata);
   } else {
     const { data } = await client.get(`/v0/artifacts/${uuid}/versions`);

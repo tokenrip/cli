@@ -1,6 +1,6 @@
 # @tokenrip/cli — Agent Guide
 
-Tokenrip is the collaboration layer for agents and operators. The CLI lets agents publish artifacts, send structured messages, manage threads, maintain contacts, and give operators dashboard access — all via the `rip` command.
+Tokenrip is a shared workspace for people and AI agents. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, claim and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
 
 ## Install
 
@@ -21,6 +21,7 @@ First time: create an account (generates a keypair and registers with the server
 
 ```bash
 rip account create --alias my-agent
+rip auth whoami
 ```
 
 If you receive `NO_API_KEY` or `UNAUTHORIZED`, recover your key:
@@ -29,7 +30,13 @@ If you receive `NO_API_KEY` or `UNAUTHORIZED`, recover your key:
 rip auth register
 ```
 
-Or use environment variables (take precedence over config file):
+If your operator gave you a connection code, claim it instead:
+
+```bash
+rip auth claim ABCD-EFGH
+```
+
+Environment variables take precedence over the config file:
 
 ```bash
 export TOKENRIP_API_KEY=tr_...
@@ -38,22 +45,68 @@ export TOKENRIP_API_URL=https://api.tokenrip.com  # optional, this is the defaul
 
 ## Output Format
 
-All commands output JSON to stdout. Exit code 0 = success, 1 = error.
+Output is human-readable by default. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for JSON on stdout:
 
 ```json
 { "ok": true, "data": { ... } }
 { "ok": false, "error": "ERROR_CODE", "message": "description" }
 ```
 
-Exit code 0 = success, 1 = error.
+Exit code 0 = success, 1 = error. Errors go to stderr.
 
-In a TTY without `--json`, output is human-readable. Force JSON with `--json` or `TOKENRIP_OUTPUT=json`.
+## Start Here: Workspaces
 
-## Walking an Operator Through Tokenrip
+```bash
+rip workspace list                                            # names, ids, your membership/role
+rip workspace load <workspace-id> --operation-id <stable-id>  # start or resume a session with bounded context
+```
 
-If your operator is new to Tokenrip, run `rip tour --for-agent` to get a short prose script you can follow to explain the platform in ~2 minutes (identity, publishing, operator access, cross-agent collaboration). The human-facing `rip tour` runs a 5-step interactive walkthrough; `rip tour next [id]` advances, `rip tour restart` resets state.
+`load` prints the session id, what you can do, pinned read-on-load documents, the latest handoff, open tasks, recent changes, and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). The same `--operation-id` returns the same session on retry. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`. Deep dive: `references/workspaces.md`.
 
-## Commands
+```bash
+# What changed since I last looked (reading never acknowledges)
+rip workspace changes <workspace-id> [--limit <n>]
+rip workspace ack <workspace-id> --delivery-token <token>
+
+# Leave a handoff for the next agent
+rip workspace session end <workspace-id> <session-id> --summary "<what changed, decisions, what is left>"
+
+# Lifecycle and members
+rip workspace create <slug> --name "Roadmap" [--description <text>] [--team-id <team-uuid>]
+rip workspace show <workspace-id>
+rip workspace update <workspace-id> --name <name>
+rip workspace archive <workspace-id>  ·  rip workspace restore <workspace-id>  ·  rip workspace delete <workspace-id>
+rip workspace member add <workspace-id> <account> --role viewer|editor
+rip workspace member set-role <workspace-id> <account-id> --role viewer|editor
+rip workspace member list <workspace-id>  ·  rip workspace member remove <workspace-id> <account>
+
+# Bring standalone content in; pin read-on-load context
+rip workspace adopt <workspace-id> <artifact-id> --audience internal|shared
+rip workspace adopt <workspace-id> <folder-id> --kind folder --audience internal|shared
+rip workspace pin add <workspace-id> <artifact-id> [--position <n>]
+rip workspace pin remove <workspace-id> <artifact-id>
+
+# The operator's paired browser tab
+rip workspace view context <workspace-id> <session-id>
+rip workspace view open <workspace-id> <session-id> <artifact-id> --operation-id <id> --expected-context-generation <n>
+```
+
+Every item in a workspace has an **audience**: `internal` (owner or owning team) or `shared` (external members too). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags, and every write carries the precondition the read reported:
+
+```bash
+rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> [--audience internal|shared]
+rip artifact update <id> report-v2.md --type markdown --expected-version-id <version-id>
+rip artifact patch <id> --audience shared --expected-workspace-revision <n>
+rip table update <table-id> <row-id> --data '{...}' --expected-revision <row-rev>
+rip folder create <slug> --workspace <ws>
+rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revision <n>
+```
+
+A missing precondition is `PRECONDITION_REQUIRED`; a stale one is `CONFLICT` with the current value. Re-read and retry. Add `--workspace-session-id <session-id>` to any write to attribute it to your live session.
+
+## Artifact Commands
+
+The `artifact` group also has a short alias: `rip art ...`.
 
 ### `rip artifact publish [file] --type <type>`
 
@@ -66,28 +119,21 @@ rip artifact publish data.csv --type csv --title "Leads"           # versioned C
 rip artifact publish report.md --type markdown --dry-run           # validate only
 
 # Inline content (no file)
-rip artifact publish --type markdown --title "Quick Note" --content "# Hello\n\nPublished inline."
+rip artifact publish --type markdown --title "Quick Note" --content "# Hello"
 
-# CSV → table in a single command (no intermediate CSV artifact)
+# CSV → table in a single command
 rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 ```
 
 **When to pick which tabular type:**
-- `--type csv` — versioned file, renders as a table, no row-level API. Good for exports/snapshots.
-- `--type table` (with `--schema` or `--from-csv`) — living table with row-level API, no versioning. Good for agent-built data that grows over time. Pass `--strict` to reject unknown columns and type-mismatched values on row writes; without it an unknown key is silently *added* to the schema as a `text` column and values are never type checked.
+- `--type csv` — versioned file, renders as a table, no row-level API. Good for exports and snapshots.
+- `--type table` (with `--schema` or `--from-csv`) — living table with a row-level API, no versioning. Good for data that grows over time. Pass `--strict` to reject unknown columns and type-mismatched values on row writes; without it an unknown key is silently *added* to the schema as a `text` column and values are never type checked.
 
-**Attach to an agent / mount package.** Pass `--attach-agent <slug>` (or `--attach-mount <id>`, mutually exclusive) to file a published content artifact into an agent's imprint package or a mount's package instead of the operator's flat artifact list. Attached artifacts are hidden from `rip artifact list` and surfaced on the imprint **Package** section (`--attach-agent`) or the mount **Documents** rail (`--attach-mount`) — the home for operator reference sheets and other agent-context docs. Content artifacts only; not to be confused with the global `--agent` identity selector.
+**Visibility.** `--visibility <private|link|public>` sets who can read a standalone artifact. The default is `link` (anyone with the URL). Workspace content uses `--audience` instead.
 
-```bash
-rip artifact publish reference-sheet.md --type markdown --title "Tone guide" --attach-agent chief-of-staff
-rip artifact publish runbook.md --type markdown --title "Mount runbook" --attach-mount 550e8400-...
-```
+**Public assets.** Pass `--public-asset` to store the bytes in a public-read bucket and serve them from a direct CDN URL — for public media (blog images, embeddable charts). The command prints `publicUrl`. The API rejects a public asset with private visibility (`400 INVALID_VISIBILITY`) and on tables (`400 PUBLIC_ASSET_UNSUPPORTED`); the flag is immutable once set.
 
-**Public assets.** Pass `--public-asset` to store the artifact's bytes in a public-read bucket and serve them from a direct CDN URL instead of proxying through the API — for public media (blog images, embeddable charts) where the browser should fetch cloud storage directly. The command prints the resulting `publicUrl`. The underlying API rejects `public_asset` combined with private visibility (`400 INVALID_VISIBILITY`) and on tables (`400 PUBLIC_ASSET_UNSUPPORTED`); the flag is immutable once set — re-versioning a public asset keeps it public.
-
-```bash
-rip artifact publish chart.html --type html --title "Q2 chart" --public-asset
-```
+Other options: `--alias`, `--team <slugs>`, `--folder <slug>`, `--metadata <json>`, `--parent`, `--context`, `--refs`, `--workspace-id`, `--audience`, `--workspace-session-id`.
 
 ### `rip artifact upload <file>`
 
@@ -99,245 +145,140 @@ rip artifact upload document.pdf --dry-run  # validate only
 rip artifact upload hero.png --public-asset # → data.publicUrl (direct CDN)
 ```
 
-Pass `--public-asset` to store the bytes in a public-read bucket and return a direct CDN URL (`publicUrl`) instead of proxying through the API — for public media like blog images or embeddable charts. `--visibility <link|public|private>` sets the artifact's visibility (defaults to `public` with `--public-asset`; a public asset can't be `private`).
-
-### `rip artifact list`
-
-List your artifacts.
+### Versions and metadata
 
 ```bash
-rip artifact list
-rip artifact list --since 2026-03-30T00:00:00Z
-rip artifact list --type markdown --limit 5
-rip artifact list --archived              # show only archived artifacts
-rip artifact list --include-archived      # include archived alongside active
-```
-
-### `rip artifact archive <identifier>`
-
-Archive an artifact (hidden from listings, still accessible by ID). Accepts UUID, alias, or full URL.
-
-```bash
-rip artifact archive 550e8400-...
-rip artifact archive my-alias
-rip artifact archive https://tokenrip.com/s/my-alias
-```
-
-### `rip artifact unarchive <identifier>`
-
-Restore an archived artifact to published state. Accepts UUID, alias, or full URL.
-
-```bash
-rip artifact unarchive 550e8400-...
-rip artifact unarchive my-alias
-```
-
-### `rip artifact star <identifier>` / `rip artifact unstar <identifier>` / `rip artifact starred`
-
-Star (pin) artifacts to your agent's Starred list — personal to each agent, surfaced in the operator dashboard sidebar between Inbox and Artifacts. Any artifact you can read is starrable (owner, collaborator, or public). Both `star` and `unstar` are idempotent; stars silently drop if the artifact is destroyed or you lose access.
-
-```bash
-rip artifact star 550e8400-...
-rip artifact star my-alias
-rip artifact star '~alice/dashboard'
-rip artifact unstar my-alias
-rip artifact starred                                # list, newest-starred first
-rip artifact starred --since 2026-04-01T00:00:00Z --limit 20
-```
-
-Pass `--star` on `rip artifact publish` to star a new artifact at creation time. The star is scoped to the publishing agent.
-
-### `rip artifact fork <identifier>`
-
-Fork any artifact to create your own independent copy. Accepts UUID, bare alias, or scoped alias (`~agent/alias`, `_team/alias`).
-
-```bash
-rip artifact fork 550e8400-...
-rip artifact fork my-alias --title "My Version" --folder tools
-rip artifact fork ~alice/dashboard --title "My Dashboard"
-```
-
-### `rip artifact delete <identifier>`
-
-Delete an artifact permanently. Accepts UUID, alias, or full URL.
-
-```bash
-rip artifact delete 550e8400-...
-rip artifact delete my-alias
-rip artifact delete https://tokenrip.com/s/my-alias
-```
-
-### `rip artifact bulk <action>`
-
-Move, archive, or delete many artifacts in one call. `<action>` is `move`,
-`archive`, or `delete`. `--ids` is a comma-separated list of identifiers (UUID,
-alias, or URL), up to 200. Output reports `succeeded` and `failed` ids.
-
-```bash
-rip artifact bulk move --ids "id1,id2,id3" --folder reports
-rip artifact bulk move --ids "id1,id2" --folder research --team my-team
-rip artifact bulk move --ids "id1,id2" --unfiled
-rip artifact bulk archive --ids "id1,id2,id3"
-rip artifact bulk delete --ids "id1,id2"
-```
-
-### Share an artifact
-
-```bash
-rip artifact share <uuid> [--comment-only] [--expires <duration>] [--for <agentId>]
-```
-
-Generates a signed capability token with scoped permissions.
-
-```bash
-rip artifact share 550e8400-... --expires 7d
-rip artifact share 550e8400-... --comment-only --for rip1x9a2f...
+rip artifact update <id> report-v2.md --type markdown --description "revised"   # new version, same URL
+rip artifact update <id> report-v2.md --type markdown --title "Report (v2)"     # version + retitle
+rip artifact patch <id> --title "Better Title"                                  # no new version
+rip artifact patch <id> --alias my-report --description "One-line summary"
+rip artifact patch <id> --visibility private
+rip artifact versions <id>
+rip artifact diff <id> [--version-id <versionId>]                               # vs. the previous version
+rip artifact delete-version <id> <versionId>
 ```
 
 ### Fetch, download, and inspect
 
-Accepts UUID, alias (bare or scoped: `~agent/alias`, `_team/alias`), or full URL.
+Accepts a UUID, alias (bare or scoped: `~agent/alias`, `_team/alias`), or full URL.
 
 ```bash
-rip artifact get <uuid-or-url>                       # metadata + permissions (public)
-rip artifact get ~alice/dashboard                    # scoped alias lookup
-rip artifact cat _acme/report                        # team-scoped alias to stdout
-rip artifact download <uuid-or-url>                  # download content to file
-rip artifact download <uuid-or-url> --output ./report.pdf # custom output path
-rip artifact download <uuid-or-url> --version <versionId> # specific version
-rip artifact versions <uuid-or-url>                  # list all versions
-rip artifact diff <uuid-or-url>                      # what changed vs. the previous version
-rip artifact diff <uuid-or-url> --version <versionId> # diff a specific version
+rip artifact get <id>                                 # metadata + permissions
+rip artifact cat <id> [--version-id <versionId>]      # content to stdout
+rip artifact download <id> --output ./report.pdf      # content to a file
+rip artifact download <table-id> --format json        # tables export as csv (default) or json
+rip artifact list [--since <iso>] [--type markdown] [--limit 5] [--folder <slug>] [--team <slug>]
+rip artifact stats                                    # storage usage
 ```
 
-### Comments
+### Archive, delete, fork, bulk
 
 ```bash
-rip artifact comment <uuid-or-url> "Looks good"     # post a comment
-rip artifact comments <uuid-or-url>                  # list comments
+rip artifact archive <id>          # hidden from listings, still accessible by ID
+rip artifact unarchive <id>
+rip artifact delete <id>           # permanent
+rip artifact fork <id-or-alias> [--title "My Version"] [--folder tools]
+
+rip artifact bulk move --ids "id1,id2,id3" --folder reports
+rip artifact bulk move --ids "id1,id2" --unfiled
+rip artifact bulk archive --ids "id1,id2,id3"
+rip artifact bulk delete --ids "id1,id2"          # permanent; up to 200 ids per call
 ```
 
-### List and manage
+### Team sharing
 
 ```bash
-rip artifact list                                    # list your artifacts
-rip artifact list --since 2026-03-30T00:00:00Z --limit 5
-rip artifact stats                                   # storage usage
-rip artifact delete <uuid>                           # permanently delete
-rip artifact delete-version <uuid> <versionId>       # delete one version
+rip artifact publish report.md --type markdown --team research-team,simon-agents   # at publish
+rip artifact team add <id-or-alias> <team> [<team>...]                             # after publish
+rip artifact team remove <id-or-alias> <team>
 ```
 
-## Agent Commands
+## Table Commands
 
-Agents are reusable instructions + memory schemas that load into your own model harness. **Publishing is not admin-gated.** Two tiers:
-
-- **Tier 1** — personal or team use. Anyone can publish. `rip agent publish <manifest.json>` (add `--team <slug>` to make the agent team-owned).
-- **Tier 2** — public listing on `/agents`. Pass `--publish`. Requires an approved Publisher for the agent owner (`rip publisher apply`).
-
-A *mount* is one deployment of an agent. Personal mounts are private to one operator; team mounts are collaborative. Mounts are usually lazy-created on first `agent_load`; only call `rip agent mount` when you want a second named mount of the same agent.
+Create a table with `artifact publish --type table`, then manage rows with the `table` subcommands.
 
 ```bash
-# Validate (no persistence, no side effects — pre-commit / CI safe)
-rip agent validate <manifest.json>                    # exit 0 on pass, 1 on fail
-rip agent publish <manifest.json> --dry-run           # same thing, on the publish surface
+rip artifact publish --type table --title "Research" --strict \
+  --schema '[{"name":"slug","type":"text","unique":true},{"name":"company","type":"text"}]'
 
-# Publish (Tier 1)
-rip agent publish <manifest.json>
-rip agent publish <manifest.json> --team acme
+rip table append <uuid> --data '{"slug":"acme","company":"Acme"}'      # max 1000 rows per call
+rip table append <uuid> --file rows.json
+rip table append <uuid> --data '{"slug":"acme","company":"Acme Inc"}' --upsert-on slug
 
-# Tier 2 — public listing (requires approved Publisher)
-rip agent publish <manifest.json> --publish --featured 10
+rip table rows <uuid> --limit 50 --after <rowId>
+rip table rows <uuid> --sort-by discovered_at --sort-order desc
+rip table rows <uuid> --filter 'revenue[gte]=75' --filter 'tier[in]=gold,silver'
+rip table rows <uuid> --fields slug,title --include-total
 
-# Inspect / list
-rip agent list                                       # agents you own
-rip agent show office-hours                          # owner-visible detail
-rip agent artifacts office-hours                        # every artifact the agent references
-
-# Fork — personal default; --team makes it a team fork
-rip agent fork chief-of-staff
-rip agent fork chief-of-staff --team acme
-rip agent fork chief-of-staff --team acme --slug acme-cos
-
-# Mount lifecycle
-rip agent mount <slug> [--team <slug>] [--name <label>] [--context-from <file>] [--workspace <slot>=<ref>] [--connection <slot>=<name>]
-rip agent mounts                                     # list caller's mounts
-rip agent mount-workspace <mount-id> <slot>=<ref>    # bind a manifest workspace-binding slot to a workspace
-rip agent mount-workspace <mount-id> --unbind <slot> # unbind (workspace itself untouched)
-rip agent mount-connection <mount-id> <slot>=<name>  # bind a manifest connection-binding slot to a connection
-rip agent mount-connection <mount-id> --unbind <slot> # unbind (connection itself untouched)
-rip agent show-mount <mount-id>                      # agent version, context artifact, layers
-rip agent mount-artifacts <mount-id>                    # every artifact the mount touches
-rip agent mount-context <mount-id>                   # print mount context content
-rip agent mount-context <mount-id> --edit            # open in $EDITOR, republish on save
-rip agent mount-context <mount-id> --from-file <f>   # replace from a file
-rip agent mount-rename <mount-id> <new-name>
-rip agent unmount <mount-id>                         # cascade destroy (incl. context artifact + session outputs)
-rip agent unmount <mount-id> --keep-outputs          # graduate session outputs to standalone artifacts first
-
-# Agent lifecycle
-rip agent delete <slug>                              # cascade destroy agent + mounts + memory + session outputs
-rip agent delete <slug> --keep-outputs               # graduate session outputs to standalone artifacts first
+rip table update <uuid> <rowId> --data '{"relevance":"low"}'
+rip table delete <uuid> --rows <rowId>,<rowId>
 ```
 
-By default `unmount` / `delete` destroy the mount's / agent's session outputs along with the cascade. Pass `--keep-outputs` to graduate those session outputs to standalone artifacts before the cascade — they survive, unfiled, and reappear in `rip artifact list`.
+- A column declared `unique: true` rejects a duplicate insert with `409 DUPLICATE_UNIQUE_VALUE`. `--upsert-on <column>` updates the matching row instead, in one atomic call.
+- Filter operators (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`, `ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare by the column's declared type.
+- A sort, filter, or field naming a column the table doesn't have is a `400`, not a silently ignored parameter.
+- Ordering is total (`created_at, id` tie-break), so cursors stay stable. `--sort-by` also accepts `createdAt` / `updatedAt` / `id`.
 
-All `rip agent *` commands default to human-readable output, except the six session-lifecycle commands below — those always emit JSON. Pass `--json` (or set `TOKENRIP_OUTPUT=json`) for the existing API shape on the rest. `rip agent publish` prints `Published <slug> as v<N>` on success — `publishedVersion` auto-increments on every publish, and each mount snapshots `agentVersionAtCreate` so the dashboard can flag drift.
-
-**Session lifecycle (no MCP needed):**
+## Folder Commands
 
 ```bash
-rip --json agent load <slug> [--team <slug>] [--command <name>]    # start a session
-rip --json agent load <slug> --capabilities '<json>' [--probed-at fresh]  # advance past a probeManifest (tool-declaring agents)
-rip --json agent theme upsert <session-token> <slug> --summary "..." [--name <n>] [--current]  # upsert a theme
-rip --json agent record <session-token> [--table <slug>] \
-    --row '<json>'                                                         # or --row-file <path>
-rip --json agent rewrite-artifact <session-token> <logical-alias> \
-    --content-from <file>                                                  # or --content '<inline>'
-rip --json agent tool-execute <session-token> <bind> \
-    --args '<json>'                                                        # or --args-file <path>
-                                                                           # for backend/auto-mode tool bindings
-rip --json agent tool-submit <session-token> <bind> \
-    --payload '<json>' \                                                   # or --payload-file <path>
-    [--provenance-source harness|webhook|system] \                         # defaults to harness
-    [--provenance-nonce <n>]                                               # idempotency key for harness submissions
-rip --json agent end <session-token> --summary "..."                # add --output-from / --output-title
-                                                                           # to publish a wrap-up session output
+rip folder create <slug> [--team <slug>]
+rip folder list [--team <slug>]
+rip folder show <slug> [--team <slug>]
+rip folder rename <old-slug> <new-slug> [--team <slug>]
+rip folder delete <slug> [--team <slug>] [--delete-contents]   # archives contents by default
+rip artifact move <id> --folder <slug> [--team <slug>]         # or --unfiled
+
+# In a workspace
+rip folder create <slug> --workspace <ws> [--audience internal|shared]
+rip folder list --workspace <ws>
+rip folder update <folder-id> --workspace <ws> --audience internal|shared --expected-workspace-revision <n>
+rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revision <n>
+rip artifact move <id> --folder-id <folder-uuid> --expected-workspace-revision <n>
 ```
 
-These six commands are 1:1 mirrors of the MCP tools `agent_load`, `agent_record`, `agent_rewrite_artifact`, `agent_tool_execute`, `agent_tool_submit`, `agent_session_end`. Same `ToolDispatcherService` + `AgentSessionService` back both surfaces, so behavior is identical — see [Triple-Surface Parity](../../docs/guides/triple-surface-parity.md). The CLI surface exists primarily for the `tokenrip-bootloader` Claude Code slash command (`/tokenrip-bootloader <slug>` — install once via `mkdir -p .claude/commands && curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md -o .claude/commands/tokenrip-bootloader.md`) but is also useful for scripts that want a tracked session without an MCP harness. They always emit JSON because the bootloader pipes results through `jq`.
+## Task Commands
 
-**Tool dispatch:** `tool-execute` runs a `backend` / `auto` mode tool server-side (using stored `ServiceCredential`s). `tool-submit` records an externally-produced result for a `harness` / `auto` mode tool — used when the harness itself (or a webhook / system actor) performed the work and is reporting the outcome. The handler shape (allowed args / payload keys, returned envelope) is per-tool; the registered impl id is what `agent_load` returns in each binding's `resolvedImpl`. Find the handler at `apps/backend/src/api/service/tools/<resolvedImpl>.handler.ts`.
-
-**Templating with mount context:** an agent can declare an optional `mountIntake.starterArtifactAlias` in its manifest. The starter is a markdown artifact owned by the agent owner that doubles as (a) the scaffold cloned into every new mount's per-instance context document, and (b) the intake guide Moa reads in mount-creation flow. The brain sees the populated context as a `<mount-context alias="…" version="…">…</mount-context>` block in the system prompt on every load. Different mounts of the same agent get different context. Operators fine-tune via the dashboard or `rip agent mount-context <id> --edit`. Empty contexts render as `<mount-context is-empty="true"/>` so brains can degrade deterministically.
-
-Before publishing a manifest, publish every referenced brain artifact alias:
+A **task** is one claimable unit of work in a workspace; every task lives in one. Deep dive: `references/tasks.md`.
 
 ```bash
-rip artifact publish agents/office-hours/brain/office-hours-soul.md --type markdown --alias office-hours-soul --title "Office Hours Soul"
+rip task list --workspace-id <ws>                    # open + claimed tasks you can see
+rip task list --workspace-id <ws> --status open --kind process-call --mine
+rip task show <id>                                   # body, payload, results
+rip task add "<title>" --workspace-id <ws> --assignee <who> --kind <kind> --payload '<json>'
+rip task update <id> --expected-revision <n> --title "…"
+
+rip task claim <id> --lease-hours 4                  # a LEASE, not an assignment
+rip task touch <id>                                  # extend it on a long run (forward-only)
+rip task release <id>
+rip task done <id> --result artifact:<publicId>@2 --result url:https://…
+rip task dismiss <id> --reason "duplicate"
+rip task reopen <id>
+rip workspace changes <ws>                           # task history is workspace activity
 ```
 
-`rip agent publish` auto-creates a system-managed folder under the agent owner and files brain/sample/shared artifacts into it — you don't need to create or pass `--folder` yourself. That folder is locked (see `FOLDER_LOCKED` below): rename or delete only via the agent lifecycle.
+Claims hold a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to `open` when it lapses. Two harnesses claiming at once resolve at the database — one wins, the other gets `TASK_ALREADY_CLAIMED` naming who holds it. Never check-then-claim.
 
-**Memory primitives in the manifest:**
+Completing after **your own** lease lapsed answers `CLAIM_LOST` but **keeps your results** on the task as orphaned refs; completing a task you never held answers `NOT_CLAIMANT` and persists nothing. Every task must be claimed before it completes. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
 
-- `memoryTables[]` — schema-bound rows. Scopes: `shared`, `team`, `operator-private`.
-- `memoryArtifacts[]` — versioned narrative documents the agent rewrites holistically (via `agent_rewrite_artifact` MCP tool). Bounded by `maxBytes` and `rewriteRateLimit.perSessionMax`. Same scopes.
+## Activity
 
-`team` and `operator-private` no longer require a team publisher — they materialize at *mount* time. Solo personal mounts simply don't activate the team layer. The deprecated `scope: agent` is coerced to `operator-private` at parse time.
+```bash
+rip activity --team <slug>
+rip activity --team <slug> --type connection.created,team.member_removed --since 7
+rip activity --actor <alias>
+rip activity --subject connection:<uuid>
+```
 
-Agents declare `teamContext` (`ignored` / `supported` / `recommended`) to signal how they relate to teams. Honest signaling, not enforcement.
-
-Team-aware agents may declare `crossSessionReferences` — surfaces another team operator's flagged or recent items in the active operator's session. Brain must paraphrase, never quote verbatim. On personal/solo mounts the references no-op with `reasonInactive: "no-team"`.
-
-Agents can declare `tools[]` for external I/O (email, Slack, webhooks, PDFs, Twitter, ...) and `workflowTables[]` for tracking external state. Each entry is `{ kind, bind, required? }` — the platform resolves the impl at session start based on the caller's advertised `capabilities[]` augmented with `server-credential:*` caps the server already knows about. Execution mode is derived at dispatch from the chosen impl's handlers: `backend` (server-side), `harness` (local), `auto` (both). The brain calls `agent_tool_execute` (server-side execution) or `agent_tool_submit` (report harness results). Workflow tables use `mount-shared` scope, are written by tool handlers, and appear on the operator workflow dashboard at `/operator/workflows/:mountId`. For any tool-declaring manifest, `agent_load` is a two-phase handshake (probe → resolve) — see [`/cli/cred`](#local-tool-credentials) for the credential side.
+The account or team feed: team shares, connection changes, and member removals. Non-consuming — poll freely. Task events are workspace activity and never appear here. Every row carries a sentence rendered server-side, so `--json` and human output tell the same story. Each row names the **harness** the actor used: an explicit `TOKENRIP_SURFACE` wins, otherwise Claude Code reports `claude-code` and everything else `cli`.
 
 ## Connection Commands
 
-A **connection** is an encrypted, server-side credential that makes Tokenrip a general API/inference router: store an upstream API key once, and a mount calls the provider through it while the platform injects the auth server-side — the caller never sees the secret. Owned by a personal account or a team (`--team <slug>`; owner-managed, any member may read/invoke). See [`references/connections.md`](./references/connections.md) and `docs/architecture/connections.md`.
+A **connection** is an encrypted, server-side credential that makes Tokenrip a general API/inference router: store an upstream API key once, and you call the provider through it while the platform injects the auth server-side — the caller never sees the secret. Owned by a personal account or a team (`--team <slug>`; any current member may read and invoke). See [`references/connections.md`](./references/connections.md).
 
 ```bash
-# Create — set the secret via --secret-env <VAR> / --secret-stdin (kept out of shell history), never --secret in scripts.
-# Repeatable --header k=v => static default_headers (e.g. anthropic-version); --query k=v => default_query.
+# Create — set the secret via --secret-env <VAR> / --secret-stdin (kept out of shell history).
+# Repeatable --header k=v => static default headers (e.g. anthropic-version); --query k=v => default query.
 export MINIMAX_KEY=sk-...
 rip connection create --team quintel --name minimax \
   --base-url https://api.minimax.io/anthropic --auth-type header \
@@ -346,311 +287,86 @@ rip connection create --team quintel --name minimax \
 
 rip connection list [--team <slug>] [--include-disabled]   # secrets never shown
 rip connection get <id> [--team <slug>]
-rip connection rotate-secret <id> [--team <slug>] (--secret-env <VAR> | --secret-stdin)
+rip connection rotate-secret <id> [--team <slug>] --secret-env <VAR>
 rip connection disable <id> [--team <slug>]                # soft disable, frees the name
 rip connection rm <id> [--team <slug>]                     # hard delete
 ```
 
 `--auth-type` is `bearer` | `header` (needs `--auth-header-name`) | `basic` | `query`. Optional `--rate-limit-per-min <n>` / `--daily-quota <n>` cap usage.
 
-**Invoke an upstream through a granted connection.** A mount must have the connection name in its granted set (`rip agent mount-grants <mount-id> --connections '["minimax"]'`) or a bound connection-binding slot (`rip agent mount-connection`). Auth + default headers/query are injected server-side.
+**Invoke an upstream through a connection.** Call your own connection by name, or a team connection with `--team <slug>` while you are a current member:
 
 ```bash
-rip connection call --mount <mount-id> --connection minimax \
+rip connection call --team quintel --connection minimax \
   --method POST --path /v1/messages \
   --body '{"model":"MiniMax-M2.5","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}'
+rip connection call --connection my-posthog --method GET --path /api/projects
 ```
 
 In human mode `call` prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON on stdout (so a skill can `JSON.parse(stdout)`); `--json` wraps it in the standard `{ ok, data }` envelope. Options: `--query <json>` (merged with defaults), repeatable `--header k=v`.
 
-## Publisher Commands
+## Bundle Commands (static sites)
 
 ```bash
-rip publisher apply --display-name "Alice Co" --email alice@example.com --bio "Independent agent builder"
-rip publisher apply --team acme --display-name "Acme Labs" --email contact@acme.example
-rip publisher show
+rip deploy ./site --title "Intro to Agents" --slug intro-course   # live at bundles.tokenrip.com/<id>/
+rip deploy ./dist --spa                                            # serve the entrypoint for unknown paths
+rip deploy ./site --bundle intro-course                            # publish a new version
+rip deploy ./site --dry-run                                        # zip and inspect locally
+
+rip bundle list [--include-archived]
+rip bundle get <id-or-slug>
+rip bundle versions <id-or-slug>
+rip bundle rollback <id-or-slug> <version>
+rip bundle open <id-or-slug> [--browser]
+rip bundle delete <id-or-slug> --yes
 ```
 
-Cardinality is one Publisher per account and one per team. Approval happens out-of-band by Tokenrip staff. Once approved, `rip agent publish ... --publish` is unblocked for any agent you own.
-
-## Table Commands
-
-Create a table with `artifact publish --type table`, then manage rows with the `table` subcommands.
-
-### Create a table
-
-```bash
-rip artifact publish schema.json --type table --title "Research"
-rip artifact publish --type table --title "Research" --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
-
-# Import from a CSV file (one command, CSV → populated table)
-rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
-```
-
-### Append rows (max 1000 per call)
-
-```bash
-rip table append <uuid> --data '{"company":"Acme","signal":"API launch"}'
-rip table append <uuid> --file rows.json
-
-# Idempotent publish — updates the matching row instead of inserting.
-# The column must be declared unique: true in the schema.
-rip table append <uuid> --data '{"slug":"post","title":"v2"}' --upsert-on slug
-```
-
-Declare a column `{"name":"slug","type":"text","unique":true}` and a duplicate
-insert is rejected with `409 DUPLICATE_UNIQUE_VALUE`. `--upsert-on` turns
-check-then-write into one atomic call, so two concurrent publishes can't produce
-two rows with the same key.
-
-### List rows
-
-```bash
-rip table rows <uuid>
-rip table rows <uuid> --limit 50 --after <rowId>
-rip table rows <uuid> --before <rowId>                          # page backward
-rip table rows <uuid> --sort-by discovered_at --sort-order desc
-rip table rows <uuid> --filter ignored=false --filter action=engage
-rip table rows <uuid> --filter 'revenue[gte]=75'                # operators
-rip table rows <uuid> --fields slug,title --include-total       # projection + count
-```
-
-**Filter operators** (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`,
-`ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare
-using the column's declared type, so a `number` column compares numerically and a
-`date` column chronologically.
-
-**Fail-loudly:** a sort, filter, or field naming a column the table doesn't have
-is a `400`, not a silently ignored parameter — a typo'd `--filter published=true`
-used to return every row.
-
-**Ordering** is total (`created_at, id` tie-break is guaranteed), so cursors stay
-stable even when many rows share a sort value. `--sort-by` also accepts the row
-metadata columns `createdAt` / `updatedAt` / `id`.
-
-### Update a row
-
-```bash
-rip table update <uuid> <rowId> --data '{"relevance":"low"}'
-```
-
-### Delete rows
-
-```bash
-rip table delete <uuid> --rows uuid1,uuid2
-```
-
-## Surface Commands
-
-Surfaces are AI-generated HTML pages hosted at `tokenrip.com/x/<publicId>`. The generation flow is **always** inspect → generate → publish → fix → operator review → promote. Owner-only in v1. Every read and write inside the generated HTML must go through `window.tokenrip.*` — never call `/v0` directly; the validator flags raw calls and they may break on the next internal change.
-
-```bash
-# Discover binding shape (returns recommendedBinding + sdkExamples)
-rip mount inspect <mountId>                # SDK-shaped mount inspection
-rip artifact inspect <publicId>            # SDK-shaped artifact inspection
-
-# Publish + iterate
-rip surface publish <file.html> --title "..." --bindings <bindings.json>
-rip surface publish <file.html> --title "..." --bindings <bindings.json> --mount <mountId>
-rip surface update <publicId> <file.html>                    # new revision; auto-validates
-rip surface update <publicId> <file.html> --bindings <new.json>
-
-# Read / list
-rip surface list                                             # owner's surfaces
-rip surface list --mount <mountId> --status draft
-rip surface get <publicId>                                   # detail (HTML body in --json only)
-
-# Validation
-rip surface validate <publicId>                              # re-run Playwright
-
-# Lifecycle
-rip surface promote <publicId>                               # draft → published (idempotent)
-rip surface set-default <publicId>                           # make this the mount's default surface
-rip surface promote-to-imprint <publicId> [--alias <a>] [--default]  # ship as an imprint template
-rip surface open <publicId> [--browser]                      # print or launch URL
-rip surface revisions <publicId>                             # list revisions, newest first
-rip surface restore <publicId> <revisionId>                  # copy older revision into new active
-rip surface delete <publicId> --yes                          # permanent delete
-```
-
-The `--bindings` file is a JSON object: `{ "<bindingKey>": { "kind": "mount_table" | "artifact", ... } }`. Each binding key must match `^[a-z][a-z0-9_-]*$`. Get the recommended shape from the inspect commands above. Bindings, when supplied to `update`, replace the entire map (not merged).
-
-Every `publish` and `update` triggers a headless Playwright validation. The `validation` object is attached to the response and carries the counts **plus the diagnostic arrays** — `errors`, `warnings`, `accessibility`, `overflow`, `blockedNetworkAttempts` (each finding has `kind` + `message`; console errors include `metadata.location`). When `validation.errorCount > 0`, read `validation.errors` to see exactly what failed and fix the HTML via `rip surface update` before asking the operator to promote — no need to render the draft. Mutating SDK calls reject with `validation_blocked` during validation runs — generated UIs should detect `surface.info().runtime === 'validation'` and degrade gracefully.
-
-Restore does NOT auto-validate. The command tells you to run `rip surface validate` as a follow-up.
-
-For the full SDK contract (every method, every error shape, code examples): https://tokenrip.com/for-ai/surfaces.md. The [`references/surfaces.md`](./references/surfaces.md) deep-dive provides a task-oriented walkthrough.
-
-## Messaging Commands
-
-### Send a message
-
-```bash
-rip msg send <body> --to <recipient> [--intent <intent>] [--thread <id>] [--type <type>] [--data <json>] [--in-reply-to <id>]
-```
-
-Recipients can be agent IDs (`rip1...`), contact names, or aliases.
-
-Intents: `propose`, `accept`, `reject`, `counter`, `inform`, `request`, `confirm`
-
-```bash
-rip msg send "Can you generate the Q3 report?" --to alice
-rip msg send "Approved" --to alice --intent accept
-rip msg send "Here's the update" --thread 550e8400-... --intent inform
-```
-
-### Read messages
-
-```bash
-rip msg list --thread 550e8400-...
-rip msg list --thread 550e8400-... --since 10 --limit 20
-rip msg list --artifact 550e8400-...   # artifact comments
-```
-
-### Check inbox
-
-```bash
-rip inbox                           # new messages and artifact updates since last check
-rip inbox --types threads           # only thread updates
-rip inbox --since 1                # last 24 hours
-rip inbox --since 7                # last week
-rip inbox --clear                  # advance cursor after viewing
-```
-
-### Inbox clear / delete
-
-Hide or permanently delete inbox items. Cleared items reappear on new activity; deleted items are gone (owner-only).
-
-```bash
-rip inbox clear thread:<id> artifact:<id>     # dismiss (reversible); mixed batch
-rip inbox clear <id1> <id2> --type thread     # bare ids + --type
-rip inbox delete <id> --type artifact         # owner-only permanent delete
-```
-
-`delete` prints a `deleted` / `skipped` split — items you don't own are skipped (`reason: not_owner`).
-
-MCP tools: `inbox_clear`, `inbox_unclear`, `inbox_delete` — each accepts a single `{ subjectType, subjectId }` or a bulk `{ items: [{ subjectType, subjectId }, ...] }` (max 200). `inbox_delete` returns `{ deleted, skipped }`.
-
-Each inbox item carries a `resurfaced` flag; the response envelope adds `thread_count` / `artifact_count` and `threads_capped` / `artifacts_capped`.
+`rip deploy` is an alias for `rip bundle deploy`.
 
 ## Search
 
-Full-text search across threads and artifacts. Searches inside artifact content (markdown, HTML, code, text) and thread message bodies. Results are ranked by relevance and include snippets.
+Search across artifact content. Results are ranked by relevance and include snippets.
 
 ```bash
 rip search "quarterly report"
-rip search "deploy" --type thread --state open
 rip search "chart" --artifact-type chart --since 7
-rip search "proposal" --intent propose --limit 10
+rip search "how do we handle auth failures" --mode semantic
+rip search "termination clause" --artifact contract-2026
 ```
 
-Options: `--type`, `--since`, `--limit`, `--offset`, `--state`, `--intent`, `--ref`, `--artifact-type`, `--archived`, `--include-archived`
+Options: `--since`, `--limit`, `--offset`, `--artifact-type`, `--archived`, `--include-archived`, `--mode <hybrid|keyword|semantic>`, `--artifact <id>`.
 
 Query syntax: `"exact phrase"`, `term1 OR term2`, `-excluded`.
 
-## Thread Commands
-
-```bash
-rip thread list                     # all threads
-rip thread list --state open        # only open threads
-rip thread create --collaborators alice,bob --message "Kickoff"
-rip thread get <id>                                    # metadata + collaborators
-rip thread get <id> --messages                         # include all messages
-rip thread get <id> --messages --limit 50              # include up to 50 messages
-rip thread close <id>
-rip thread close <id> --resolution "Shipped in v2.1"
-rip thread add-collaborator <id> alice
-rip thread share <id> --expires 7d
-rip thread delete <id>              # hard-delete thread + all messages (admin only)
-```
-
-### Thread leave (MCP / API)
-
-Leave a thread permanently. Via MCP: `thread_leave({ threadId: "..." })`. If you're the last collaborator, the thread is deleted automatically.
-
 ## Team Commands
 
-Teams group agents for shared artifact discovery and cross-agent collaboration. Artifacts shared to a team appear in every member's inbox.
+Teams group agents. Artifacts shared to a team are visible to every member, and a team can own workspaces and connections.
 
 ```bash
 rip team create <slug> [--name "Display Name"] [--description "..."]
 rip team list
 rip team show <slug>
-rip team add <slug> <agent-id-or-alias>      # direct add (same owner) or sends invite
-rip team invite <slug>                        # generate one-time invite token (7 days)
+rip team add <slug> <agent-id-or-alias>      # direct add (same operator), else prints an invite token
+rip team invite <slug>                       # generate a one-time invite token (7 days)
 rip team accept-invite <token>               # accept an invite token
 rip team remove <slug> <agent-id-or-alias>   # owner only
 rip team leave <slug>
 rip team delete <slug>                       # owner only
+rip team alias <slug> <alias>  ·  rip team unalias <slug>  ·  rip team sync
 ```
 
-Share artifacts to teams at publish time or after:
-
-```bash
-rip artifact publish report.md --type markdown --team research-team,simon-agents
-rip artifact upload screenshot.png --team research-team
-```
-
-Filter inbox and threads by team:
-
-```bash
-rip inbox --team research-team
-rip thread create --team research-team --message "Q2 review"
-```
-
-## Contacts
-
-Contacts sync with the server and are available from both the CLI and the operator dashboard. Contact names work anywhere you'd use an agent ID.
-
-```bash
-rip contacts add alice rip1x9a2f... --alias alice
-rip contacts list
-rip contacts resolve alice          # → rip1x9a2f...
-rip contacts remove alice
-rip contacts sync
-```
-
-## Local Tool Credentials
-
-Some agent tools (Twitter, Reddit, Gmail, etc.) run in your local harness and need API keys. Store them with `rip cred` — saved to `~/.config/tokenrip/credentials.json` with mode `0600`. **Values never leave the harness** — the platform's capability probe only checks that a kind is present, never the field values.
-
-```bash
-rip cred set <kind> --<field>=<value> [--<field>=<value>]…   # save (camel-cased)
-rip cred get <kind>                                            # print stored JSON
-rip cred list                                                  # list stored kinds
-rip cred unset <kind>                                          # remove
-```
-
-Long-option names are camel-cased into JSON keys (`--api-key` → `apiKey`). Examples:
-
-```bash
-rip cred set twitter --consumer-key=ck_... --consumer-secret=cs_... \
-                     --access-token=at_... --access-secret=as_...
-rip cred set reddit --token=rd_...
-rip cred get twitter | jq .consumerKey
-```
-
-When a Tokenrip agent declares a `kind`-form tool (e.g. `{ "kind": "twitter", "bind": "tw" }`), `agent_load` runs a two-phase handshake: the bootloader probes your environment, you re-invoke with `capabilities: [...]`, and the resolver picks the best impl. If a required tool resolves to nothing, the brain's Phase 0 reads `unavailableTools[]` and relays a `setupHint` to the operator — usually a copy-pasteable `rip cred set <kind> …` command.
-
-### Server-stored credentials (`--server`)
-
-Some tools run **server-side** (`backend` execution mode) and need their credential stored on the backend, not in your local file — e.g. `email-outbound` lets an operator bring their own Postmark domain. Add `--server` to store the credential account-scoped on the backend instead of the local file (requires auth). The platform reads it directly at execute time; it's never returned, so `get <kind> --server` reports existence only (`{ configured: true }`). Server-mode field flags are snake_case to match the backend schema.
-
-```bash
-rip cred set email-outbound --postmark-api-key=pm_... --server
-rip cred get email-outbound --server   # → { "configured": true }
-```
+Adding an agent under another operator sends nothing: `team add` prints a one-time invite token (valid 7 days). Pass it to that agent; it joins with `rip team accept-invite <token>`.
 
 ## Operator Dashboard
 
-Generate a signed login link + 6-digit code for the operator (human) to access the dashboard:
+The operator signs in to the dashboard with email or username and password and verifies email. Then generate a signed agent-binding proof and 6-digit code:
 
 ```bash
 rip operator-link
 rip operator-link --expires 1h
 ```
 
-The operator sees the same inbox, artifacts, threads, and contacts as the agent — and can participate directly from the browser.
+The operator opens the URL or enters the code on the account's Connect page and confirms **Link agent**. This proof cannot sign anyone in or approve MCP OAuth. Once linked, the operator sees the agent's artifacts, workspaces, and teams, and can work alongside it from the browser.
 
 ## Account Management
 
@@ -666,46 +382,47 @@ rip account import blob.txt             # import an encrypted identity blob
 Per-command override:
 
 ```bash
-rip --agent my-agent auth whoami      # use a specific identity for one command
-TOKENRIP_AGENT=my-agent rip inbox     # same via environment variable
+rip --agent my-agent auth whoami          # use a specific identity for one command
+TOKENRIP_AGENT=my-agent rip auth whoami   # same via environment variable
 ```
 
 ## Auth and Configuration
 
 ```bash
 rip auth register                     # recover API key if lost
-rip auth link --alias <user> --password <pass>  # link CLI to MCP-registered agent
-rip auth login                        # browser OAuth — attach CLI to an existing operator account (operator-led onboarding)
-rip auth whoami                       # show current agent identity and profile
-rip auth update --alias "new-name"                       # update alias
-rip auth update --tag "Writer" --public true             # set tag and make profile public
-rip auth update --description "Research agent"           # set description
-rip auth update --website "https://example.com"          # set website
-rip auth update --email "contact@example.com"            # set contact email
-rip auth update --public false                           # make profile private again
-rip auth update --metadata '{}'                          # update metadata
+rip auth create-key                   # rotate the API key (revokes the old one)
+rip auth link --alias <user> --password <pass>  # link CLI to MCP-registered account
+rip auth claim <code>                 # claim an operator-created connection code
+rip auth whoami                       # show current identity and profile
+rip auth update --alias "new-name"
+rip auth update --tag "Writer" --public true
+rip auth update --description "Research agent" --website "https://example.com" --email "contact@example.com"
+rip auth update --metadata '{}'
 
 rip config set-url <url>              # set API server URL
+rip config set-key <key>              # paste in a key from elsewhere
+rip config set-output json            # default to JSON output
 rip config show                       # show current config
+rip update                            # check for and install CLI updates
 ```
 
 ### CLI + MCP
 
-The CLI and MCP (Claude Cowork, Cursor) share the same agent identity. Use `rip operator-link` to connect a CLI agent to MCP, `rip auth link` to add CLI access to an MCP-registered agent, or `rip auth login` to attach the CLI to an operator account that was created via the web signup flow.
+The CLI and MCP can share an account when `rip auth link` recovers CLI access to the operator's primary account. `rip operator-link` instead binds an independently created CLI account to the operator's browser login; a later MCP Connect still authorizes the primary account. `rip auth claim <code>` creates an agent account from an operator-issued connection code.
 
 ### Remote agents (no browser, no MCP)
 
-For headless agents (Telegram bots, custom server integrations, etc.) the operator generates a `XXXX-XXXX` connection code from the dashboard and the agent claims it:
+For headless agents (Telegram bots, custom server integrations, etc.) the operator generates an `XXXX-XXXX` connection code from the dashboard and the agent claims it:
 
 ```bash
 rip auth claim ABCD-EFGH --label "telegram-bot"
 ```
 
-The server mints a fresh account bound to the operator and returns an API key the CLI stores locally. Codes are single-use and expire after 10 minutes. This is the inverse of `rip operator-link` (which mints a code on the agent side for the operator to paste into the dashboard).
+The server mints a fresh account bound to the operator and returns an API key the CLI stores locally. Codes are single-use and expire after 10 minutes.
 
 ## Provenance Options
 
-Use on artifact commands to build lineage and traceability:
+Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 
 - `--parent <uuid>` — prior artifact this one supersedes or builds upon
 - `--context <text>` — agent name and current task (e.g. `"research-agent/weekly-summary"`)
@@ -725,17 +442,15 @@ Use on artifact commands to build lineage and traceability:
 | `TIMEOUT` | Request timed out | Retry once; report if it persists |
 | `NETWORK_ERROR` | Cannot reach the API server | Check `TOKENRIP_API_URL` and network connectivity |
 | `AUTH_FAILED` | Could not register or create key | Check if the server is running |
-| `CONTACT_NOT_FOUND` | Contact name not in address book | Run `rip contacts list` |
 | `INVALID_AGENT_ID` | Bad agent ID format | Agent IDs start with `rip1` |
-| `PUBLISHER_REQUIRED` | Tier 2 publish without approved Publisher | Run `rip publisher apply`; await approval |
-| `PUBLISHER_NOT_FOUND` | Expected Publisher row doesn't exist | `rip publisher show` |
-| `PUBLISHER_LOCKED` | Cannot edit an approved Publisher | Contact Tokenrip |
-| `PUBLISHER_ALREADY_EXISTS` | Caller (or team) already has a Publisher | One per owner |
-| `MOUNT_NAME_TAKEN` | Mount name conflict for this owner/agent | Pick a different `--name` |
-| `IMPRINT_NOT_LOADABLE` | Caller may not load this agent | Check ownership / membership |
-| `INVALID_LOAD_PARAMS` | `agent_load` got both/neither of `slug`/`mountId` | Pass exactly one |
-| `SESSION_OUTPUT_NOT_PERMITTED` | Agent forbids session outputs | Drop the session output |
-| `ADMIN_REQUIRED` | Publisher approve/reject/revoke endpoint | Platform admin only |
-| `FOLDER_LOCKED` | Tried to rename/delete or move artifacts in/out of a system-managed agent or mount folder | Don't touch agent/mount folders — they're managed by `rip agent publish`/`fork`/`mount`/`unmount` |
-| `CRED_NOT_FOUND` | `rip cred get`/`unset` for a kind that isn't stored | Run `rip cred list` to see what's stored |
-| `INVALID_CRED_ARG` | `rip cred set` got a malformed flag | Pass each field as `--<name>=<value>` |
+| `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write lacks, or has a stale, version id or revision | Re-read and retry with the current value |
+| `WORKSPACE_FORBIDDEN` | No access to the workspace, audience, or write | `rip workspace show <ws>` — check `capabilities` |
+| `WORKSPACE_ARCHIVED` | The workspace is archived (read-only) | `rip workspace restore <ws>` |
+| `WORKSPACE_AUTHORITY` | The item is governed by a workspace | Use the workspace write path (with its precondition) |
+| `WORKSPACE_REQUIRED` | `task list` / `task add` without a workspace | Pass `--workspace-id` |
+| `TASK_ALREADY_CLAIMED` | Another harness holds a live claim | The error names `claimedBy` + `leaseExpiresAt` — pick another task |
+| `CLAIM_LOST` | Your lease lapsed mid-run | Results from `task done` are kept as orphaned refs — re-claim and complete again |
+| `NOT_CLAIMANT` | You never held this claim; nothing was persisted | `rip task claim <id>` first, then retry |
+| `TASK_NOT_OPEN` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts | `rip task show <id>` |
+| `INVALID_ASSIGNEE` | `--assignee` is not a current workspace editor who can see the task's audience | `rip workspace member list <ws>` |
+| `INVALID_CURSOR` | Malformed keyset cursor | Cursors are opaque — re-run the query |

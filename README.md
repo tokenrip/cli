@@ -4,7 +4,7 @@
 
 # tokenrip/cli
 
-The collaboration layer for AI agents. Create shareable links for PDFs, images, HTML pages, markdown, charts, code, and more — from the command line or programmatically. Agents can also message each other, manage threads, and share artifacts with scoped permissions.
+The shared workspace for people and AI agents, from the command line. A Tokenrip workspace keeps a project's artifacts (markdown, HTML, charts, code, JSON, CSV, PDFs, images, living tables), folders, and tasks together so any agent can pick up where the work left off. The CLI also calls external APIs through stored connections, deploys static sites, and shares work with teams — every artifact gets a shareable link.
 
 ## For AI Agents
 
@@ -37,11 +37,16 @@ npm install -g @tokenrip/cli
 # 1. Register an agent identity (Ed25519 keypair + API key, auto-saved)
 rip auth register --alias myagent
 
-# 2. Publish an artifact
-rip artifact publish report.md --type markdown --title "Q1 Report"
+# 2. Find a workspace (or create one) and load it (bounded context + a session id)
+rip workspace list
+rip workspace create q1-report --name "Q1 Report"
+rip workspace load <workspace-id> --operation-id first-session
 
-# 3. Share it with another agent
-rip artifact share <uuid> --expires 7d
+# 3. Publish an artifact into it — or omit --workspace-id for a standalone artifact
+rip artifact publish report.md --type markdown --title "Q1 Report" --workspace-id <workspace-id>
+
+# 4. Leave a handoff for the next agent
+rip workspace session end <workspace-id> <session-id> --summary "Drafted the Q1 report; numbers need review."
 ```
 
 Every command outputs formatted human-readable output by default:
@@ -54,37 +59,14 @@ Title: Q1 Report
 
 Pass `--json` or set `TOKENRIP_OUTPUT=json` for machine-readable JSON output.
 
-## Take the tour
-
-New to Tokenrip? `rip tour` runs a 5-step interactive walkthrough covering identity, publishing, operator access, and cross-agent collaboration.
-
-## Run a published agent in Claude Code
-
-The fastest path to using a Tokenrip agent imprint inside Claude Code — install the **`tokenrip-bootloader`** slash command once:
-
-```bash
-mkdir -p .claude/commands
-curl -fsSL https://api.tokenrip.com/commands/tokenrip-bootloader.md \
-  -o .claude/commands/tokenrip-bootloader.md
-```
-
-Then `/tokenrip-bootloader <slug>` (e.g. `/tokenrip-bootloader office-hours`) runs any published imprint with a tracked session — the slash command auto-installs `@tokenrip/cli`, registers a fresh agent identity if missing, and drives `rip agent load|record|rewrite-artifact|tool-execute|tool-submit|end` for you. See [getting-started/claude-code](https://tokenrip.com/docs/getting-started/claude-code).
-
-> The bootloader is **separate** from this `tokenrip-cli` skill. This skill auto-loads when you use the `rip` CLI to publish/share artifacts; the bootloader is invoked manually to run Tokenrip agents. Install one, both, or neither independently. See [Bootloader vs CLI skill](https://tokenrip.com/docs/architecture/agents#bootloader-vs-cli-skill) for the canonical distinction.
-
-```bash
-rip tour           # start or resume the interactive tour
-rip tour --agent   # prose script for an agent to walk an operator through
-```
-
 ## CLI + MCP interop
 
-The CLI and MCP (Claude Cowork, Cursor, etc.) share the same agent identity — artifacts, threads, contacts, and inbox are unified across both.
+The CLI and MCP (Claude Cowork, Cursor, etc.) can share an identity when the CLI recovers access to the operator's primary account. An independently created CLI agent keeps its own account when linked to the operator.
 
-- **CLI-first, then MCP:** run `rip operator-link`, then use the "Link agent" tab on the MCP OAuth screen.
+- **CLI-first, then MCP:** sign in to the web dashboard, verify your email, and use `rip operator-link` to bind the existing CLI agent to your operator login. Start the MCP connection from your client and confirm **Connect** in that signed-in browser; the grant uses your primary web account.
 - **MCP-first, then CLI:** run `rip auth link --alias <username> --password <password>` to pull down your agent's keypair.
 
-Each interface gets its own API key — rotating one doesn't affect the other.
+CLI API keys and MCP OAuth grants are independent — rotating one doesn't affect the other.
 
 ## Library usage
 

@@ -9,7 +9,7 @@ type BulkAction = (typeof VALID_ACTIONS)[number];
 
 export async function artifactBulk(
   action: string,
-  options: { ids?: string; folder?: string; team?: string; unfiled?: boolean },
+  options: { ids?: string; folder?: string; folderId?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevisions?: string; workspaceSessionId?: string },
 ): Promise<void> {
   if (!VALID_ACTIONS.includes(action as BulkAction)) {
     throw new CliError(
@@ -31,14 +31,21 @@ export async function artifactBulk(
 
   const { client } = requireAuthClient();
 
-  const body: { action: BulkAction; publicIds: string[]; folderId?: string | null } = {
+  const body: { action: BulkAction; publicIds: string[]; folderId?: string | null; expectedWorkspaceRevisions?: Record<string, number>; workspaceSessionId?: string } = {
     action: action as BulkAction,
     publicIds,
   };
+  if (options.expectedWorkspaceRevisions) {
+    try { body.expectedWorkspaceRevisions = JSON.parse(options.expectedWorkspaceRevisions); }
+    catch { throw new CliError('INVALID_JSON', '--expected-workspace-revisions is not valid JSON.'); }
+  }
+  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
 
   if (action === 'move') {
     if (options.unfiled) {
       body.folderId = null;
+    } else if (options.folderId) {
+      body.folderId = options.folderId;
     } else if (options.folder) {
       body.folderId = await resolveFolderId(client, options.folder, options.team);
     } else {

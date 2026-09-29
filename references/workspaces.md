@@ -1,183 +1,183 @@
 # Workspaces
 
-An owned namespace (yours or a team's) for native **notes** plus **included primitives**. Use the `rip workspace` command group (aliased **`rip ws`**). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
+A workspace is the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an internal/shared audience per item and explicit external members. Commands: `rip workspace …` (alias `rip ws`). Identifier: the workspace **UUID** (these commands do not resolve slugs). API: `/v0/workspaces`; MCP: the `workspace_*` tools (`workspace_list`, `workspace_load`, `workspace_changes`, …). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
 
-A **workspace** holds two things:
+## Membership and audience
 
-1. **Native notes** you write directly in Tokenrip — capture, search, link, and (optionally) promote through a maturity ladder.
-2. **Included primitives** — existing artifacts (a table is an artifact) that you either **own** into the workspace (it becomes their home; deleting the workspace destroys them) or **link** as references (deleting the workspace only unfiles them).
+Membership is resolved live:
 
-Think of it as the folder's more capable sibling: a folder organizes artifacts; a workspace also has content of its own and a membership model.
+- The personal owner, or the owning team's owner and admins, are internal **admins**.
+- Other members of the owning team are internal **editors**.
+- An admin may add outside accounts as external **viewers** or **editors**.
+
+Every item has an `audience`: `internal` (owner or team only) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, id, and your `membership/role`; `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
 
 ## When to use
 
-- "capture this idea" / "drop a note" → `rip workspace capture`
-- "search my notes" → `rip workspace search`
-- "group these artifacts" → `rip workspace item link` / `item add --ownership owned`
-- "share this workspace with X" → `rip workspace member add`
-- "link note A to note B" → `rip workspace link add`
-- "what should I consolidate?" → `rip workspace worklist`
-- "promote this note's maturity" → `rip workspace note promote`
-- "archive / restore / delete a note" → `rip workspace note archive` / `note unarchive` / `note delete`
+- "work on project X from this harness" → `rip workspace load <workspace-id> --operation-id <stable-id>`, then use the returned `session.id` for write attribution
+- "what changed since I last looked" → `rip workspace changes <workspace-id>`, then `rip workspace ack <workspace-id> --delivery-token <token>`
+- "this document the operator is looking at" → `rip workspace view context <workspace-id> <session-id>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
+- "open that document in their browser" → `rip workspace view open …` and read the receipt (`queued` / `deferred` / `applied` / `disconnected`)
+- "share this with the client" → `rip workspace adopt … --audience shared` for standalone content, `rip artifact patch <id> --audience shared --expected-workspace-revision <n>` for a workspace artifact, `rip folder share-contents` for a folder and everything in it
+- "give the client access" → `rip workspace member add <workspace-id> <account> --role viewer|editor`
+- "bring an existing artifact or folder into the workspace" → `rip workspace adopt`
+- "hand off" → `rip workspace session end <workspace-id> <session-id> --summary "<what changed, decisions, what is left>"`
 
-## Create + capture
-
-```bash
-rip workspace create research --name "Research" [--description <text>] [--team <slug>]
-rip workspace capture research "PostgreSQL websearch_to_tsquery handles phrases and negation"
-rip workspace search research "tsquery"          # full-text search over note bodies
-rip workspace list
-rip workspace show research
-```
-
-Note slugs are date-prefixed (`YYYY-MM-DD-<kebab-title>`), with a numeric suffix on same-day collisions.
-
-## Include an artifact (own vs link)
+## Lifecycle and members
 
 ```bash
-rip workspace item link research <artifact-public-id>                    # reference (persists on delete)
-rip workspace item add research <artifact-public-id> --ownership owned   # move in (destroyed on delete)
-rip workspace item list research
-rip workspace item remove research <artifact-public-id>                  # only unfiles; never destroys a linked artifact
+rip workspace create <slug> --name "Roadmap" [--description <text>] [--team-id <team-uuid>]
+rip workspace list                                   # names, ids, membership/role
+rip workspace show <workspace-id>                    # adds Can: (capabilities) and audiences
+rip workspace update <workspace-id> [--name <name>] [--description <text>]
+rip workspace archive <workspace-id>                 # read-only; ends sessions, releases task claims
+rip workspace restore <workspace-id>
+rip workspace delete <workspace-id>                  # only when archived AND it holds no artifacts at all
+
+rip workspace member list <workspace-id>             # external members only; internal access is derived, never listed
+rip workspace member add <workspace-id> <account> [--role viewer|editor]   # account id or alias; default editor
+rip workspace member set-role <workspace-id> <account-id> --role viewer|editor
+rip workspace member remove <workspace-id> <account>
 ```
 
-At most **one** workspace can *own* a given artifact (409 `ALREADY_OWNED` otherwise); any number can *link* it.
+`--team-id` takes the team's UUID (`rip team list` prints it); only the team's owner and admins can create a team workspace. A team that still owns workspaces cannot be deleted (`TEAM_OWNS_WORKSPACES`).
 
-## Structured notes + links
+Adding someone who is already internal (the owner or a team member) is refused (`WORKSPACE_MEMBER_INTERNAL`). When an external member later joins the owning team, their external grant is consumed, so leaving the team ends access. Removals and downgrades take effect on the next request and release any task claims the new role does not allow.
+
+## Adopt existing content
 
 ```bash
-rip workspace note set research --title "Quarterly goals" --body "Ship Slice 1"   # create
-rip workspace note set research --title "Atom" --body "..." --source-artifact <publicId>   # create as an atom of a source (create only)
-rip workspace note set research --slug 2026-05-29-quarterly-goals --body "..."     # update by slug
-rip workspace note get research 2026-05-29-quarterly-goals
-rip workspace note list research                              # active notes (archived hidden)
-rip workspace note list research --archived                   # only archived (--include-archived for both)
-rip workspace note archive research <slug>                    # hide from the default list
-rip workspace note unarchive research <slug>                  # restore it
-rip workspace note delete research <slug>                     # permanent (also removes its links)
-rip workspace link add research 2026-05-29-quarterly-goals 2026-05-29-okrs --relation refines
-rip workspace link list research 2026-05-29-quarterly-goals
+rip workspace adopt <workspace-id> <artifact-id> --audience internal|shared [--destination-folder-id <uuid>]
+rip workspace adopt <workspace-id> <folder-id> --kind folder --audience internal|shared   # brings its current artifacts
 ```
 
-Each note tracks how many notes link *to* it (`backlinkCount`). **Archiving** hides a note from the default list and the agent's eager `agent_load` tiers without deleting it — list it back with `--archived` and restore with `note unarchive`.
+Adoption is atomic, makes no copy, and keeps identity and history. You must own the content; its team shares are removed. Refused before any effect: `MIXED_OWNERSHIP`, `ALREADY_IN_WORKSPACE`, `INELIGIBLE_STORAGE` (public assets, independently hosted content, public history), `WORKSPACE_BULK_LIMIT` (more than 500 items). Sharing an adopted artifact exposes its **whole** version history. There is no move-out. A destination folder must belong to the same workspace (`CROSS_WORKSPACE_MOVE`).
 
-`--source-artifact <publicId>` is a **create-only** flag: it records the note as an *atom* of that source artifact (the atom→source link). It can't be changed on update. Use it when a note distils one source — `note list research --source-artifact <publicId>` then lists only the atoms of that source.
+## Content inside a workspace — the ordinary commands
 
-## Members and roles
+Workspace content is written with the normal commands plus workspace flags. Every write to workspace content needs the precondition the read reported. The server answers `PRECONDITION_REQUIRED` when it is missing and `CONFLICT` (with `currentVersionId` / `currentRevision` / `currentWorkspaceRevision`) when it is stale. Re-read and retry; never overwrite.
 
 ```bash
-rip workspace member add research rip1<account-id> --role editor
-rip workspace member list research
-rip workspace member remove research rip1<account-id>
+# create in the workspace
+rip artifact publish <file> --type markdown --workspace-id <ws> [--audience internal|shared]
+rip artifact publish --type table --title "..." --schema '<json>' --workspace-id <ws>
+rip artifact upload <file> --workspace-id <ws> [--audience internal|shared]
+rip folder create <slug> --workspace <ws> [--audience internal|shared]
+rip task add "<title>" --workspace-id <ws> [--audience internal|shared]
+
+# replace a document body (the artifact's current version id is the precondition)
+rip artifact update <id> <file> --type markdown --expected-version-id <version-id>
+
+# metadata / audience without a new version (the artifact's workspaceRevision is the precondition)
+rip artifact patch <id> --audience shared --expected-workspace-revision <n>
+rip artifact move <id> --folder-id <workspace-folder-uuid> --expected-workspace-revision <n>   # or --unfiled
+rip artifact archive <id> --expected-workspace-revision <n>        # also unarchive, delete
+rip artifact delete-version <id> <version-id> --expected-workspace-revision <n>
+rip artifact bulk archive --ids "<id>,<id>" --expected-workspace-revisions '{"<id>": <n>, "<id>": <n>}'
+
+# tables (the row revision for a row; the workspaceRevision for schema-expanding appends)
+rip table append <table-id> --data '{...}' [--upsert-on <col>] [--expected-workspace-revision <n>]
+rip table update <table-id> <row-id> --data '{...}' --expected-revision <row-rev>
+rip table delete <table-id> --rows <id,id> --expected-revisions '{"<row-id>": <rev>}'
+
+# folders
+rip folder list --workspace <ws>
+rip folder update <folder-id> --workspace <ws> --audience internal|shared --expected-workspace-revision <n>
+rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revision <n>   # folder + all current children, atomically
+
+# tasks
+rip task list --workspace-id <ws>
+rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--audience internal|shared]
 ```
 
-The member argument accepts an account id, an alias, or one of your saved contact labels.
+Add `--workspace-session-id <session-id>` to any of these writes (and to `task claim|touch|release|done|dismiss|reopen`, `artifact fork`, and `workspace adopt`) to attribute the write to your live session. It must be **your** credential's session in that workspace. Every write receipt returns the new `workspaceRevision`; carry it into the next call rather than re-reading.
 
-| Role | Can |
+Folders are flat and grant nothing. A shared folder shows its shared children. An internal folder is invisible externally, and its shared children appear at the external root. `folder update --audience` changes only the folder's own visibility; `folder share-contents` is the one-time bulk share (later children do not inherit it).
+
+## Sessions, pins, and handoffs
+
+```bash
+rip workspace load <workspace-id> --operation-id <stable-id> [--artifact-offset <n>] [--task-cursor <c>] [--activity-cursor <c>] [--handoff-offset <n>]
+```
+
+`load` starts **or resumes** your credential's session. The same `--operation-id` always returns the same session, so retries (and paging) never duplicate. The response is bounded, and human output prints all of it:
+
+- `Workspace:` name, id, `membership/role`, and `Can:` — the capabilities you hold now
+- `Session:` the session id (use it for `--workspace-session-id` and `session end`), and `Browser:` — the link the operator opens to pair a browser tab
+- `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run exactly that
+- `Latest handoff` — the newest handoff, inline or with the same `rip artifact cat … --version-id …` command (handoffs usually arrive as references), plus the ids of earlier handoffs
+- `Tasks` (20), `Recent changes` (50; a `refresh`/`historyGap` warning when set), and the `Artifacts` index (50)
+- `More` — one `rip workspace load <ws> --operation-id <same id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset <value>` line per list that continues
+
+With `--json`, the same data is under `workspace`, `session`, `pins[]`, `handoffs.items[]`, `tasks`, `activity`, `artifacts`, and `browserLink`; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above).
+
+Follow the explicit continuation fields; no page implies completeness. An archived workspace loads read-only with `session: null`. Sessions expire after 24 hours idle (harness calls count; browser polling does not). Loading does **not** acknowledge activity.
+
+```bash
+rip workspace pin add <workspace-id> <artifact-id-or-alias> [--position <n>]   # internal editors; markdown only; max 20
+rip workspace pin remove <workspace-id> <artifact-id-or-alias>
+
+rip workspace session end <workspace-id> <session-id> --summary "<changes, decisions, remaining work>"   # creates one markdown handoff
+rip workspace session end <workspace-id> <session-id> --handoff-artifact-id <id>                        # or point at existing same-workspace markdown
+rip workspace session end <workspace-id> <session-id>                                                   # no handoff (viewers can do this)
+```
+
+Pass `--summary` **or** `--handoff-artifact-id`, never both (`INVALID_HANDOFF`).
+
+`session end` is idempotent: the same input returns the original result; different input is `SESSION_END_CONFLICT`. Handoffs are ordinary markdown artifacts with a marker. They survive session cleanup and activity retention, and they follow normal audience rules.
+
+## The operator's browser
+
+```bash
+rip workspace view context <workspace-id> <session-id>
+rip workspace view open <workspace-id> <session-id> <artifact-id> --operation-id <stable-id> --expected-context-generation <n>
+```
+
+`view context` returns `state: paired | disconnected` and, when paired, the tab's **saved** `savedArtifactId`, `savedVersionId`, `savedRevision`, `dirty`, `following`, and `contextGeneration`. Resolve "this document" from it, then address the write by that artifact id with its version or revision precondition.
+
+`view open` asks the paired tab to navigate. The receipt is one of:
+
+- `queued` — the tab is following and clean
+- `deferred` — the person is editing, paused, or the context generation moved; they get an Open button
+- `applied` — the browser acknowledged it
+- `disconnected` — no paired tab
+
+The same `--operation-id` replays the receipt. Ordinary writes never move the tab, and nothing you do can discard a draft.
+
+## Changes and acknowledgment
+
+```bash
+rip workspace changes <workspace-id> [--limit <n>] [--delivery-token <token>]
+rip workspace ack <workspace-id> --delivery-token <token>
+```
+
+`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position — workspace, member, artifact, folder, and task events. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
+
+Reading, loading, and polling never acknowledge; only `ack` advances the position, and only through the delivered page. While a page is outstanding a new one is refused (`WORKSPACE_PAGE_UNACKNOWLEDGED`); pass its token to `changes` to replay it. A wrong or expired (10 minute) token is `INVALID_WORKSPACE_DELIVERY`. Positions are per credential: another key, or the operator's browser, has its own.
+
+## Rules worth memorising
+
+- **Retry identity.** `load`, `view open`, and `session end` are safe to retry with the same operation id or input; they return the original outcome.
+- **Preconditions are mandatory.** No workspace write succeeds without the expected version, row revision, or workspace revision it needs.
+- **A session id is not a credential.** It only attributes writes and routes browser coordination; every call is still authenticated and authorized live.
+- **Audience is per item and independent of versions.** Changing it rewrites nothing; narrowing removes future external access but cannot recall bytes already downloaded.
+
+## Errors
+
+| Error | Meaning |
 |---|---|
-| `viewer` | Read and search notes and items |
-| `editor` | …plus write notes and add/remove items |
-| `admin` | …plus manage members, archive, and delete |
-
-An artifact you **include** becomes reachable by the workspace's members (the same way team-shared artifacts work). Team-owned workspaces grant every team member admin-equivalent access automatically.
-
-## Maturity + consolidation (when configured)
-
-These apply only when a workspace has a **maturity ladder** — most often an agent's *memory* workspace (see below). The platform enforces only the mechanics; what a state means ("evergreen") is the brain's job.
-
-```bash
-rip workspace note set research --slug <slug> --maturity seedling   # set/validate a maturity state
-rip workspace note promote research <slug>                          # advance ONE step, gated by the promotion rule
-rip workspace worklist research                                     # consolidation candidates
-rip workspace worklist research --stale-capture-days 14 --stale-top-tier-days 60
-```
-
-- Promotion advances exactly one step along the configured order; a `min-backlinks-N` rule requires the note to have ≥ N backlinks first (else `PROMOTION_BLOCKED`).
-- `worklist` returns four candidate sets for the consolidation/absorb ritual: **staleCaptures**, **orphans** (no backlinks), **promotionCandidates**, **staleTopTier**. It's a read — the harness (not the backend) decides what to do with them, using the write tools above (`note set` / `note promote` / `link add` / archive).
-- When the workspace is a **brain**, `worklist` also returns brain candidate-sets (all brain-membership-scoped): **unAtomizedSources** (source artifacts with no atoms yet, ranked by retrieval hotness), **staleAtomSources** (sources whose atoms have drifted from the current source version), **recurringSignals** (signals that keep resurfacing and may deserve a note), and **pendingInbox** (staged items awaiting an editor — editor-gated). These feed the `atomize` / `consolidate` rituals above.
-
-## Delete
-
-```bash
-rip workspace delete research   # destroys OWNED items, unfiles LINKED ones; notes, links, members go too
-```
-
-Deleting a workspace is one clean operation: owned items are destroyed (storage reclaimed), linked items are merely unfiled, and all native notes/links/membership are removed.
-
-## Agent memory (imprint authors)
-
-An imprint manifest can declare a `workspace` block and bind a workspace to a mount as the agent's **living memory** — auto-provisioned on first load, surfaced in `agent_load` as an eager working-set plus a lazy index, with the maturity ladder and `worklist` driving a scheduled consolidation ritual. That binding is opt-in and changes nothing about the direct CLI usage above. See `docs/architecture/workspaces.md` for the full model.
-
-## Sharing between agents (workspace bindings)
-
-An imprint can also declare named `workspaceBindings[]` slots for **shared** workspaces it consumes (`access: read`) or produces (`access: read-write`) — the cross-agent pipeline primitive. The operator wires each slot to a concrete workspace per mount:
-
-```bash
-rip workspace create demand-hub --name "Demand Hub"          # the shared hub (outlives every mount)
-rip agent mount researcher --workspace output=demand-hub     # producer binds at mount time
-rip agent mount-workspace <mount-id> research=demand-hub     # consumer binds post-mount
-```
-
-On load the agent gets an index of each bound workspace (no bodies — fetch via `workspace note get`/`search`) and a report of unbound/broken slots. Cross-account: the hub owner grants membership first (`rip workspace member add … --role viewer|editor`), then the consumer binds by workspace **id**. During a session, always pass the session token on workspace writes — `read` slots reject the agent's own session writes (`WORKSPACE_BINDING_READ_ONLY`). Notes written in a session carry provenance (`sourceImprintSlug`, `sourceMountId`).
-
-## Brains (shared memory)
-
-A **brain** is a workspace with semantic search on plus a **write policy** (an intake gate). Use `rip brain` (alias **`rip br`**) — a thin facade over the same service. Reach for a brain over a plain workspace when multiple agents must **recall** shared knowledge before acting, not just store it.
-
-Set up shared cross-agent memory?
-  → `rip brain create <slug> [--team <slug>] [--instructions <alias>] [--write-policy open|gate-editors|gate-all] [--atomize-playbook <alias>] [--consolidate-playbook <alias>] [--visibility private|unlisted|public]`
-
-Open a brain for anonymous read access (or close it again)?
-  → `rip brain visibility <slug> <private|unlisted|public>`   # flips public read on an existing brain; prints the exposure warning when raising it
-
-Orient before working (instructions + working set + index)?
-  → `rip brain load <brain>`
-
-Run a refinement ritual (atomize raw sources / consolidate the note spine)?
-  → `rip brain load <brain> --command <atomize|consolidate>`   # loads the playbook as the envelope's `flow` block
-  → `rip brain consolidate <brain>` / `rip brain atomize <brain>`   # shortcuts for the two commands
-
-Recall before deciding / drafting / quoting a figure?
-  → `rip brain search <brain> "<query>" [--mode hybrid|keyword|semantic] [--include-superseded] [--expand <n>]`
-
-Deposit a fact / decision / finding?
-  → `rip brain capture <brain> --content "<text>" [--title "..."] [--zone signal|doctrine|output] [--supersedes <slug>] [--mode sync|async]`
-
-Review what's staged (editor+)?
-  → `rip brain inbox <brain>`
-
-Admit / discard / fold a staged item (editor+)?
-  → `rip brain inbox-resolve <brain> <item> accept|reject|merge [--target <slug>]`
-
-Edit the routing contract — what the brain is, WHEN to query it (the most important payload of `load`)?
-  → `rip brain instructions get <brain>`   # current instructions, or a recommended what/when/how scaffold if unset
-  → `rip brain instructions set <brain> "<text>"`   # inline → an auto-managed, versioned `<slug>-instructions` artifact
-  → `rip brain instructions set <brain> --artifact <alias>`   # pin an existing artifact (long / shared guidance)
-
-See what you have / inspect one?
-  → `rip brain list` · `rip brain show <brain>`   # `show` adds source/note/member counts + whether instructions are set
-
-Build it (add source documents) / manage members / retire it?
-  → `rip brain source add|list|remove <brain> <item> [--kind artifact|folder]`
-  → `rip brain member add|list|remove <brain> <account> [--role viewer|editor|admin]`
-  → `rip brain archive <brain>` · `rip brain delete <brain>`   # archive = hide (recoverable); delete = owned items destroyed
-
-Re-pin a refinement playbook on an existing brain?
-  → `rip brain playbook <brain> <atomize|consolidate> --artifact <alias>`
-
-Three things to get right:
-- **Branch on the search discriminator.** Hits carry `kind: "note"` (+ `slug`) for curated notes, or `type: "artifact"` for raw source chunks.
-- **Roles + intake.** A brain adds a **`contributor`** tier *between* viewer and editor (the role table above is viewer/editor/admin only). `capture` needs ≥ contributor, and under a gated `--write-policy` a contributor's capture **stages into the inbox** (not live). `--zone` (default `doctrine`) sets recall weighting; `--supersedes` retires a prior note.
-- **Fan-out is MCP-only.** `brain_search` with no brain searches every brain attached to your session; the CLI always takes an explicit `<brain>`.
-
-**Refinement playbooks.** `--command atomize|consolidate` swaps that command's playbook into the load envelope's `flow` block so a spine agent runs the ritual. By default the command resolves a built-in playbook; pin a per-brain override at creation with `--atomize-playbook <alias>` / `--consolidate-playbook <alias>` (artifact alias/id) when a brain needs its own house rules.
-
-**Public read access (visibility).** A brain is `private` by default (members only). `unlisted` makes it anonymously loadable + searchable by-URL (noindex); `public` also makes it discoverable/indexable. Set it at creation with `--visibility` or flip it later with `rip brain visibility <slug> <level>` — raising it above `private` prints an exposure warning, and only owner-controlled content is ever surfaced (superseded + pending notes are withheld). Anonymous reads hit `GET /v0/brains/:owner/:slug/{load,search}` (no auth); the write surface stays members-only.
-
-Members, roles, slug scoping, and `--json` are exactly as above — a brain is a workspace.
+| `WORKSPACE_FORBIDDEN` | No access to the workspace, the item's audience, or that write |
+| `WORKSPACE_ARCHIVED` | The workspace is archived and read-only; `rip workspace restore` first |
+| `WORKSPACE_AUTHORITY` | The item is governed by a workspace; use the workspace write path (with its precondition) instead of the standalone one |
+| `PRECONDITION_REQUIRED` / `CONFLICT` | Missing or stale version id / revision — re-read and retry |
+| `WORKSPACE_MEMBER_INTERNAL` | The account already has internal access |
+| `ALREADY_IN_WORKSPACE` / `MIXED_OWNERSHIP` / `INELIGIBLE_STORAGE` / `WORKSPACE_BULK_LIMIT` | Adoption refused before any effect |
+| `CROSS_WORKSPACE_MOVE` | The folder and the artifact belong to different workspaces |
+| `TEAM_OWNS_WORKSPACES` | A team that owns workspaces cannot be deleted; delete its workspaces first |
+| `SESSION_END_CONFLICT` | The session was already ended with different input |
+| `WORKSPACE_PAGE_UNACKNOWLEDGED` / `INVALID_WORKSPACE_DELIVERY` | Replay or acknowledge the outstanding change page first |
 
 ## Notes
 
-- **Slugs are scoped.** A workspace slug resolves by precedence: your own workspaces → your teams' → ones you're an explicit member of. If a slug is ambiguous across those (rare — e.g. you're a member of two `research` workspaces), the CLI returns `AMBIGUOUS_WORKSPACE_SLUG`; use the workspace **id** instead.
-- Add `--json` (or `TOKENRIP_OUTPUT=json`) for machine-readable output.
-- Workspaces work identically across the CLI (`rip workspace …`), the MCP `workspace_*` tools, and the REST API (`/v0/workspaces`).
+- Add `--json` (or `TOKENRIP_OUTPUT=json`) for machine-readable output on every command above; human output still prints full identifiers and continuation fields.
+- Workspace commands map one to one to `/v0/workspaces` and the MCP `workspace_*` tools. Browser tab mechanics (pairing, polling) exist only in the operator dashboard.

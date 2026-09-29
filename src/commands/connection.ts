@@ -119,7 +119,8 @@ export async function connectionRemove(id: string, options: { team?: string }): 
 }
 
 export interface ConnectionCallOptions {
-  mount: string;
+  /** Team slug or alias for a team connection; omit for a personal connection. */
+  team?: string;
   connection: string;
   method: string;
   path: string;
@@ -151,10 +152,8 @@ export async function connectionCall(options: ConnectionCallOptions): Promise<vo
   }
   const headers = parseKvList(options.header, '--header');
   if (headers) payload.headers = headers;
-  const { data } = await client.post(
-    `/v0/mounts/${encodeURIComponent(options.mount)}/connection-call`,
-    payload,
-  );
+  if (options.team) payload.team = resolveTeam(options.team);
+  const { data } = await client.post('/v0/connections/call', payload);
   // Emit the upstream { status, headers, body, bodyIsJson, latencyMs } as bare
   // JSON in human mode so a skill can `JSON.parse(stdout)`; --json wraps it in
   // the standard { ok, data } envelope.

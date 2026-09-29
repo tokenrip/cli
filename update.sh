@@ -2,21 +2,17 @@
 #
 # Canonical updater for the `tokenrip-cli` skill.
 #
-# Two callers source this script:
-#
-#   1. The skill's own Auto-Installation block (in SKILL.md) — runs whenever
-#      Claude Code auto-loads the skill.
-#   2. The `tokenrip-bootloader` slash command — runs on every invocation as
-#      a courtesy refresh.
+# Caller: the skill's own Auto-Installation block (in SKILL.md) — runs
+# whenever Claude Code auto-loads the skill.
 #
 # Single source of truth: when the skill content evolves, only this file (and
-# SKILL.md itself) change. The bootloader never reimplements the update.
+# SKILL.md itself) change.
 #
 # Behavior:
 #   - Idempotent: exits cleanly if the installed skill matches the remote.
 #   - Best-effort: silently no-ops when the skill is not installed locally,
 #     when curl fails, or when the manifest is unreachable. Never returns
-#     non-zero (the bootloader's `| bash` should not interrupt a session).
+#     non-zero (a caller's `| bash` should not interrupt a session).
 #
 # Serve this file at: https://tokenrip.com/.well-known/skills/tokenrip/update.sh
 #
@@ -57,8 +53,10 @@ REMOTE_VER=$(curl -fsSL "$BASE/manifest.json" 2>/dev/null | grep -o '"version":"
 rip update >/dev/null 2>&1
 curl -fsSL "$BASE/SKILL.md" -o "$SKILL_DIR/SKILL.md" 2>/dev/null
 mkdir -p "$SKILL_DIR/references"
-for ref in setup-and-identity agent-architecture workspaces surfaces output-and-provenance connections; do
+for ref in setup-and-identity workspaces output-and-provenance connections tasks; do
   curl -fsSL "$BASE/references/${ref}.md" -o "$SKILL_DIR/references/${ref}.md" 2>/dev/null
 done
+# Retired references (surfaces and mounted agents were removed in 2.0).
+rm -f "$SKILL_DIR/references/agent-architecture.md" "$SKILL_DIR/references/surfaces.md"
 
 exit 0

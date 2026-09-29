@@ -25,7 +25,7 @@ export function requireAuthClient(): AuthContext {
   if (!apiKey) {
     throw new CliError(
       'NO_API_KEY',
-      `No API key for agent ${identity.alias || identity.agentId}. Run \`rip agent create\` to re-register.`,
+      `No API key for agent ${identity.alias || identity.agentId}. Run \`rip account create\` to re-register.`,
     );
   }
   const apiUrl = getApiUrl(config);

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { resolveCurrentIdentity, loadIdentities, saveIdentities } from '../identities.js';
+import { resolveCurrentIdentity } from '../identities.js';
 import { signPayload } from '../crypto.js';
 import { getFrontendUrl } from '../config.js';
 import { requireAuthClient } from '../auth-client.js';
-import { CliError, toCliError } from '../errors.js';
+import { toCliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { createHttpClient } from '../client.js';
-import { parseDuration } from './share.js';
+import { parseDuration } from '../input.js';
 
 export interface OperatorLinkIssue {
   code: string;
@@ -19,7 +19,7 @@ export async function operatorLink(
   const identity = resolveCurrentIdentity();
 
   const auth = requireAuthClient();
-  let client = auth.client;
+  const client = auth.client;
   const frontendUrl = getFrontendUrl(auth.config);
 
   // Generate signed link (local, no server call)
@@ -33,27 +33,14 @@ export async function operatorLink(
   );
   const url = `${frontendUrl}/operator/auth?token=${encodeURIComponent(token)}`;
 
-  // Generate short code (server call, for MCP auth / cross-device)
+  // Generate short code for explicit linking from another browser.
   let code: string | null = null;
   let codeError: OperatorLinkIssue | null = null;
-  let warning: OperatorLinkIssue | null = null;
   try {
     const { data } = await createLinkCode(client);
     code = data.data.code;
-  } catch (initialError) {
-    if (shouldRecoverLinkCodeError(initialError)) {
-      try {
-        const recovered = await recoverAuthClient(identity.accountId, identity.secretKey, auth.apiUrl);
-        client = recovered.client;
-        warning = recovered.warning;
-        const { data } = await createLinkCode(client);
-        code = data.data.code;
-      } catch (retryError) {
-        codeError = getErrorDetails(retryError);
-      }
-    } else {
-      codeError = getErrorDetails(initialError);
-    }
+  } catch (error) {
+    codeError = getErrorDetails(error);
   }
 
   const expiresAt = new Date(exp * 1000).toISOString();
@@ -63,31 +50,25 @@ export async function operatorLink(
       url,
       code,
       code_error: codeError,
-      warning,
       agent_id: identity.accountId,
       expires_at: expiresAt,
-      ...(code && { link_page: `${frontendUrl}/login` }),
+      ...(code && { link_page: `${frontendUrl}/operator/connect` }),
     },
     (data) => {
       const codeError = data.code_error as OperatorLinkIssue | null | undefined;
-      const warning = data.warning as OperatorLinkIssue | null | undefined;
       const lines = [
         '',
-        `Operator link for ${data.agent_id}:`,
+        `Link agent ${data.agent_id} to your Tokenrip account:`,
         '',
         `  ${data.url}`,
         '',
       ];
       if (data.code) {
         lines.push(`Link code: ${data.code}`);
-        lines.push(`Enter at ${data.link_page} — expires in 10 minutes`);
+        lines.push(`Sign in, then enter at ${data.link_page} — expires in 10 minutes`);
         lines.push('');
       } else if (codeError?.message) {
         lines.push(`Link code unavailable: ${codeError.message}`);
-        lines.push('');
-      }
-      if (warning?.message) {
-        lines.push(`Warning: ${warning.message}`);
         lines.push('');
       }
       lines.push(`Expires: ${data.expires_at}`);
@@ -99,46 +80,6 @@ export async function operatorLink(
 
 async function createLinkCode(client: ReturnType<typeof createHttpClient>) {
   return client.post('/v0/auth/link-code');
-}
-
-export function shouldRecoverLinkCodeError(error: unknown): boolean {
-  const cliError = toCliError(error);
-  return cliError.code === 'UNAUTHORIZED';
-}
-
-export async function recoverAuthClient(agentId: string, secretKey: string, apiUrl: string): Promise<{
-  client: ReturnType<typeof createHttpClient>;
-  warning: OperatorLinkIssue | null;
-}> {
-  const exp = Math.floor(Date.now() / 1000) + 300;
-  const token = signPayload(
-    { sub: 'key-recovery', iss: agentId, exp, jti: randomUUID() },
-    secretKey,
-  );
-
-  const recoveryClient = createHttpClient({ baseUrl: apiUrl });
-  const { data } = await recoveryClient.post('/v0/agents/recover-key', { token });
-  const apiKey = data.data.api_key;
-  let warning: OperatorLinkIssue | null = null;
-
-  try {
-    const store = loadIdentities();
-    if (store[agentId]) {
-      store[agentId].apiKey = apiKey;
-      saveIdentities(store);
-    }
-  } catch (error) {
-    const details = error instanceof Error ? error.message : String(error);
-    warning = {
-      code: 'KEY_SAVE_FAILED',
-      message: `Recovered a replacement API key but could not save it locally (${details}).`,
-    };
-  }
-
-  return {
-    client: createHttpClient({ baseUrl: apiUrl, apiKey }),
-    warning,
-  };
 }
 
 function getErrorDetails(error: unknown): OperatorLinkIssue {

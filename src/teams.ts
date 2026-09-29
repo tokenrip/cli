@@ -13,9 +13,12 @@ export interface LocalTeam {
   name: string;
   slug: string;
   alias?: string;
-  role: 'owner' | 'member';
+  /** Your role in the team, as the server reported it at the last sync. */
+  role: TeamRole;
   syncedAt: string;
 }
+
+export type TeamRole = 'owner' | 'admin' | 'member';
 
 export type Teams = Record<string, LocalTeam>;
 
@@ -23,7 +26,7 @@ export interface ServerTeamEntry {
   id: string;
   name: string;
   slug: string;
-  role: string;
+  role: TeamRole;
 }
 
 export function loadTeams(): Teams {
@@ -90,7 +93,7 @@ export function syncTeamsFromResponse(serverTeams: ServerTeamEntry[]): void {
       name: st.name,
       slug: st.slug,
       alias: prev?.alias,
-      role: st.role as 'owner' | 'member',
+      role: st.role,
       syncedAt: new Date().toISOString(),
     };
   }

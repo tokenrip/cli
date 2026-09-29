@@ -1,6 +1,6 @@
 # Connections
 
-A **Connection** is an encrypted, server-side credential that turns Tokenrip into a general **API / inference router**. You store an upstream API key once (an LLM provider, a data API, anything HTTP); a mount then calls that upstream through `rip connection call` and the platform injects the auth **server-side** — the caller never sees the plaintext secret. Return to [SKILL.md](../SKILL.md) for decision trees and workflows. For the full model (proxy safeguards, SSRF defense, failure codes, REST surface) read `docs/architecture/connections.md`.
+A **Connection** is an encrypted, server-side credential that turns Tokenrip into a general **API / inference router**. You store an upstream API key once (an LLM provider, a data API, anything HTTP); you, or any current member of the owning team, then call that upstream by name through `rip connection call` (MCP `connection_call`) and the platform injects the auth **server-side** — the caller never sees the plaintext secret. Return to [SKILL.md](../SKILL.md) for decision trees and workflows. For the full model (proxy safeguards, SSRF defense, failure codes, REST endpoints) read `docs/architecture/connections.md`.
 
 ## Why a Connection instead of a per-service tool
 
@@ -13,9 +13,9 @@ A Connection is owned by a personal account **or** a team (`--team <slug>`), nev
 | Scope | Who can read / list / invoke | Who can create / rotate / disable / delete |
 |---|---|---|
 | Personal (default) | The owning account | The owning account |
-| Team (`--team <slug>`) | Any current team member | **Only the team owner** |
+| Team (`--team <slug>`) | Any current team member (members may also create) | The connection's creator or the team owner |
 
-Team ownership is the point: the team owner configures a key once, every member can invoke it through a team mount, and nobody but the owner ever touches (or sees) the secret.
+Team ownership is the point: someone configures a key once, every current member can invoke it with `rip connection call --team <slug>`, and nobody ever sees the secret.
 
 ## The secret is write-only
 
@@ -63,32 +63,36 @@ rip connection rm <id> --team quintel
 
 | Flag | Meaning |
 |---|---|
-| `--name <name>` | Connection name, unique per owner. This is the handle a mount grants and `call` targets. |
+| `--name <name>` | Connection name, unique per owner. This is the handle `call` targets. |
 | `--base-url <url>` | Upstream API origin (SSRF-checked; private/loopback addresses are rejected). |
 | `--auth-type <type>` | `bearer` (Authorization: Bearer), `header` (custom header — needs `--auth-header-name`), `basic`, or `query`. |
 | `--auth-header-name <name>` | Header the secret is injected into when `--auth-type header` (e.g. `x-api-key`). |
-| `--allowed-paths <csv>` | Comma-separated path globs the mount may hit (`*` matches any chars incl. `/`), e.g. `'/v1/*'`. Omit to allow any path. |
+| `--allowed-paths <csv>` | Comma-separated path globs a call may hit (`*` matches any chars incl. `/`), e.g. `'/v1/*'`. Omit to allow any path. |
 | `--header k=v` | Static **default header**, always sent (repeatable). This is how required provider statics like `anthropic-version` reach upstream — they bypass the caller header allowlist. Must not name the auth header. |
 | `--query k=v` | Static **default query** param, always sent (repeatable). |
 | `--rate-limit-per-min <n>` | Per-minute call cap (default 60). |
 | `--daily-quota <n>` | 24h call cap (default 1000). |
-| `--team <slug>` | Make it team-owned (owner-managed, member-invokable). |
+| `--team <slug>` | Make it team-owned (member-invokable; creator or team owner manages it). |
 
 There is no CLI update for non-secret fields — disable + recreate, or use the REST `PATCH /v0/connections/:id` documented in `docs/architecture/connections.md`.
 
 ## `rip connection call` — invoking an upstream
 
-A call is authorized only through a **mount** that has been granted the connection name (see grants below). Auth and default headers/query are injected server-side; you provide the method, path, and body.
+Call one of your own personal connections, or a team connection of a team you currently belong to, by name. The call goes straight to the connection; nothing else needs to be set up first. Auth and default headers/query are injected server-side; you provide the method, path, and body. Every call is audited with the calling account (metadata only, never bodies).
 
 ```bash
-rip connection call --mount <mount-id> --connection <name> \
+# Team connection (you must be a current member of the team)
+rip connection call --team <slug> --connection <name> \
   --method <M> --path <path> [--body <json>] [--query <json>] [--header k=v]
+
+# Personal connection (you own it)
+rip connection call --connection <name> --method <M> --path <path>
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--mount <id>` | Mount whose `granted_connections` authorize the call (`rip agent mounts` to find it). |
-| `--connection <name>` | The granted connection name to route through. |
+| `--team <slug>` | Call the team's connection. A non-member gets `403 CONNECTION_FORBIDDEN`. Omit for a personal connection. |
+| `--connection <name>` | The connection name. A missing or disabled one is `404 CONNECTION_NOT_FOUND`. |
 | `--method <M>` | `GET` / `POST` / `PUT` / `PATCH` / `DELETE`. |
 | `--path <path>` | Path under the connection's base URL; must pass `--allowed-paths`. |
 | `--body <json>` | JSON request body (parsed and re-serialized; invalid JSON errors locally). |
@@ -100,40 +104,14 @@ rip connection call --mount <mount-id> --connection <name> \
 Using the team `minimax` connection created above (`--auth-header-name x-api-key`, `--header anthropic-version=2023-06-01`, `--allowed-paths '/v1/*'`):
 
 ```bash
-rip connection call --mount <mount-id> --connection minimax \
+rip connection call --team quintel --connection minimax \
   --method POST --path /v1/messages \
   --body '{"model":"MiniMax-M2.5","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}'
 ```
 
 The x-api-key auth and the `anthropic-version` header are added server-side. **Output in human mode is the bare upstream response** `{ status, headers, body, bodyIsJson, latencyMs }` printed as JSON on stdout — so a skill can `JSON.parse(stdout)` directly. `--json` wraps that same object in the standard `{ ok, data }` envelope. Non-streaming responses only; a 30s timeout and a 5MB response cap apply.
 
-## Granting a connection to a mount
-
-Creating a connection is not the same as letting a mount use it — that's a deliberate second gate. A mount can invoke only the connection names in its `granted_connections` set:
-
-```bash
-rip agent mount-grants <mount-id> --connections '["minimax","openai"]'   # replace the set; '[]' clears
-```
-
-Each granted name must resolve to an active Connection under the mount's owner (team mount → team-owned; personal mount → the creator's). Granting a *team* connection to a team mount is restricted to the team owner or the mount creator.
-
-## Connection-binding slots (declarative wiring at mount time)
-
-A skill / agent manifest can declare **connection-binding slots** — named placeholders (e.g. `image-gen`) that the manifest references without hard-coding a real connection. At mount time the operator binds each slot to a concrete connection name they own:
-
-```bash
-# Bind slots when creating the mount (repeatable)
-rip agent mount quintel-skill --team quintel --connection image-gen=minimax
-
-# Bind / re-bind or unbind a slot after mount
-rip agent mount-connection <mount-id> image-gen=minimax
-rip agent mount-connection <mount-id> --unbind image-gen
-```
-
-This keeps the manifest portable: the skill says "I need an image-generation connection called `image-gen`"; each operator points that slot at whatever provider connection they've configured. The bound connection still has to be granted to the mount (above) for `connection call` to authorize.
-
 ## Related
 
-- Concept + safety model (proxy safeguards, SSRF, failure codes, REST surface): `docs/architecture/connections.md`
-- Grants and imprint config: `rip agent mount-grants` / `rip agent mount-config` (see `references/agent-architecture.md`)
+- Concept + safety model (proxy safeguards, SSRF, failure codes, REST endpoints): `docs/architecture/connections.md`
 - MiniMax / Anthropic / generic provider configs: the "verified provider configs" table in `docs/architecture/connections.md`

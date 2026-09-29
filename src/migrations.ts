@@ -3,7 +3,6 @@ import path from 'node:path';
 import { bech32 } from 'bech32';
 import { getConfigDir, loadConfig, saveConfig } from './config.js';
 import { loadIdentity, saveIdentity } from './identity.js';
-import { loadContacts, saveContacts } from './contacts.js';
 import { saveIdentities } from './identities.js';
 
 const CURRENT_CONFIG_VERSION = 3;
@@ -21,16 +20,6 @@ function migrateV1toV2(): void {
     // saveIdentity backs up identity.json to identity.json.bak automatically
     saveIdentity({ ...identity, agentId: migrateAgentId(identity.agentId) });
   }
-
-  const contacts = loadContacts();
-  let contactsChanged = false;
-  for (const name of Object.keys(contacts)) {
-    if (contacts[name].agent_id.startsWith('trip1')) {
-      contacts[name] = { ...contacts[name], agent_id: migrateAgentId(contacts[name].agent_id) };
-      contactsChanged = true;
-    }
-  }
-  if (contactsChanged) saveContacts(contacts);
 }
 
 // v2 → v3: move identity.json + config.apiKey into identities.json store

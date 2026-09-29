@@ -9,12 +9,43 @@ export interface ClientConfig {
   apiKey?: string;
 }
 
+/**
+ * Slugify the harness name the CLI advertises on every request. Mirrors the
+ * backend's `normalizeSurface` (apps/backend/src/api/auth/auth.guard.ts) so a
+ * value that survives here survives there unchanged.
+ */
+function normalizeSurface(raw: string): string | null {
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+    .replace(/-+$/g, '');
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * The harness name this process reports. The backend records it on task claims
+ * (`claimed_via`) and agent sessions (`surface`).
+ *
+ * An explicit `TOKENRIP_SURFACE` wins; otherwise Claude Code names itself (it
+ * exports `CLAUDECODE=1` into every tool shell) and anything else is plain
+ * `cli`. The fallback is applied *after* normalization, so an empty or
+ * unslugifiable `TOKENRIP_SURFACE` still yields a surface instead of silently
+ * dropping attribution.
+ */
+export function resolveSurface(env: Record<string, string | undefined> = process.env): string {
+  return normalizeSurface(env.TOKENRIP_SURFACE ?? '') ?? (env.CLAUDECODE ? 'claude-code' : 'cli');
+}
+
 export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   const baseUrl = config.baseUrl || 'https://api.tokenrip.com';
   const headers: Record<string, string> = {};
   if (config.apiKey) {
     headers['Authorization'] = `Bearer ${config.apiKey}`;
   }
+  headers['X-Tokenrip-Surface'] = resolveSurface();
 
   const client = axios.create({
     baseURL: baseUrl,

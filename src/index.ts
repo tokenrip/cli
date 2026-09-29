@@ -2,13 +2,13 @@ export { loadConfig, saveConfig, getApiUrl, getApiKey, CONFIG_DIR } from './conf
 export type { TokenripConfig } from './config.js';
 export { createHttpClient } from './client.js';
 export type { ClientConfig } from './client.js';
+export type { WorkspaceSummary } from './commands/workspace.js';
 export { CliError, toCliError } from './errors.js';
 export { outputSuccess, outputError, wrapCommand } from './output.js';
 export { requireAuthClient } from './auth-client.js';
 export type { AuthContext } from './auth-client.js';
 export * from './crypto.js';
 export * from './identity.js';
-export { loadState, saveState, type TokenripState } from './state.js';
 export {
   loadIdentities,
   saveIdentities,
@@ -22,11 +22,7 @@ export {
   type IdentityStore,
 } from './identities.js';
 export { accountIdToPublicKey, agentIdToPublicKey } from './crypto.js';
-export { loadContacts, saveContacts, addContact, removeContact, resolveRecipient, resolveRecipients } from './contacts.js';
 export { search } from './commands/search.js';
-export { credSet, credGet, credList, credUnset, credPath, readCreds, writeCreds } from './commands/cred.js';
-export type { CredFields, CredStore } from './commands/cred.js';
-export { folderCreate, folderList, folderShow, folderDelete, folderRename, artifactMove } from './commands/folder.js';
-export type { Contact, Contacts } from './contacts.js';
+export { folderCreate, folderList, folderShow, folderDelete, folderRename, folderUpdate, folderShareContents, artifactMove } from './commands/folder.js';
 export { loadTeams, saveTeams, resolveTeam, resolveTeams, setAlias, removeAlias, syncTeamsFromResponse } from './teams.js';
-export type { LocalTeam, Teams, ServerTeamEntry } from './teams.js';
+export type { LocalTeam, Teams, ServerTeamEntry, TeamRole } from './teams.js';
