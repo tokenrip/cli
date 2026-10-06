@@ -1,3 +1,4 @@
+import { assertWorkspaceCreationScope } from '../input.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import FormData from 'form-data';
@@ -10,6 +11,7 @@ import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
 
 export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string; workspaceId?: string; audience?: 'internal' | 'shared'; workspaceSessionId?: string }): Promise<void> {
+  assertWorkspaceCreationScope(options);
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
@@ -68,6 +70,7 @@ export async function upload(filePath: string, options: { title?: string; parent
     type: data.data.type,
     mimeType: data.data.mimeType,
     currentVersionId: data.data.currentVersionId,
+    ...(data.data.workspaceId ? { workspaceId: data.data.workspaceId, audience: data.data.audience, workspaceRevision: data.data.workspaceRevision } : {}),
     ...(data.data.publicUrl ? { publicUrl: data.data.publicUrl } : {}),
   }, formatArtifactCreated);
 }

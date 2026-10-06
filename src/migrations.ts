@@ -1,11 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { bech32 } from 'bech32';
-import { getConfigDir, loadConfig, saveConfig } from './config.js';
+import { CURRENT_CONFIG_VERSION, getConfigDir, loadConfig, saveConfig } from './config.js';
 import { loadIdentity, saveIdentity } from './identity.js';
 import { saveIdentities } from './identities.js';
 
-const CURRENT_CONFIG_VERSION = 3;
 
 function migrateAgentId(id: string): string {
   const { words } = bech32.decode(id, 90);

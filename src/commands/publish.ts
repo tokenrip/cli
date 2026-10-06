@@ -1,3 +1,4 @@
+import { assertWorkspaceCreationScope } from '../input.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { requireAuthClient } from '../auth-client.js';
@@ -24,7 +25,7 @@ function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceI
  * when the backend response doesn't echo it.
  */
 function artifactCreatedPayload(
-  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; publicUrl?: string },
+  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; publicUrl?: string; workspaceId?: string; audience?: string; workspaceRevision?: number },
   url: string,
   aliasFallback: string | undefined,
 ): Record<string, unknown> {
@@ -38,6 +39,7 @@ function artifactCreatedPayload(
     type: data.type,
     currentVersionId: data.currentVersionId,
     publicUrl: data.publicUrl ?? null,
+    ...(data.workspaceId ? { workspaceId: data.workspaceId, audience: data.audience, workspaceRevision: data.workspaceRevision } : {}),
   };
 }
 
@@ -66,6 +68,7 @@ export async function publish(
     workspaceSessionId?: string;
   },
 ): Promise<void> {
+  assertWorkspaceCreationScope(options);
   if (!VALID_TYPES.includes(options.type as ContentType)) {
     throw new CliError('INVALID_TYPE', `Type must be one of: ${VALID_TYPES.join(', ')}`);
   }

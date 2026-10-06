@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
 import { Command } from 'commander';
+import type { WorkspaceLoadSelector } from './commands/workspace.js';
 import { configSetKey, configSetUrl, configShow } from './commands/config.js';
 import { upload } from './commands/upload.js';
 import { publish } from './commands/publish.js';
@@ -58,10 +59,10 @@ artifact
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
   .option('--folder <slug>', 'File into folder')
   .option('--public-asset', 'Store in a public bucket and return a direct CDN URL (publicUrl)')
-  .option('--visibility <level>', 'Artifact visibility (link | public | private); defaults to public with --public-asset')
-  .option('--workspace-id <id>', 'Create inside a workspace')
-  .option('--audience <audience>', 'Workspace audience: internal | shared')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .option('--visibility <level>', 'Standalone visibility (link | public | private); omit with --workspace-id')
+  .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
+  .option('--workspace-session-id <id>', 'Attribute creation to your live session (requires --workspace-id)')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
@@ -90,11 +91,11 @@ artifact
   .option('--folder <slug>', 'File into folder')
   .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
   .option('--public-asset', 'Store bytes in a public bucket and return a direct CDN URL (not valid with private visibility)')
-  .option('--visibility <level>', 'private | link | public (default link)')
+  .option('--visibility <level>', 'Standalone visibility: private | link | public (default link); omit with --workspace-id')
   .option('--strict', 'For tables: reject unknown columns and type-mismatched values on row writes')
-  .option('--workspace-id <id>', 'Create inside a workspace')
-  .option('--audience <audience>', 'Workspace audience: internal | shared')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
+  .option('--workspace-session-id <id>', 'Attribute creation to your live session (requires --workspace-id)')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -618,26 +619,119 @@ bundle
   .action(wrapCommand(bundleDelete));
 
 // ── auth commands ───────────────────────────────────────────────────
-const auth = program.command('auth').description('Agent identity and authentication');
+const auth = program.command('auth').description('Sign in, hand off to another agent, and manage keys');
+
+auth
+  .command('login')
+  .description("Sign in with the person's email and a six-digit code")
+  .requiredOption('--email <email>', "The person's email address")
+  .option('--code <code>', 'The six-digit code (emailed, or from a connected agent or the dashboard)')
+  .option('--name <name>', 'Name for this agent\'s key (default: "Claude Code" under Claude Code, else "CLI")')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth login --email ana@example.com                # emails a six-digit code
+  $ rip auth login --email ana@example.com --code 123456  # signs in with it
+  $ rip auth login --email ana@example.com --code 123456 --name "laptop"
+
+  Step 1 emails a code (it lasts 10 minutes; check spam if it does not arrive).
+  Step 2 takes that code, or one a connected agent made with \`rip auth code\`,
+  and gives this agent its own key on the person's account. The key is saved
+  and this account becomes the current one. No other agent is disconnected.
+  Signing in again replaces (and revokes) only this machine's previous key.
+`)
+  .action(wrapCommand(async (options) => {
+    const { authLogin } = await import('./commands/auth-login.js');
+    await authLogin(options);
+  }));
+
+auth
+  .command('code')
+  .description("Make a sign-in code for the person's next agent")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth code
+
+  Prints a line for the person to paste into their next agent: the setup
+  guide, their email, and a six-digit code (valid 10 minutes, once). That
+  agent signs in with it and joins the same account; no email is sent.
+`)
+  .action(wrapCommand(async () => {
+    const { authCode } = await import('./commands/auth-keys.js');
+    await authCode();
+  }));
+
+const keys = auth.command('keys').description('List, create, and revoke the keys on this account');
+
+keys
+  .command('list', { isDefault: true })
+  .description('List every key: connected agents, keys made for hosts, connectors')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth keys
+  $ rip auth keys list --json
+`)
+  .action(wrapCommand(async () => {
+    const { authKeysList } = await import('./commands/auth-keys.js');
+    await authKeysList();
+  }));
+
+keys
+  .command('create')
+  .description('Create a key for a host that takes a pasted key (a vault or settings field)')
+  .requiredOption('--name <name>', 'What the key is for, e.g. "Hermes"')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth keys create --name "Hermes"
+
+  The key is shown once. Paste it into the host's key vault or settings,
+  not into a chat. It has full access to the account; revoke it any time.
+`)
+  .action(wrapCommand(async (options) => {
+    const { authKeysCreate } = await import('./commands/auth-keys.js');
+    await authKeysCreate(options);
+  }));
+
+keys
+  .command('revoke')
+  .argument('<id>', 'Key id from `rip auth keys`')
+  .description('Revoke a key and disconnect the agent using it')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth keys revoke 11111111-1111-4111-8111-111111111111
+
+  Revoking the key this CLI uses (marked "(this agent)" in \`rip auth keys\`)
+  disconnects this CLI too; sign in again afterwards.
+`)
+  .action(wrapCommand(async (id: string) => {
+    const { authKeysRevoke } = await import('./commands/auth-keys.js');
+    await authKeysRevoke(id);
+  }));
+
+auth
+  .command('rotate-key')
+  .alias('create-key')
+  .description("Replace this agent's key (other agents keep theirs)")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth rotate-key
+
+  Revokes the key this agent uses and saves a new one. Every other key on
+  the account (other agents, connectors) keeps working.
+
+  Refused (ENV_KEY_ROTATION) while TOKENRIP_API_KEY is set: unset it to rotate
+  a stored key; for a key kept in a host's vault, make a new one with
+  \`rip auth keys create --name <name>\` and revoke the old one.
+`)
+  .action(wrapCommand(async () => {
+    const { authRotateKey } = await import('./commands/auth.js');
+    await authRotateKey();
+  }));
 
 auth
   .command('register')
-  .description('Register a new agent identity')
-  .option('--alias <alias>', 'Set agent alias (e.g. alice)')
-  .option('--force', 'Overwrite existing identity')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip auth register
-  $ rip auth register --alias research-bot
-
-  Generates an Ed25519 keypair, registers with the server, and saves
-  your identity and API key locally. This is the first command to run.
-
-  If your agent is already registered (e.g. you lost your API key),
-  re-running this command will recover a new key automatically.
-
-  Use --force to replace your identity entirely with a new one.
-`)
+  .description('Retired: use `rip auth login`')
+  .option('--alias <alias>', 'Ignored')
+  .option('--force', 'Ignored')
   .action(wrapCommand(async (options) => {
     const { authRegister } = await import('./commands/auth.js');
     await authRegister(options);
@@ -645,37 +739,12 @@ EXAMPLES:
 
 auth
   .command('claim')
-  .argument('<code>', 'Connection code from your operator (XXXX-XXXX, case-insensitive)')
-  .option('--label <label>', 'Friendly label for the new agent (defaults to "remote-agent")')
-  .description('Claim an operator-minted connection code and bind this CLI to it')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip auth claim ABCD-EFGH
-  $ rip auth claim abcd-efgh --label "telegram-bot"
-
-  Codes are minted from the operator dashboard (Settings → Connect agent)
-  and live for 10 minutes. Single-use: the second claim returns INVALID_CODE.
-  On success the API key is saved to ~/.config/tokenrip/identities.json and
-  the new identity is selected if no account was already active.
-`)
+  .argument('[code]', 'Ignored')
+  .option('--label <label>', 'Ignored')
+  .description('Retired: use `rip auth login`')
   .action(wrapCommand(async (code, options) => {
     const { authClaim } = await import('./commands/auth-claim.js');
     await authClaim(code, options);
-  }));
-
-auth
-  .command('create-key')
-  .description('Regenerate API key (revokes current key)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip auth create-key
-
-  Generates a new API key and revokes the previous one.
-  The new key is saved automatically.
-`)
-  .action(wrapCommand(async () => {
-    const { authCreateKey } = await import('./commands/auth.js');
-    await authCreateKey();
   }));
 
 auth
@@ -715,19 +784,10 @@ EXAMPLES:
 
 auth
   .command('link')
-  .description('Recover a server-managed MCP identity for the CLI')
-  .requiredOption('--alias <alias>', 'Your operator username')
-  .requiredOption('--password <password>', 'Your operator password')
-  .option('--force', 'Overwrite existing local identity')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip auth link --alias myname --password mypass
-
-  Downloads your agent's keypair from the server and saves it locally.
-  If you first connected through MCP, add a handle and password in web
-  account settings before using this command. It works for primary
-  accounts with server-managed keypairs.
-`)
+  .description('Retired: use `rip auth login`')
+  .option('--alias <alias>', 'Ignored')
+  .option('--password <password>', 'Ignored')
+  .option('--force', 'Ignored')
   .action(wrapCommand(async (options) => {
     const { link } = await import('./commands/link.js');
     await link(options);
@@ -738,8 +798,13 @@ const agent = program.command('account').description('Manage account identities'
 
 agent
   .command('create')
-  .description('Create and register a new agent identity')
+  .description('Create a keypair identity (advanced; most agents sign in with `rip auth login`)')
   .option('--alias <name>', 'Human-readable alias')
+  .addHelpText('after', `
+  Generates an Ed25519 keypair and registers a new, separate account for it.
+  It does not join any person's account; link it with \`rip operator-link\`.
+  To work in a person's workspaces, sign in instead: rip auth login --email <email>.
+`)
   .action(wrapCommand(async (options) => {
     const { accountCreate } = await import('./commands/account.js');
     await accountCreate(options);
@@ -768,6 +833,23 @@ agent
   .action(wrapCommand(async (name: string) => {
     const { accountRemove } = await import('./commands/account.js');
     accountRemove(name);
+  }));
+
+agent
+  .command('recover-key')
+  .description("Get a new key for a keypair identity that lost its key")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip account recover-key
+  $ rip --agent research-bot account recover-key
+
+  Signs a recovery request with the identity's local keypair and saves the
+  new key. Other keys on the account keep working. An identity that signed
+  in by email has no keypair: sign in again with \`rip auth login\`.
+`)
+  .action(wrapCommand(async () => {
+    const { accountRecoverKey } = await import('./commands/account.js');
+    await accountRecoverKey();
   }));
 
 agent
@@ -855,7 +937,9 @@ EXAMPLES:
 
 Generates a signed URL and a 6-digit code for linking this agent to a signed-in
 operator account. The URL is signed locally with your Ed25519 key. The code is
-generated via the server and can be entered at tokenrip.com/operator/connect.
+generated via the server and can be entered at tokenrip.com/operator/agents.
+Needs a local keypair identity. An identity that signed in with
+\`rip auth login\` is already on the person's account.
 `)
   .action(wrapCommand(async (options) => {
     const { operatorLink } = await import('./commands/operator-link.js');
@@ -885,11 +969,13 @@ const config = program.command('config').description('Manage CLI configuration')
 config
   .command('set-key')
   .argument('<key>', 'Your API key')
-  .description('Save your API key for authentication')
+  .description('Save a key for public reads (not used by authenticated commands)')
   .addHelpText('after', `
 NOTE:
-  In most cases you won't need this — \`rip auth register\` saves your key automatically.
-  Use this only if you need to manually paste in a key from another source.
+  This does not sign in. Authenticated commands use the current identity's key
+  (or TOKENRIP_API_KEY), never the key saved here.
+  To use a key from elsewhere, set TOKENRIP_API_KEY. To get a key of your own,
+  sign in: \`rip auth login --email <your email>\`.
 `)
   .action(wrapCommand(configSetKey));
 
@@ -1052,6 +1138,124 @@ EXAMPLES:
     await connectionCall(options);
   }));
 
+// ── skill commands ───────────────────────────────────────────────────
+const skill = program
+  .command('skill')
+  .description('Skills — versioned folders of agent instructions (SKILL.md) owned by your operator or a team');
+
+skill
+  .command('list')
+  .option('--team <slug>', "Only this team's skills")
+  .description('List the skills in reach: your operator\'s personal skills and your teams\' skills')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip skill list
+  $ rip skill list --team quintel
+`)
+  .action(wrapCommand(async (options) => {
+    const { skillList } = await import('./commands/skill.js');
+    await skillList(options);
+  }));
+
+skill
+  .command('get')
+  .argument('<skill>', 'Skill name, id, or link (…/skills/<id>)')
+  .option('--team <slug>', "The team's skill of that name (without it, a name means a personal skill)")
+  .option('--file <path>', 'Write one file of the skill to stdout (raw bytes)')
+  .option('--dir <folder>', 'Write every file into a new or empty folder')
+  .description('Print a skill\'s instructions and file list, or fetch its files')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip skill get blog-post
+  $ rip skill get blog-post --team quintel --file references/style.md
+  $ rip skill get https://tokenrip.com/skills/<id>          # link-shared: no identity needed
+  $ rip skill get blog-post --dir ./blog-post                # edit locally, then publish
+`)
+  .action(wrapCommand(async (ref, options) => {
+    const { skillGet } = await import('./commands/skill.js');
+    await skillGet(ref, options);
+  }));
+
+skill
+  .command('publish')
+  .argument('<folder>', 'Folder with SKILL.md (frontmatter name and description) and any supporting files')
+  .option('--team <slug>', 'Publish as a team skill (any current member)')
+  .option('--expected-version <n>', 'Compare the folder with version <n> and refuse if the skill is no longer at it (0: must not exist)')
+  .description('Publish a folder as the next version of the skill its SKILL.md names (creates it on first publish)')
+  .addHelpText('after', `
+The folder is compared with its base version: the version \`rip skill get --dir\` fetched it
+at (or this folder last published), else the current version, unless --expected-version is
+given. Changed and new files are sent; files of the base version missing from the folder are
+removed. If anyone published since the base version, nothing is published and the server
+answers CONFLICT: fetch the current version with \`rip skill get <name> --dir <new-folder>\`,
+merge your changes into it, and publish that folder.
+
+EXAMPLES:
+  $ rip skill publish ./blog-post
+  $ rip skill publish ./blog-post --team quintel
+  $ rip skill publish ./blog-post --expected-version 4
+`)
+  .action(wrapCommand(async (folder, options) => {
+    const { skillPublish } = await import('./commands/skill.js');
+    await skillPublish(folder, options);
+  }));
+
+skill
+  .command('share')
+  .argument('<skill>', 'Skill name or id')
+  .option('--team <slug>', "The team's skill of that name (owner or admin)")
+  .option('--link', 'Anyone with the link can read and install it')
+  .option('--private', 'Stop link sharing')
+  .description('Share a skill by link, or stop sharing it')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip skill share blog-post --link
+  $ rip skill share blog-post --team quintel --private
+`)
+  .action(wrapCommand(async (ref, options) => {
+    const { skillShare } = await import('./commands/skill.js');
+    await skillShare(ref, options);
+  }));
+
+skill
+  .command('delete')
+  .argument('<skill>', 'Skill name or id')
+  .option('--team <slug>', "The team's skill of that name (owner or admin)")
+  .description('Delete a skill and every version (cannot be undone)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip skill delete old-procedure
+  $ rip skill delete old-procedure --team quintel
+`)
+  .action(wrapCommand(async (ref, options) => {
+    const { skillDelete } = await import('./commands/skill.js');
+    await skillDelete(ref, options);
+  }));
+
+skill
+  .command('install')
+  .option('--target <target>', 'claude (~/.claude/skills) or agents (~/.agents/skills); default claude inside Claude Code, else agents')
+  .description('Write a stub for every skill in reach into your skills folder, so the host triggers them natively')
+  .addHelpText('after', `
+Each stub is a folder with the skill's name and description and a body that runs
+rip skill get <skill-id> as this agent. Re-running refreshes changed stubs and
+removes stubs whose skill is gone, deleting only files it wrote. Only folders the
+CLI wrote for this agent (marked with .tokenrip-skill.json) are touched; a local
+skill or another agent's stub with the same name is left alone and reported.
+
+Run it again after skills are published, renamed or deleted. Install into one
+target per host: Cursor and Copilot read both folders.
+
+EXAMPLES:
+  $ rip skill install
+  $ rip skill install --target agents     # hosts that read ~/.agents/skills
+  $ rip skill install --target claude     # Claude Code
+`)
+  .action(wrapCommand(async (options) => {
+    const { skillInstall } = await import('./commands/skill.js');
+    await skillInstall(options);
+  }));
+
 // ── task commands ────────────────────────────────────────────────────
 const collectResult = (v: string, prev: string[] = []): string[] => prev.concat(v);
 
@@ -1102,7 +1306,7 @@ task
   .command('add')
   .argument('<title>', 'Task title')
   .requiredOption('--workspace-id <id>', 'The workspace to file the task in')
-  .option('--audience <audience>', 'Workspace audience: internal | shared')
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
   .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .option('--assignee <who>', 'Suggested assignee — account id or alias (a workspace editor)')
   .option('--kind <kind>', 'Task kind (lowercase slug, e.g. process-call)')
@@ -1402,10 +1606,11 @@ workspace
 workspace
   .command('show')
   .argument('<workspace>', 'Workspace id (UUID)')
-  .description('Show a workspace')
-  .action(wrapCommand(async (ws) => {
+  .description('Show workspace identity, capabilities, and this credential’s resumable sessions')
+  .option('--session-cursor <cursor>', 'Continue bounded recovery candidates from workspace show')
+  .action(wrapCommand(async (ws, options) => {
     const { workspaceShow } = await import('./commands/workspace.js');
-    await workspaceShow(ws);
+    await workspaceShow(ws, options);
   }));
 
 workspace
@@ -1492,7 +1697,7 @@ const workspacePinGroup = workspace.command('pin').description('Manage ordered m
 workspacePinGroup.command('add').argument('<workspace>').argument('<artifact-id>').option('--position <n>').action(wrapCommand(async (ws, artifactId, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(ws, artifactId, options); }));
 workspacePinGroup.command('remove').argument('<workspace>').argument('<artifact-id>').action(wrapCommand(async (ws, artifactId) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(ws, artifactId); }));
 
-workspace.command('load').argument('<workspace>').requiredOption('--operation-id <id>', 'Retry identity').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Start or resume a credential-bound workspace session and load bounded context').action(wrapCommand(async (ws, options) => { const { operationId, ...page } = options; const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, operationId, page); }));
+workspace.command('load').argument('<workspace>').option('--operation-id <id>', 'Intentionally start keyed participation or replay that start').option('--session-id <id>', 'Resume exactly this live session (exclusive with --operation-id)').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Load bounded context: choose exactly one --operation-id or --session-id').action(wrapCommand(async (ws, options) => { const { operationId, sessionId, ...page } = options; const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { operationId, sessionId } as WorkspaceLoadSelector, page); }));
 const workspaceSession = workspace.command('session').description('Manage credential-bound workspace sessions');
 workspaceSession.command('end').argument('<workspace>').argument('<session-id>').option('--summary <text>').option('--handoff-artifact-id <id>').action(wrapCommand(async (ws, sessionId, options) => { const { workspaceSessionEnd } = await import('./commands/workspace.js'); await workspaceSessionEnd(ws, sessionId, options); }));
 const workspaceView = workspace.command('view').description('Inspect or explicitly navigate a paired browser view');
@@ -1510,8 +1715,8 @@ folder
   .command('create')
   .argument('<slug>', 'Folder slug (lowercase, alphanumeric, hyphens)')
   .option('--team <slug>', 'Create as a team folder')
-  .option('--workspace <workspace-id>', 'Create inside a workspace')
-  .option('--audience <audience>', 'Workspace audience: internal | shared')
+  .option('--workspace <workspace-id>', 'Create inside a workspace; no expected revision required')
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace)')
   .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
   .description('Create a new folder')
   .action(wrapCommand(async (slug, options) => {

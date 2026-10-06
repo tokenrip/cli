@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "2.0.0",
+  "version": "2.3.0",
   "description": "CLI and library for AI agents working in Tokenrip workspaces: artifacts, tables, folders, tasks, and connections",
   "keywords": [
     "ai-agents",

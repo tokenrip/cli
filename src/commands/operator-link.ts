@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { resolveCurrentIdentity } from '../identities.js';
+import { requireLocalKeypair, resolveCurrentIdentity } from '../identities.js';
 import { signPayload } from '../crypto.js';
 import { getFrontendUrl } from '../config.js';
 import { requireAuthClient } from '../auth-client.js';
@@ -17,6 +17,8 @@ export async function operatorLink(
   options: { expires?: string },
 ): Promise<void> {
   const identity = resolveCurrentIdentity();
+  // An identity that signed in by email is already on the person's account: nothing to link.
+  requireLocalKeypair(identity, 'It is already on the account of the person whose email signed it in.');
 
   const auth = requireAuthClient();
   const client = auth.client;
@@ -52,7 +54,7 @@ export async function operatorLink(
       code_error: codeError,
       agent_id: identity.accountId,
       expires_at: expiresAt,
-      ...(code && { link_page: `${frontendUrl}/operator/connect` }),
+      ...(code && { link_page: `${frontendUrl}/operator/agents` }),
     },
     (data) => {
       const codeError = data.code_error as OperatorLinkIssue | null | undefined;

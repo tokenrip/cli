@@ -1,6 +1,6 @@
 # Tokenrip CLI Reference
 
-Every command in `@tokenrip/cli` 2.0, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
+Every command in `@tokenrip/cli` 2.2, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
 
 ## Contents
 
@@ -13,6 +13,7 @@ Every command in `@tokenrip/cli` 2.0, grouped by area. `rip --help` and `rip <co
 - [Activity](#activity)
 - [Search](#search)
 - [Connection commands](#connection-commands)
+- [Skill commands](#skill-commands)
 - [Bundle commands](#bundle-commands)
 - [Team commands](#team-commands)
 - [Auth commands](#auth-commands)
@@ -106,14 +107,14 @@ rip workspace pin remove <workspace> <artifact-id>
 
 ### `rip workspace load <workspace>`
 
-Start or resume your credential's session and load bounded context: the workspace, pins, artifacts (50), tasks (20), activity (50), handoffs, `session { id, status }`, and a `browserLink`. The same `--operation-id` always returns the same session. Human output prints all of it: the session id, `Can:` (capabilities), each pin and the latest handoff (inline bodies are printed), open tasks, recent changes, the artifact index, and one `rip workspace load … --operation-id <same id> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
+Deliberately start keyed participation with `--operation-id`, or resume exactly your credential's chosen live session with `--session-id`, and load bounded context: the workspace, pins, artifacts (50), tasks (20), activity (50), handoffs, `session { id, operationId, status, lastActivityAt }`, and a `browserLink`. Replaying the same `--operation-id` preserves its live session; a fresh identity starts independent participation. Both selectors refuse terminal sessions without replacement. Archived load returns read-only context and `session: null`, validates supplied session ownership, and never creates or touches participation. Human output prints all of it: the session id, `Can:` (capabilities), each pin and the latest handoff (inline bodies are printed), open tasks, recent changes, the artifact index, and one `rip workspace load … --session-id <returned id> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
 rip workspace load <workspace> --operation-id <stable-id>
-rip workspace load <workspace> --operation-id <stable-id> --task-cursor <cursor>
+rip workspace load <workspace> --session-id <returned-session-id> --task-cursor <cursor>
 ```
 
-Required: `--operation-id <id>`. Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>`.
+Required: exactly one of `--operation-id <id>` or `--session-id <uuid>`. Refresh and paging preserve browser link and pairing. If local identity is lost, `rip workspace show <workspace> [--session-cursor <cursor>]` exposes up to 20 active unexpired candidates owned by this account and credential, with `id`, `operationId`, `createdAt`, `lastActivityAt`, and `idleExpiresAt`; the complete reply budget may return fewer. Choose deliberately; discovery never extends idle time. Cursors are bound to workspace/account/credential. Names can repeat: use full UUID, slug, home, and capabilities to select, and clarify ambiguity. Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>`.
 
 ### `rip workspace session end <workspace> <session-id>`
 
@@ -150,7 +151,7 @@ rip workspace ack <workspace> --delivery-token <token>
 
 ### Workspace flags on other commands
 
-Workspace content is written with the ordinary commands. Every write to workspace content needs the precondition the read reported (`PRECONDITION_REQUIRED` when missing, `CONFLICT` with the current value when stale):
+Workspace content is written with the ordinary commands. Existing-item writes need the applicable precondition the read reported (`PRECONDITION_REQUIRED` when missing, `CONFLICT` with the current value when stale):
 
 ```bash
 rip artifact publish|upload … --workspace-id <ws> [--audience internal|shared]
@@ -168,7 +169,7 @@ rip task add "<title>" --workspace-id <ws> [--audience …]   ·   rip task list
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --audience]
 ```
 
-Any write also accepts `--workspace-session-id <session-id>` to attribute it to your live session.
+New artifact, folder, and task creation needs no revision. Insert-only rows need none unless expanding schema; matched upserts retain their row guards. History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). Audience and session attribution require explicit workspace identity (`INVALID_SCOPE`). Any write also accepts `--workspace-session-id <session-id>` to attribute it to your live credential-owned session. A correction retains content and attribution; acknowledgment consumes history and cannot repair a write conflict.
 
 ## Artifact commands
 
@@ -482,7 +483,7 @@ rip task list --workspace-id 7a1c2d1e-… --status all --limit 20
 rip task list --workspace-id 7a1c2d1e-… --kind process-call --mine --since 7
 ```
 
-Required: `--workspace-id <id>` (a missing one is `WORKSPACE_REQUIRED`). Options: `--status <list>` (comma list of `open,claimed,done,dismissed` or `all`; default `open,claimed`), `--kind <kind>`, `--mine` (suggested to or claimed by you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>`.
+Required: `--workspace-id <id>`; the CLI rejects omission before sending a request. Options: `--status <list>` (comma list of `open,claimed,done,dismissed` or `all`; default `open,claimed`), `--kind <kind>`, `--mine` (suggested to or claimed by you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>`.
 
 ### `rip task show <id>`
 
@@ -629,6 +630,51 @@ Required: `--connection <name>`, `--method <GET|POST|PUT|PATCH|DELETE>`, `--path
 
 In human mode the command prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON on stdout; `--json` wraps it in the standard `{ ok, data }` envelope. Non-streaming only; 30 s timeout and 5 MB response cap.
 
+## Skill commands
+
+A **skill** is a versioned folder of agent instructions for a recurring job: `SKILL.md` (frontmatter `name` and `description`) plus supporting files. It is owned by your operator (personal) or a team (`--team <slug>`). Any agent linked to the operator reads, publishes, shares and deletes a personal skill; any current team member reads and publishes a team skill, and the team owner or an admin shares and deletes it. A name without `--team` means a personal skill. Guide: [`references/skills.md`](./references/skills.md). REST: `/v0/skills` (`docs/api/endpoints.md` § Skills).
+
+### `rip skill list`
+
+Every skill in reach, personal first, then by team slug, then by name: name, owner, version, sharing, id, description and (when shared) link. Option: `--team <slug>` keeps one team's skills.
+
+### `rip skill get <skill>`
+
+```bash
+rip skill get blog-post                               # SKILL.md, then the file list
+rip skill get blog-post --team quintel --file references/style.md   # raw bytes on stdout
+rip skill get blog-post --dir ./blog-post             # every file into a new or empty folder
+rip skill get https://tokenrip.com/skills/<id>        # link-shared: no identity needed
+```
+
+`<skill>` is a name, a skill id, or a link (`…/skills/<id>`). A name resolves through your catalog: `SKILL_NOT_FOUND` names the identity the CLI used, and two personal skills with one name (an agent linked to two operators) are `OPERATOR_AMBIGUOUS` (the message lists the ids). An id or link is read with any identity that exists, or none. `--dir` refuses an existing non-empty folder and any manifest path that would land outside it or names a `.git`, `.svn`, `.hg` or `node_modules` entry, checks each file against the manifest digest, and writes all or nothing (a temporary sibling folder renamed into place). It records the folder as a checkout of that version, so a later `rip skill publish <folder>` is checked against it. A team id given to `--team` must be in the local team cache (`rip team list`); otherwise pass the slug. Options: `--team <slug>`, `--file <path>`, `--dir <folder>`.
+
+### `rip skill publish <folder>`
+
+```bash
+rip skill publish ./blog-post
+rip skill publish ./blog-post --team quintel
+```
+
+Publishes the folder as the next version of the skill named by `SKILL.md`'s frontmatter `name` (the first publish creates it, private). Only new or changed files are sent (UTF-8 as text, others as base64), and an unchanged folder publishes nothing. `.git`, `node_modules` and OS junk are skipped; a symbolic link or any other hidden file (such as `.env`) is refused with `INVALID_ARGS`. The 512-file and 16 MiB limits are checked locally first. The folder is compared with its **base version**, which is sent as `expectedVersion`: `--expected-version <n>` if given; else the version the folder was fetched at with `rip skill get --dir` or last published as (recorded per folder in the config folder's `skill-checkouts.json`, keyed by the folder's real path and API URL); else the current version (0 for a new skill). Files that differ from the base are sent and files of the base missing from the folder are removed. If anyone published after the base, nothing is published: `CONFLICT` with `currentRevision`, and the message says to fetch into a new folder with `--dir` and merge. The output's `basedOn` is `checkout`, `current` or `explicit`, with `baseVersion`. Refusals: `INVALID_SKILL` with a `reason`, `NO_OPERATOR`, `OPERATOR_AMBIGUOUS`, `SKILL_FORBIDDEN`, `CONFLICT`. Options: `--team <slug>`, `--expected-version <n>`.
+
+### `rip skill share <skill>`
+
+Exactly one of `--link` (anyone with the printed link reads every file and version) or `--private` (stop sharing). Option: `--team <slug>`.
+
+### `rip skill delete <skill>`
+
+Deletes the skill and every version. Option: `--team <slug>`.
+
+### `rip skill install`
+
+```bash
+rip skill install                    # ~/.claude/skills inside Claude Code (CLAUDECODE set), else ~/.agents/skills
+rip skill install --target agents    # ~/.agents/skills
+```
+
+Writes a stub folder for every skill in reach into the host's user-level skills folder, so filesystem hosts trigger skills natively. A stub's `SKILL.md` frontmatter is the skill's `name` and `description` (the folder is named after the skill); its body says to run `rip skill get <skill-id>` (with `--agent <accountId>` when a local identity installed it; none under `TOKENRIP_API_KEY`), follow what it prints, read files with `--file`, and write copies for scripts with `--dir` into a temp folder outside any skills folder. Each stub carries a `.tokenrip-skill.json` marker (`{ skillId, name, team, accountId, apiUrl }`). Re-running writes new stubs, refreshes changed ones and removes marked folders whose skill is no longer in reach, deleting only the files the CLI wrote (a folder holding other files is `kept`); files are written atomically. A folder without the marker, or a symbolic link, is never touched (`unmanaged`); a stub recorded for another account is never refreshed or removed (`other_agent`), while one with no recorded account is adopted. Personal skills claim a name before team skills, so a team skill named like a personal one (or a second operator's personal skill of that name) is skipped `name_taken`. Output: `target`, `dir`, `accountId`, `written`, `refreshed`, `unchanged`, `removed`, `kept`, `skipped` (`{ name, team, reason }`), `failed` (`{ name, team, error }`; one stub's failure does not stop the others). Install into one target per host: Cursor and Copilot read both folders, so stubs in both may appear twice. Option: `--target claude|agents`.
+
 ## Bundle commands
 
 Deploy a directory as a multi-file **static-site bundle** — a versioned file tree served live at `https://bundles.tokenrip.com/<id>/`, with relative links and client-side JS intact.
@@ -724,30 +770,34 @@ Refresh the local team cache from the server — run it after another agent adds
 
 ## Auth commands
 
-### `rip auth register`
+### `rip auth login`
 
-Register an agent identity: generates an Ed25519 keypair, registers it, and saves the API key. Your ID is a bech32-encoded public key starting with `rip1`. If the keypair is already registered (you lost the key), re-running recovers a fresh key.
-
-```bash
-rip auth register --alias myagent
-rip auth register --force  # replace your identity entirely
-```
-
-Options: `--alias`, `--force`.
-
-### `rip auth claim <code>`
-
-Claim an operator-minted connection code (`XXXX-XXXX`, case-insensitive). The operator creates it from the dashboard (Settings → Connect agent); claiming creates a fresh account bound to that operator and saves its API key. Codes are single-use and expire after 10 minutes.
+Sign in with the person's email. Without `--code`, Tokenrip emails a six-digit code (10 minutes, single use; a new one can be requested after a minute). With `--code` (emailed, or made by a connected agent or the dashboard), the CLI gets a key of its own on the person's account, saves it as a keypair-less identity in `identities.json`, and makes it the current account. No other agent's key is touched. Signing in again on an account this machine holds revokes the key it replaces (best-effort; `previous_key` in the output says `revoked`, `already_invalid`, or `not_revoked`, and a key that was found but not revoked is named in `previous_key_id` so you can run `rip auth keys revoke <id>`). If `TOKENRIP_API_KEY` is set, or `TOKENRIP_AGENT` names another identity, later commands keep using that instead of this sign-in: the output carries `overridden_by` (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) and the human output warns; unset the variable to use the sign-in.
 
 ```bash
-rip auth claim ABCD-EFGH --label "telegram-bot"
+rip auth login --email ana@example.com                  # emails a code
+rip auth login --email ana@example.com --code 123456    # signs in
 ```
 
-Option: `--label` (default `remote-agent`).
+Required: `--email`. Options: `--code`, `--name` (the key's name; default `Claude Code` under Claude Code, else `CLI`). Errors: `INVALID_CODE` (wrong, used, or expired), `CODE_RECENTLY_SENT`, `SIGN_IN_LOCKED` (five wrong codes; the message states the unlock time in UTC), `INVALID_EMAIL`, `INVALID_NAME`.
 
-### `rip auth create-key`
+### `rip auth code`
 
-Regenerate your API key (revokes the current one).
+Make a six-digit sign-in code for the person's next agent and print the line to paste into it (`Connect to my Tokenrip: …/setup — email …, code … (valid 10 minutes)`). Making a new code replaces the previous one this agent made. Refusals: `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` (409) when the account has no single verified person, `RATE_LIMITED`.
+
+### `rip auth keys`
+
+```bash
+rip auth keys                            # list (also: rip auth keys list)
+rip auth keys create --name "Hermes"     # a key for a host that takes a pasted key; shown once
+rip auth keys revoke <id>                # disconnect the agent using that key
+```
+
+Every key on the account: connected agents, keys made for hosts, connector grants (with the connector's name). `(this agent)` marks the key this CLI uses. Revoking that key yourself adds `own_key: true` to the output and a warning: this CLI's key no longer works, so sign in again (or, under `TOKENRIP_API_KEY`, replace or unset the variable). Paste a created key into the host's key vault or settings, never into a chat. `default`, `mcp-oauth`, and `mcp-oauth-grant` are reserved names.
+
+### `rip auth rotate-key` (alias `create-key`)
+
+Replace this agent's key and save the new one. Every other key on the account keeps working. Refused with `ENV_KEY_ROTATION` (no request made) while `TOKENRIP_API_KEY` is set: unset it to rotate a stored identity's key, or, for a key kept in a host's vault, make a new one with `rip auth keys create --name <name>` and revoke the old one.
 
 ### `rip auth whoami`
 
@@ -763,22 +813,17 @@ rip auth update --description "Research agent" --website "https://example.com" -
 
 Options: `--alias`, `--metadata <json>`, `--tag`, `--description`, `--website`, `--email`, `--public <true|false>`. Pass an empty string to clear a field. A public profile is at `https://tokenrip.com/a/<alias>` and `GET /v0/accounts/<alias>`.
 
-### `rip auth link`
+### Retired: `rip auth register`, `rip auth claim`, `rip auth link`
 
-Recover a server-managed (MCP-first) identity for the CLI by downloading its keypair. Add a handle and password in web account settings first.
-
-```bash
-rip auth link --alias your-username --password your-password
-```
-
-Required: `--alias`, `--password`. Option: `--force`.
+Each prints a pointer to `rip auth login` and the setup guide and exits 1 without contacting the server (`USE_LOGIN` for `register`, `RETIRED` for the others). `register` still accepts `--alias` and `--force`.
 
 ## Account commands
 
 Manage multiple identities on this machine.
 
 ```bash
-rip account create --alias my-agent      # create and register a new identity
+rip account create --alias my-agent      # keypair identity: a separate account (advanced)
+rip account recover-key                  # keypair identity lost its key: get a new one
 rip account list                         # * marks the current one
 rip account use my-agent                 # switch (alias or rip1… ID)
 rip account remove my-agent              # remove locally; the server record is kept
@@ -788,11 +833,13 @@ rip account import blob.txt              # or - for stdin
 
 Override the active identity for one command with `rip --agent <name> …` or `TOKENRIP_AGENT=<name>`.
 
+`account create` makes a keypair identity: its own account, not the person's. Most agents sign in with `rip auth login` instead. `recover-key` signs a recovery request with the local keypair and replaces only the identity's `default` key. `recover-key`, `export`, `import`, and `rip operator-link` sign with the local keypair, so an identity that signed in by email refuses them with `NO_LOCAL_KEYPAIR`.
+
 ## Operator commands
 
 ### `rip operator-link`
 
-Generate a signed agent-binding link and a 6-digit code. The link is Ed25519-signed locally; the code can be entered at `tokenrip.com/operator/connect`. The operator first signs in and verifies email, then confirms **Link agent**. Neither proof logs a browser in or approves MCP OAuth.
+Generate a signed agent-binding link and a 6-digit code. The link is Ed25519-signed locally; the code can be entered at `tokenrip.com/operator/agents` ("Link a CLI identity created without email"). The operator first signs in and verifies email, then confirms **Link agent**. Neither proof logs a browser in or approves MCP OAuth.
 
 ```bash
 rip operator-link --expires 1h
@@ -803,11 +850,13 @@ Option: `--expires <duration>` (default `5m`; e.g. `5m`, `1h`, `1d`).
 ## Config commands
 
 ```bash
-rip config set-key tr_abc123...                  # save an API key to config.json (rip auth register does this for you)
+rip config set-key tr_abc123...                  # save a key to config.json; used only for public reads
 rip config set-url https://api.tokenrip.com      # API server URL
 rip config set-output json                       # default output format: json | human
 rip config show                                  # API URL, key status, config paths
 ```
+
+`set-key` does not sign in: authenticated commands use the current identity's key (or `TOKENRIP_API_KEY`), never the one saved here. To use a key from elsewhere, set `TOKENRIP_API_KEY`; to get a key of your own, sign in with `rip auth login`.
 
 ## Updates
 
@@ -823,14 +872,9 @@ Check for a newer CLI and install it via npm, then print how to refresh the skil
 - `--context <text>` — creator context (agent name, task)
 - `--refs <urls>` — comma-separated input reference URLs
 
-## CLI + MCP interop
+## Several agents, one account
 
-The CLI and MCP (Claude Cowork, Cursor, etc.) can share one account when the CLI recovers the operator's primary identity. A separately registered CLI agent keeps its own account when linked to the operator.
-
-- **CLI-first, then MCP:** sign in on the web, verify your email, and bind the CLI agent with `rip operator-link` if needed. The MCP connection then uses the OAuth consent page and one explicit Connect confirmation for the primary web account.
-- **MCP-first, then CLI:** add a handle and password in web account settings, then run `rip auth link --alias <username> --password <password>`.
-
-CLI API keys and MCP OAuth grants are independent; rotating one doesn't affect the other. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_claim`, `connection_call`, …).
+Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Hand off with `rip auth code`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_claim`, `connection_call`, `key_list`, `sign_in_code_create`, …).
 
 ## Library usage
 
@@ -876,9 +920,12 @@ console.log(data.data.id); // artifact UUID
 | `setAgentOverride(value)` | Per-process identity override |
 | `search(query, options)` | The `rip search` command |
 | `folderCreate`, `folderList`, `folderShow`, `folderDelete`, `folderRename`, `folderUpdate`, `folderShareContents`, `artifactMove` | The folder commands |
+| `skillList`, `skillGet`, `skillPublish`, `skillShare`, `skillDelete`, `skillInstall`, `skillIdFromLink` | The skill commands; `skillIdFromLink` parses a skill id or link |
+| `syncStubs(entries, dir)`, `renderStub(entry)`, `defaultSkillTarget(env)`, `skillTargetDir(target, homeDir)`, `SKILL_STUB_MARKER` | The stub writer behind `rip skill install` |
+| `walkFiles(dir)` | The directory walk behind `rip deploy` and `rip skill publish` |
 | `loadTeams`, `saveTeams`, `resolveTeam`, `resolveTeams`, `setAlias`, `removeAlias`, `syncTeamsFromResponse` | The local team cache and aliases |
 
-Types: `TokenripConfig`, `ClientConfig`, `AuthContext`, `WorkspaceSummary`, `Keypair`, `Identity`, `StoredIdentity`, `IdentityStore`, `LocalTeam`, `Teams`, `ServerTeamEntry`.
+Types: `TokenripConfig`, `ClientConfig`, `AuthContext`, `WorkspaceSummary`, `SkillCatalogEntry`, `SkillView`, `SkillOwner`, `SkillTarget`, `StubEntry`, `StubSyncResult`, `WalkedFile`, `Keypair`, `Identity`, `StoredIdentity`, `IdentityStore`, `LocalTeam`, `Teams`, `ServerTeamEntry`.
 
 ## Configuration
 
@@ -928,7 +975,9 @@ Client-side codes:
 | `LAST_IDENTITY` | Cannot remove the only remaining account |
 | `FILE_NOT_FOUND` | Input file does not exist |
 | `INVALID_TYPE` | Publish type not one of: markdown, html, chart, code, text, json, csv, table |
-| `UNAUTHORIZED` | API key expired or revoked — run `rip auth register` to recover |
+| `UNAUTHORIZED` | API key not valid (revoked, or a bodiless 401). If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it. Otherwise sign in again: `rip auth login --email <email>` |
+| `NO_LOCAL_KEYPAIR` | The command signs with a local keypair; this identity signed in by email |
+| `USE_LOGIN` / `RETIRED` | A retired setup command (`auth register` / `auth claim`, `auth link`); use `rip auth login` |
 | `TIMEOUT` | Request timed out |
 | `NETWORK_ERROR` | Cannot reach the API server |
 | `AUTH_FAILED` | Could not create API key |
@@ -940,9 +989,13 @@ Common server codes:
 |------|---------|
 | `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write lacks, or has a stale, version id or revision |
 | `WORKSPACE_FORBIDDEN` / `WORKSPACE_ARCHIVED` | No access to that workspace, audience, or write; or the workspace is archived |
-| `WORKSPACE_AUTHORITY` | The item is governed by a workspace — use the workspace write path |
-| `WORKSPACE_REQUIRED` | `task list` / `task add` without `--workspace-id` |
+| `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep full content and session attribution |
+| `WORKSPACE_REQUIRED` | A task create/list request lacks `workspaceId` |
+| `INVALID_SCOPE` | Workspace-only creation fields require `workspaceId` |
 | `ALREADY_IN_WORKSPACE` / `CROSS_WORKSPACE_MOVE` | Adoption or move refused |
 | `TEAM_OWNS_WORKSPACES` | The team still owns workspaces |
 | `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases |
 | `CONNECTION_FORBIDDEN` / `CONNECTION_NOT_FOUND` | Not allowed to use, or no such enabled, connection |
+| `SKILL_NOT_FOUND` / `SKILL_FORBIDDEN` | Skill not in reach (or missing); in reach but you may not share or delete it |
+| `INVALID_SKILL` | The folder breaks a skill rule; `reason` says which (`references/skills.md`) |
+| `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` | A personal skill needs exactly one operator linked to this agent |

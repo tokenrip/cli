@@ -5,22 +5,23 @@ import {
   removeIdentity,
   resolveAccountId,
   resolveCurrentIdentity,
+  requireLocalKeypair,
+  saveIdentities,
   type StoredIdentity,
 } from '../identities.js';
 import { loadConfig, saveConfig, getApiUrl } from '../config.js';
-import { generateKeypair, publicKeyToAccountId } from '../crypto.js';
+import { generateKeypair, publicKeyToAccountId, signPayload } from '../crypto.js';
+import { formatAuthKey } from '../formatters.js';
 import { createHttpClient } from '../client.js';
 import { outputSuccess } from '../output.js';
 import { CliError } from '../errors.js';
 import { encryptIdentityForAgent, decryptIdentityFromAgent } from '../agent-crypto.js';
 
 /**
- * Decide whether a newly-created identity should become the active one.
- * `rip account create` only auto-activates when there's no other choice
- * (first identity or no `currentAccount` set), so the operator isn't
- * silently switched out from under in-progress work. `rip auth register`
- * passes `activateRequested: true` because that command's contract is
- * "set up and use this identity now."
+ * Decide whether a newly-created keypair identity should become the active one.
+ * It only auto-activates when there's no other choice (first identity or no
+ * `currentAccount` set), or when the caller asks, so the operator isn't
+ * silently switched out from under in-progress work.
  */
 export function shouldActivateNewIdentity(opts: {
   activateRequested: boolean;
@@ -116,6 +117,7 @@ export async function accountExport(target: string, options: { to: string }): Pr
     throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
   }
   const identity = store[agentId];
+  requireLocalKeypair(identity, 'Sign in on the other machine instead: rip auth login --email <your email>, or hand off with rip auth code.');
   const blob = encryptIdentityForAgent(identity, options.to, identity.secretKey);
   outputSuccess({
     blob,
@@ -126,6 +128,8 @@ export async function accountExport(target: string, options: { to: string }): Pr
 }
 
 export async function accountImport(file: string): Promise<void> {
+  const current = resolveCurrentIdentity();
+  requireLocalKeypair(current, 'Importing decrypts with the current identity\'s keypair; switch to a keypair identity (rip account use <name>) first.');
   let blob: string;
   if (file === '-') {
     const chunks: Buffer[] = [];
@@ -137,7 +141,6 @@ export async function accountImport(file: string): Promise<void> {
     blob = fs.readFileSync(file, 'utf-8').trim();
   }
 
-  const current = resolveCurrentIdentity();
   const identity = decryptIdentityFromAgent(blob, current.secretKey);
   addIdentity(identity);
   outputSuccess({
@@ -172,4 +175,34 @@ export function accountRemove(target: string): void {
     agentId,
     message: `Removed ${target} from local identities (agent still exists on server)`,
   });
+}
+
+/**
+ * `rip account recover-key` — a keypair identity that lost its key gets a new one by signing a
+ * recovery token with its Ed25519 key. Replaces only the identity's `default` key; every other key
+ * on the account keeps working. An identity that signed in by email signs in again instead.
+ */
+export async function accountRecoverKey(): Promise<void> {
+  const identity = resolveCurrentIdentity();
+  requireLocalKeypair(identity, 'Sign in again instead: rip auth login --email <your email>.');
+  const exp = Math.floor(Date.now() / 1000) + 300;
+  const token = signPayload(
+    { sub: 'key-recovery', iss: identity.accountId, exp, jti: Math.random().toString(36).slice(2) },
+    identity.secretKey,
+  );
+
+  const client = createHttpClient({ baseUrl: getApiUrl(loadConfig()) });
+  const { data } = await client.post('/v0/accounts/recover-key', { token });
+  const apiKey = data.data.api_key;
+
+  const store = loadIdentities();
+  if (store[identity.accountId]) {
+    store[identity.accountId].apiKey = apiKey;
+    saveIdentities(store);
+  }
+
+  outputSuccess(
+    { accountId: identity.accountId, apiKey, message: 'API key recovered and saved. Other keys on the account keep working.' },
+    formatAuthKey,
+  );
 }

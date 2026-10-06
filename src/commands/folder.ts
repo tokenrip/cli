@@ -1,7 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { parseNonNegativeInteger } from '../input.js';
+import { assertWorkspaceCreationScope, parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
 import { resolveTeam } from '../teams.js';
 
@@ -26,8 +26,8 @@ export async function resolveFolderId(
 }
 
 export async function folderCreate(slug: string, options: { team?: string; workspace?: string; audience?: 'internal' | 'shared'; workspaceSessionId?: string }): Promise<void> {
+  assertWorkspaceCreationScope({ ...options, workspaceId: options.workspace });
   const { client } = requireAuthClient();
-  if (options.team && options.workspace) throw new CliError('INVALID_SCOPE', 'Choose either --team or --workspace');
   if (options.workspace) {
     const { data } = await client.post(`/v0/workspaces/${encodeURIComponent(options.workspace)}/folders`, {
       slug, audience: options.audience, workspaceSessionId: options.workspaceSessionId,

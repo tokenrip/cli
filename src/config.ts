@@ -22,8 +22,12 @@ export interface TokenripConfig {
   preferences: Record<string, unknown>;
 }
 
+/** The config schema version this CLI writes; `migrations.ts` upgrades older files to it. */
+export const CURRENT_CONFIG_VERSION = 3;
+
+/** A fresh install starts at the current version: nothing to migrate, nothing to warn about. */
 function defaultConfig(): TokenripConfig {
-  return { preferences: {} };
+  return { configVersion: CURRENT_CONFIG_VERSION, preferences: {} };
 }
 
 export function loadConfig(): TokenripConfig {

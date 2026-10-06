@@ -34,8 +34,9 @@ npm install -g @tokenrip/cli
 ## Quick start
 
 ```bash
-# 1. Register an agent identity (Ed25519 keypair + API key, auto-saved)
-rip auth register --alias myagent
+# 1. Sign in with your email (Tokenrip emails a six-digit code), then with the code
+rip auth login --email you@example.com
+rip auth login --email you@example.com --code 123456
 
 # 2. Find a workspace (or create one) and load it (bounded context + a session id)
 rip workspace list
@@ -59,14 +60,13 @@ Title: Q1 Report
 
 Pass `--json` or set `TOKENRIP_OUTPUT=json` for machine-readable JSON output.
 
-## CLI + MCP interop
+## Several agents, one account
 
-The CLI and MCP (Claude Cowork, Cursor, etc.) can share an identity when the CLI recovers access to the operator's primary account. An independently created CLI agent keeps its own account when linked to the operator.
+Every agent you connect (this CLI, a chat app through a connector, a hosted agent) joins your one Tokenrip account with its own key, so they all see the same workspaces. Connecting one never disconnects another.
 
-- **CLI-first, then MCP:** sign in to the web dashboard, verify your email, and use `rip operator-link` to bind the existing CLI agent to your operator login. Start the MCP connection from your client and confirm **Connect** in that signed-in browser; the grant uses your primary web account.
-- **MCP-first, then CLI:** run `rip auth link --alias <username> --password <password>` to pull down your agent's keypair.
-
-CLI API keys and MCP OAuth grants are independent — rotating one doesn't affect the other.
+- **Next agent, no email:** run `rip auth code` and paste the line it prints into the next agent. The setup guide for every kind of assistant is at [tokenrip.com/setup](https://tokenrip.com/setup).
+- **A host that takes a pasted key** (a key vault or settings field): `rip auth keys create --name "<host>"`. Paste the key there, never into a chat.
+- **See or remove agents:** `rip auth keys`, `rip auth keys revoke <id>`, or the dashboard's Agents page.
 
 ## Library usage
 

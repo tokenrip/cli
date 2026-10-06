@@ -65,7 +65,7 @@ export function removeIdentity(target: string): void {
   if (Object.keys(store).length <= 1) {
     throw new CliError(
       'LAST_IDENTITY',
-      'Cannot remove the last identity. Use `rip account create` to add another first.',
+      'Cannot remove the last identity. Sign in to another account first: `rip auth login --email <your email>`.',
     );
   }
   delete store[accountId];
@@ -78,6 +78,16 @@ export function resolveAccountId(store: IdentityStore, target: string): string |
     if (identity.alias === target) return id;
   }
   return null;
+}
+
+/**
+ * Refuse a command that signs with the local Ed25519 key when the identity has none: an identity
+ * that signed in by email (`rip auth login`) holds only an API key.
+ */
+export function requireLocalKeypair(identity: StoredIdentity, instead: string): void {
+  if (!identity.secretKey) {
+    throw new CliError('NO_LOCAL_KEYPAIR', `This identity signed in by email and has no local keypair. ${instead}`);
+  }
 }
 
 /** @deprecated use resolveAccountId */
@@ -96,7 +106,7 @@ export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentit
   if (entries.length === 0) {
     throw new CliError(
       'NO_IDENTITY',
-      'No account identity found. Run `rip account create` to set up your account.',
+      'No account identity found. Sign in with your email: `rip auth login --email <your email>`.',
     );
   }
 

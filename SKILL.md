@@ -4,9 +4,9 @@ description: >-
   CLI helper for Tokenrip, the shared workspace for people and AI agents. Use
   the `rip` CLI to load a workspace and pick up where the work left off,
   publish artifacts (documents, HTML, charts, code, JSON, CSV, living tables)
-  into it, organize folders, claim and complete tasks, call external APIs
-  through stored connections, deploy static sites, search, and share with
-  teams.
+  into it, organize folders, claim and complete tasks, publish skills,
+  call external APIs through stored connections, deploy static sites,
+  search, and share with teams.
   Use when: "tokenrip", "use the rip CLI", "load the workspace", "pick up the
   project", "what changed in the workspace", "hand off", "publish an
   artifact", "share a file", "upload a PDF", "create a shareable link",
@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip holds shared project work, not local
   development workflows.
-version: 2.0.0
+version: 2.3.0
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.0.0 -->
+<!-- tokenrip-skill-version: 2.3.0 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -78,8 +78,8 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 
 ## Critical Rules
 
-1. Run `rip auth whoami` before any other command. If it fails, run `rip account create --alias <name>` to register.
-2. If you receive `NO_API_KEY` or `UNAUTHORIZED`, run `rip auth register` to recover the key. For operator-led onboarding, the operator creates a connection code in Tokenrip and you run `rip auth claim <code>`.
+1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or read it from their inbox if you can), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed.
+2. If you receive `NO_API_KEY`, `NO_IDENTITY`, or `UNAUTHORIZED`, sign in again the same way. Signing in never disconnects the person's other agents. Never paste a key into a chat.
 3. When the work belongs to a project, find its workspace (`rip workspace list`) and load it (`rip workspace load`) before reading or writing.
 4. Always parse and present `data.url` from JSON responses to the user.
 5. Use the `--json` flag (or `TOKENRIP_OUTPUT=json`) when you need machine-readable output.
@@ -89,27 +89,29 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 
 ```bash
 rip auth whoami                                               # who am I acting as?
-rip workspace list                                            # workspace names, ids, and your role
-rip workspace load <workspace-id> --operation-id <stable-id>  # start or resume a session with bounded context
+rip auth login --email <email> [--code <code>]                # if not signed in (rule 1)
+rip workspace list                                            # full UUIDs, slugs, personal/team homes, capabilities
+rip workspace load <workspace-id> --operation-id <stable-id>  # intentionally start keyed participation, or replay that live start
 ```
 
 `workspace load` prints, without `--json`:
 
-- the workspace, your role, what you **Can** do, and the **Session** id (you need it for `--workspace-session-id` and `session end`);
+- the workspace, your role, what you **Can** do, and the **Session** id (use it for `--workspace-session-id` and `session end`) plus its **Operation** identity;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - the **Latest handoff**, the same way (inline, or the `rip artifact cat … --version-id …` command), plus the ids of earlier handoffs;
 - open **Tasks**, **Recent changes**, and the **Artifacts** index;
-- `rip workspace load … --operation-id <same id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
+- `rip workspace load … --session-id <returned-session-id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
 
-Read the pins and the latest handoff first. Reuse the same `--operation-id` on a retry, or to page, and you stay in the same session. With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
+Read the pins and the latest handoff first. Replay a start with the same `--operation-id`; refresh context or page with `rip workspace load <workspace-id> --session-id <returned-session-id>`. Exactly one selector is required. A new operation identity deliberately starts independent participation. Terminal selection refuses without replacement. Archived loads return read-only context and no session; their continuation reuses the invocation selector without starting or touching participation. With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
 
 ## Read-First Table
 
 | Source | Command | What to extract |
 |---|---|---|
 | Identity | `rip auth whoami` | Alias, account ID, API key status — confirms you can act |
-| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Workspace IDs and roles; `show` adds what you **Can** do and the audiences |
-| Workspace context | `rip workspace load <ws> --operation-id <id>` | Session id, pins and latest handoff (inline, or the `rip artifact cat <publicId> --version-id <v>` to run), tasks, changes, artifacts |
+| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full UUID, slug, home and capabilities; `show` adds audiences and this credential’s bounded session recovery |
+| Deliberate start/replay | `rip workspace load <ws> --operation-id <id>` | Session identity, pins and latest handoff (inline, or `rip artifact cat <publicId> --version-id <v>`), tasks, changes, artifacts |
+| Exact resume/refresh | `rip workspace load <ws> --session-id <chosen-session-id>` | The same live participation and browser link, with bounded current context; no replacement session |
 | What changed | `rip workspace changes <ws>` | Events since you last acknowledged, plus a `deliveryToken` |
 | Work queue | `rip task list --workspace-id <ws>` | Open and claimed tasks — ids to claim (`references/tasks.md`) |
 | Search | `rip search "<query>"` | Existing artifacts — avoid duplicate publishes |
@@ -118,20 +120,29 @@ Read the pins and the latest handoff first. Reuse the same `--operation-id` on a
 
 ## Choosing What to Do
 
+After losing local participation state, run `rip workspace show <workspace-id>` (MCP `workspace_show`) and inspect `sessionRecovery.items`. Each candidate gives full session/operation IDs and creation/activity/idle-expiry times. Choose the session for the intended work, for example by a known operation identity, then resume with `rip workspace load <workspace-id> --session-id <chosen-id>`. Pages contain at most 20 of this account/credential's active unexpired sessions; use `--session-cursor <nextCursor>` when `hasMore`. Discovery does not choose or keep sessions alive; resume rechecks. Archived workspaces have no candidates, and a different credential starts new participation from context/handoffs. Duplicate workspace names require selection by UUID, slug, home and capabilities; clarify unresolved ambiguity. See [workspaces reference](references/workspaces.md#recover-after-losing-local-session-state).
+
 ### Working in a workspace
 
-Every item in a workspace has an **audience**: `internal` (the owner or owning team) or `shared` (external members too). Writes to workspace content carry the precondition the read reported (a version id or a revision), and the server answers `CONFLICT` if it is stale. See `references/workspaces.md`.
+Creation audience and session attribution require an explicit workspace identity. Omit `--visibility`, `--team`, `--folder`, and `--public-asset` when creating workspace content. `private` is standalone owner-private access; it does not mean workspace internal. If scope is refused, correct the sharing input and keep the same workspace/session attribution.
+
+Every item in a workspace has an **audience**: `internal` (the owner or owning team) or `shared` (external members too). New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
+
+Workspace history includes authorized recorded session starts and ends, even after transient-session cleanup. Activity sequences are positions, not counts or content versions; `load` can show current content with an older fixed history window. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
 
 ```
-Start or resume work on a project?
+Deliberately start participation or replay its known start?
   → rip workspace load <workspace-id> --operation-id <stable-retry-id>
+
+Resume or refresh the selected live participation?
+  → rip workspace load <workspace-id> --session-id <chosen-session-id>
 
 What changed since I last looked?
   → rip workspace changes <workspace-id>
   → rip workspace ack <workspace-id> --delivery-token <token>     # only after you have processed the page
 
 Put a new document into the workspace?
-  → rip artifact publish <file> --type markdown --title "..." --workspace-id <ws> [--audience internal|shared]
+  → rip artifact publish <file> --type markdown --title "..." --workspace-id <ws> [--audience internal|shared] --workspace-session-id <session-id>
 
 Replace a workspace document's content?
   → rip artifact update <id> <file> --type markdown --expected-version-id <current-version-id>
@@ -238,6 +249,26 @@ File new work?
 
 A task's history?
   → rip workspace changes <ws>                             # task events are workspace activity
+```
+
+### Skills
+
+A **skill** is a versioned folder of instructions for a recurring job (`SKILL.md` with `name` and `description` frontmatter, plus supporting files), owned by your operator or a team. If instructions only make sense inside one workspace, pin them; if an agent needs them to start a job, publish a skill. See `references/skills.md`.
+
+```
+A job comes up that a skill covers?
+  → rip skill list                                       # personal, then team skills
+  → rip skill get <name> [--team <slug>]                 # follow what it prints
+  → rip skill get <name> --file references/<file>.md     # supporting file, when the instructions say so
+  → rip skill install [--target claude|agents]           # stubs so the host triggers skills itself; re-run when skills change
+
+Write or improve a procedure every agent should follow?
+  → rip skill get <name> --dir ./<name>                  # edit an existing one locally
+  → rip skill publish ./<name> [--team <slug>]           # folder with SKILL.md; new version each time
+
+Hand a skill to someone outside your operator or team?
+  → rip skill share <name> --link                        # prints the link; --private stops it
+  → rip skill get <link>                                 # readers need no identity
 ```
 
 ### Calling external APIs and LLMs (connections)
@@ -392,11 +423,13 @@ rip table update 660f9500-... <row-id> --data '{"status":"contacted"}'
 
 ## Deep Dives
 
-For first-time setup, multiple accounts, MCP linking, or operator onboarding, read `references/setup-and-identity.md`.
+For signing in, handing off to another agent (`rip auth code`), managing keys (`rip auth keys`), keys for vault hosts, multiple accounts, or keypair identities, read `references/setup-and-identity.md`.
 
 For workspaces (load, sessions and handoffs, pins, browser context and navigation, adopt, internal/shared audience, external members, guarded writes, changes and ack), read `references/workspaces.md`.
 
 For claiming and completing tasks (leases, claim races, results) and the account/team activity feed, read `references/tasks.md`.
+
+For skills (publishing, personal vs team ownership, link sharing, and when to pin instead), read `references/skills.md`.
 
 For calling external HTTP APIs or LLM providers through a stored, server-side credential (a connection), read `references/connections.md`.
 
@@ -406,16 +439,22 @@ For JSON output format, provenance flags, and `--json` details, read `references
 
 | Error | Fix |
 |---|---|
-| `NO_API_KEY` / `NO_IDENTITY` | Run `rip account create --alias <name>` |
-| `UNAUTHORIZED` / `AUTH_FAILED` | Run `rip auth register` to recover the key |
+| `NO_API_KEY` / `NO_IDENTITY` / `UNAUTHORIZED` | Sign in: `rip auth login --email <email>`, then `--code <code>` (rule 1). If `TOKENRIP_API_KEY` is set, that key was refused: replace or unset it |
+| `INVALID_CODE` / `CODE_RECENTLY_SENT` / `SIGN_IN_LOCKED` | Code wrong, used, or older than 10 minutes: request a new one (not within a minute of the last; check spam). Locked: wait until the time in the message |
+| `NO_LOCAL_KEYPAIR` | The command needs a keypair identity; an email-signed-in agent does not need it (`references/setup-and-identity.md`) |
+| `USE_LOGIN` / `RETIRED` | `auth register`, `auth claim`, and `auth link` are retired: use `rip auth login` |
 | `AMBIGUOUS_IDENTITY` | Run `rip account use <name>` or pass `--agent <name>` |
 | `TEAM_NOT_FOUND` | Run `rip team sync` to refresh the local team cache |
 | `FILE_NOT_FOUND` | Verify the file exists before running the command |
 | `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
-| `TIMEOUT` / `NETWORK_ERROR` | Retry once; check the API URL with `rip config show` |
-| `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write needs, or has a stale, version id or revision. Re-read and retry (`references/workspaces.md`) |
+| `TIMEOUT` / `NETWORK_ERROR` | Inspect uncertain effects before retrying a create and preserve known keyed identity; check API URL with `rip config show` and network connectivity |
+| `PRECONDITION_REQUIRED` / `CONFLICT` | An existing-item write needs its applicable guard or has a stale one. Read the authorized current value and reconcile before a corrected write (`references/workspaces.md`) |
+| `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep full content and session attribution |
+| `INVALID_SCOPE` | Supply explicit workspace identity for audience/session attribution, or omit those fields |
+| `STATE_CONFLICT` | Inspect current state before a corrected request; no resource revision change is implied |
 | `WORKSPACE_FORBIDDEN` / `WORKSPACE_ARCHIVED` | No access to that workspace or audience, or it is archived |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
+| `SKILL_NOT_FOUND` / `OPERATOR_AMBIGUOUS` / `INVALID_SKILL` | Not in reach of this agent (add `--team`, or switch `--agent`); two operators share the name (read by id); fix the folder per `reason` (`references/skills.md`) |
 | `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases — `references/tasks.md` § Error recovery |
 
 ## CLI Updates

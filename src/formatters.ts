@@ -81,6 +81,11 @@ export const formatArtifactCreated: Formatter = (data) => {
   if (data.type) lines.push(`  Type:    ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:    ${data.mimeType}`);
   if (data.currentVersionId) lines.push(`  Version: ${data.currentVersionId}`);
+  if (data.workspaceId) {
+    lines.push(`  Workspace: ${data.workspaceId}`);
+    if (data.audience) lines.push(`  Audience: ${data.audience}`);
+    if (data.workspaceRevision) lines.push(`  Revision: ${data.workspaceRevision}`);
+  }
   return lines.join('\n');
 };
 
@@ -307,6 +312,76 @@ export const formatProfileUpdated: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** `rip auth login` step 1 — the code is on its way; what to run with it. */
+export const formatSignInRequested: Formatter = (data) =>
+  [
+    `Sent a six-digit code to ${data.email}. It lasts 10 minutes; if it is not in the inbox, check the spam folder.`,
+    `Next: ${data.next}`,
+  ].join('\n');
+
+/** `rip auth login` step 2 — signed in on the person's account. */
+export const formatSignedIn: Formatter = (data) => {
+  const lines = [`Connected to ${data.email}'s Tokenrip. Next: rip workspace list`];
+  lines.push(`  Account: ${data.account_id}`);
+  if (data.name) lines.push(`  Key:     ${data.name}`);
+  if (data.previous_key === 'not_revoked') lines.push(`  The key this one replaced could not be revoked; remove it with \`rip auth keys revoke ${data.previous_key_id ?? '<id>'}\`.`);
+  if (data.overridden_by === 'TOKENRIP_API_KEY') lines.push('  Warning: TOKENRIP_API_KEY is set, so commands will keep using that key; unset it to use this sign-in.');
+  if (data.overridden_by === 'TOKENRIP_AGENT') lines.push('  Warning: TOKENRIP_AGENT is set, so commands will keep using that agent; unset it to use this sign-in.');
+  return lines.join('\n');
+};
+
+/** `rip auth code` — the line for the person to give their next agent. */
+export const formatSignInCode: Formatter = (data) =>
+  [
+    'Give this line to your next agent:',
+    '',
+    `  ${data.paste}`,
+    '',
+    `Valid until ${data.expires_at}, once.`,
+  ].join('\n');
+
+/** `rip auth keys` — every key on the account; ids in full for `rip auth keys revoke <id>`. */
+export const formatKeyList: Formatter = (data) => {
+  const keys = ((data as any).keys ?? []) as Array<{
+    id: string;
+    name: string;
+    created_at: string;
+    last_used_at: string | null;
+    current: boolean;
+    connector: { client_id: string; label: string } | null;
+  }>;
+  if (keys.length === 0) return 'No keys.';
+  const lines: string[] = [];
+  for (const k of keys) {
+    lines.push(`${k.name}${k.current ? '  (this agent)' : ''}${k.connector ? `  connector: ${k.connector.label}` : ''}`);
+    lines.push(`  id:        ${k.id}`);
+    lines.push(`  connected: ${k.created_at}`);
+    lines.push(`  last used: ${k.last_used_at ?? 'never'}`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip auth keys create` — the key, shown once. */
+export const formatKeyCreated: Formatter = (data) =>
+  [
+    `Created key "${data.name}" (id ${data.id}). It is shown only once:`,
+    '',
+    `  ${data.api_key}`,
+    '',
+    "Paste this into your host's key vault or settings, not into a chat.",
+  ].join('\n');
+
+/** `rip auth keys revoke` */
+export const formatKeyRevoked: Formatter = (data) => {
+  const lines = [`Revoked key ${data.id}. The agent using it is disconnected.`];
+  if (data.own_key) {
+    lines.push(process.env.TOKENRIP_API_KEY
+      ? 'That was the key in TOKENRIP_API_KEY; it no longer works. Replace or unset it.'
+      : "That was this CLI's key; it no longer works. Sign in again: rip auth login --email <your email>");
+  }
+  return lines.join('\n');
+};
+
 export const formatTableRows: Formatter = (data) => {
   const rows = (data as any).rows ?? [];
   const nextCursor = (data as any).nextCursor;
@@ -461,7 +536,7 @@ export const formatAccountList: Formatter = (data) => {
     current: boolean;
   }>;
   if (!Array.isArray(accounts) || accounts.length === 0) {
-    return 'No accounts configured. Run `rip account create` to get started.';
+    return 'No accounts configured. Sign in with your email: `rip auth login --email <your email>`.';
   }
   return accounts
     .map(
@@ -629,7 +704,26 @@ export const formatWorkspace: Formatter = (data) => {
 export const formatWorkspaceList: Formatter = (data) => {
   const rows = data as unknown as Array<Record<string, any>>;
   if (!rows.length) return 'No workspaces.';
-  return rows.map(w => `${w.name}  ${w.membership}/${w.role}  [${w.id}]  slug=${w.slug}`).join('\n');
+  return rows.map(w => `${w.name}  ${w.membership}/${w.role}  [${w.id}]  slug=${w.slug}  home=${w.ownerAccountId ?? (w.teamId ? `team ${w.teamId}` : '-')}  can=${capabilityList(w.capabilities) || '-'}`).join('\n');
+};
+
+/** Show recovery is credential-owned snapshot metadata, never an automatic selection. */
+export const formatWorkspaceShow: Formatter = (data) => {
+  const value = data as Record<string, any>;
+  const recovery = value.sessionRecovery;
+  const lines = [formatWorkspace(data)];
+  if (!recovery) return lines.join('\n');
+  lines.push('', 'Resumable sessions (snapshot; resume rechecks access and expiry):');
+  const items: Array<Record<string, any>> = Array.isArray(recovery.items) ? recovery.items : [];
+  if (!items.length) lines.push('  (none)');
+  for (const item of items) {
+    lines.push(`  Session: ${item.id}`, `    Operation: ${item.operationId}`,
+      `    Created: ${item.createdAt}`, `    Last activity: ${item.lastActivityAt}`, `    Idle expiry: ${item.idleExpiresAt}`,
+      `    rip workspace load ${workspaceShellArgument(value.id)} --session-id ${workspaceShellArgument(item.id)}`);
+  }
+  if (items.length) lines.push('Choose the session for the work you intend to continue.');
+  if (recovery.hasMore && recovery.nextCursor) lines.push('', `rip workspace show ${workspaceShellArgument(value.id)} --session-cursor ${workspaceShellArgument(recovery.nextCursor)}`);
+  return lines.join('\n');
 };
 
 /**
@@ -655,21 +749,27 @@ function loadSection(heading: string, rows: string[]): string[] {
   return ['', heading, ...(rows.length ? rows : ['  (none)'])];
 }
 
+function workspaceShellArgument(value: unknown): string {
+  const text = String(value);
+  return /^[A-Za-z0-9_./:-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\"'\"'")}'`;
+}
+
 /**
  * `rip workspace load` in human mode is the first thing an agent reads, so it
  * carries everything the load returned: pins (inline or with the command that
  * reads them), the latest handoff, open tasks, recent changes, the artifact
  * index, and the exact flags that page each list further.
  */
-export const formatWorkspaceLoad: Formatter = (data) => {
+export const formatWorkspaceLoad = (data: unknown, selector?: { operationId?: string; sessionId?: string }): string => {
   const value = data as Record<string, any>;
   const workspace = (value.workspace ?? {}) as Record<string, any>;
   const workspaceId = workspace.id ?? value.workspaceId ?? '-';
   const session = (value.session ?? {}) as Record<string, any>;
   const lines = [
     `Workspace: ${workspace.name ?? '-'} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}${workspace.archived ? '  (archived)' : ''}`,
-    `Session:   ${session.id ?? '-'} (${session.status ?? session.state ?? 'active'})`,
+    value.session ? `Session:   ${session.id} (${session.status})` : 'Session:   none (read-only context)',
   ];
+  if (session.operationId !== undefined) lines.push(`Operation: ${session.operationId}`);
   const can = capabilityList(workspace.capabilities);
   if (can) lines.push(`Can:       ${can}`);
   if (value.browserLink) lines.push(`Browser:   ${value.browserLink}`);
@@ -708,12 +808,15 @@ export const formatWorkspaceLoad: Formatter = (data) => {
 
   const more: string[] = [];
   if (artifacts.nextOffset != null) more.push(`--artifact-offset ${artifacts.nextOffset}`);
-  if (tasks.nextCursor != null) more.push(`--task-cursor ${tasks.nextCursor}`);
-  if (activity.nextCursor != null) more.push(`--activity-cursor ${activity.nextCursor}`);
+  if (tasks.nextCursor != null) more.push(`--task-cursor ${workspaceShellArgument(tasks.nextCursor)}`);
+  if (activity.nextCursor != null) more.push(`--activity-cursor ${workspaceShellArgument(activity.nextCursor)}`);
   if (handoffs.nextOffset != null) more.push(`--handoff-offset ${handoffs.nextOffset}`);
   if (more.length) {
-    lines.push('', 'More (reuse the same --operation-id to stay in this session):');
-    for (const flag of more) lines.push(`  rip workspace load ${workspaceId} --operation-id <same id> ${flag}`);
+    const continuation = value.session ? `--session-id ${workspaceShellArgument(session.id)}`
+      : selector?.sessionId !== undefined ? `--session-id ${workspaceShellArgument(selector.sessionId)}`
+      : selector?.operationId !== undefined ? `--operation-id ${workspaceShellArgument(selector.operationId)}` : null;
+    lines.push('', value.session ? 'More (resume this exact session):' : 'More (read-only context):');
+    if (continuation) for (const flag of more) lines.push(`  rip workspace load ${workspaceShellArgument(workspaceId)} ${continuation} ${flag}`);
   }
   return lines.join('\n');
 };
@@ -738,3 +841,117 @@ export const formatWorkspaceViewReceipt: Formatter = (data) => {
   ].join('\n');
 };
 
+
+// ── skills ─────────────────────────────────────────────────────────────
+
+/** `personal (~alias)` or `team <slug>`; the slug is what `--team` takes. */
+function skillOwnerLabel(owner: any): string {
+  if (owner?.kind === 'team') return `team ${owner.slug}`;
+  return owner?.alias ? `personal (~${owner.alias})` : 'personal';
+}
+
+/** The `rip skill get` arguments that name this skill again (team skills need `--team`). */
+function skillGetArgs(skill: any): string {
+  return skill.owner?.kind === 'team' ? `${skill.name} --team ${skill.owner.slug}` : String(skill.name);
+}
+
+/** `rip skill list` — one block per skill: name, owner, version, sharing, id, then description and link. */
+export const formatSkillList: Formatter = (data) => {
+  const skills = ((data as any).skills ?? []) as Array<Record<string, any>>;
+  if (skills.length === 0) return 'No skills in reach. Publish a folder with SKILL.md: rip skill publish <folder> [--team <slug>]';
+  const lines: string[] = [];
+  for (const s of skills) {
+    lines.push(`${String(s.name).padEnd(28)} ${skillOwnerLabel(s.owner).padEnd(24)} v${s.version}  ${String(s.sharing).padEnd(7)}  [${s.id}]`);
+    lines.push(`    ${s.description}`);
+    if (s.link) lines.push(`    ${s.link}`);
+  }
+  lines.push('', 'Read one: rip skill get <name> [--team <slug>]');
+  return lines.join('\n');
+};
+
+/** `rip skill get` — a short header, the SKILL.md instructions, then the files and how to read them. */
+export const formatSkill: Formatter = (data) => {
+  const s = data as Record<string, any>;
+  const files = (s.files ?? []) as Array<{ path: string; size: number }>;
+  const lines = [
+    `Skill: ${s.name} — ${skillOwnerLabel(s.owner)}, version ${s.version?.number}, ${s.sharing}`,
+    `ID:    ${s.id}`,
+  ];
+  if (s.link) lines.push(`Link:  ${s.link}`);
+  lines.push('', String(s.entry?.text ?? '').trimEnd(), '', `Files (${files.length}):`);
+  for (const f of files) lines.push(`  ${f.path.padEnd(40)} ${fmtSize(f.size)}`);
+  lines.push('', `Read a file: rip skill get ${s.id} --file <path>`);
+  return lines.join('\n');
+};
+
+/** `rip skill get --dir` — where the files went. */
+export const formatSkillSaved: Formatter = (data) => {
+  const files = ((data as any).files ?? []) as string[];
+  return [
+    `Saved ${data.name} version ${data.version} to ${data.dir} (${files.length} files):`,
+    ...files.map((f) => `  ${f}`),
+    `Edit the files, then: rip skill publish ${data.dir} (checked against version ${data.version})`,
+  ].join('\n');
+};
+
+/** `rip skill publish` — the new version, its id, and what was removed. */
+export const formatSkillPublished: Formatter = (data) => {
+  const d = data as Record<string, any>;
+  const skill = d.skill ?? {};
+  const headline = d.unchanged
+    ? `Unchanged: this folder matches version ${d.version} of ${skill.name}; nothing was published`
+    : `${d.created ? 'Created' : 'Published'} ${skill.name} version ${d.version} — ${skillOwnerLabel(skill.owner)}`;
+  const lines = [
+    headline,
+    `  ID:      ${skill.id}`,
+    `  Sent:    ${d.sent} file${d.sent === 1 ? '' : 's'}`,
+  ];
+  // Which version the folder was compared with, and so sent as expectedVersion.
+  const base = { checkout: 'the version this folder was fetched at or last published as', current: 'the current version', explicit: '--expected-version' }[d.basedOn as string];
+  if (base && !d.created) lines.push(`  Based on: version ${d.baseVersion} (${base})`);
+  const removed = (d.removed ?? []) as string[];
+  if (removed.length) lines.push(`  Removed: ${removed.join(', ')}`);
+  lines.push(`  Sharing: ${skill.sharing}${skill.link ? ` — ${skill.link}` : ''}`);
+  lines.push(`  Read it: rip skill get ${skillGetArgs(skill)}`);
+  return lines.join('\n');
+};
+
+/** `rip skill share` — the new sharing state and, when shared, the link to hand out. */
+export const formatSkillShared: Formatter = (data) => {
+  const s = data as Record<string, any>;
+  const state = s.sharing === 'link' ? `shared by link: ${s.link}` : 'private (link sharing stopped)';
+  return `${s.name} is now ${state}\n  ID: ${s.id}`;
+};
+
+/** `rip skill delete`. */
+export const formatSkillDeleted: Formatter = (data) => `Deleted skill ${data.name ?? data.id} [${data.id}]`;
+
+const STUB_SKIP_REASONS: Record<string, string> = {
+  unmanaged: 'a folder not written by rip skill install has this name; it is left alone',
+  name_taken: 'another skill in reach has this name and was installed instead',
+  other_agent: 'a stub installed by another agent has this name; run install as that agent to change it',
+  invalid_entry: 'the catalog entry has no valid name or id',
+};
+
+/** `rip skill install` — the folder, then each change and each skipped skill with its reason. */
+export const formatSkillInstall: Formatter = (data) => {
+  const d = data as Record<string, any>;
+  const lines = [`Skill stubs in ${d.dir} (target ${d.target}${d.accountId ? `, agent ${d.accountId}` : ''})`];
+  const row = (label: string, names: string[]) => {
+    if (names?.length) lines.push(`  ${label.padEnd(10)} ${names.join(', ')}`);
+  };
+  row('Written:', d.written);
+  row('Refreshed:', d.refreshed);
+  row('Unchanged:', d.unchanged);
+  row('Removed:', d.removed);
+  if (d.kept?.length) lines.push(`  Kept:      ${d.kept.join(', ')} (skill gone; the stub was removed but the folder holds files rip did not write)`);
+  for (const s of (d.skipped ?? []) as Array<{ name: string; team: string | null; reason: string }>) {
+    lines.push(`  Skipped:   ${s.name}${s.team ? ` --team ${s.team}` : ''} (${s.reason}: ${STUB_SKIP_REASONS[s.reason] ?? s.reason})`);
+  }
+  for (const f of (d.failed ?? []) as Array<{ name: string; team: string | null; error: string }>) {
+    lines.push(`  Failed:    ${f.name}${f.team ? ` --team ${f.team}` : ''} (${f.error})`);
+  }
+  if (lines.length === 1) lines.push('  No skills in reach; nothing to install.');
+  lines.push('', `Run rip${d.accountId ? ` --agent ${d.accountId}` : ''} skill install --target ${d.target} again after skills are published, renamed or deleted.`);
+  return lines.join('\n');
+};

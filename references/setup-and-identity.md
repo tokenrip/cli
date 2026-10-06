@@ -1,38 +1,63 @@
 # Setup and Identity
 
-Covers first-time setup, multiple accounts, operator onboarding, linking the CLI to an MCP identity, configuration, and public profiles. Return to [SKILL.md](../SKILL.md) for decision trees and workflows.
+Covers signing in, handing off to the person's next agent, managing keys, keys for hosts that take a pasted key, multiple accounts, keypair identities, configuration, and public profiles. Return to [SKILL.md](../SKILL.md) for decision trees and workflows.
 
-## First-time setup
+The setup guide for every kind of assistant (terminal agents, chat apps, hosted agents) is at `https://tokenrip.com/setup`.
+
+## Sign in
+
+An agent joins the person's one Tokenrip account with a key of its own. The person supplies only their email and a six-digit code.
 
 ```bash
-rip account create --alias <my-agent>
+rip auth login --email ana@example.com                  # Tokenrip emails a six-digit code
+rip auth login --email ana@example.com --code 123456    # sign in with it
 rip auth whoami
 ```
 
-`account create` generates an Ed25519 keypair, registers it with the server, and saves the API key locally (`~/.config/tokenrip/identities.json`). Your account ID is the bech32-encoded public key and starts with `rip1`. `rip auth register [--alias <name>]` does the same for the current identity.
+- Ask the person for the code, or read it from their inbox if you have access. It lasts 10 minutes and works once. If it does not arrive, suggest the spam folder; a new code can be requested after a minute.
+- The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. The key is named `Claude Code` under Claude Code, otherwise `CLI`; pass `--name <name>` to choose.
+- Signing in never disconnects the person's other agents. Signing in again on the same machine replaces this machine's key and revokes the old one.
+- Wrong codes count against the email: after five, sign-in for that email locks for a while (`SIGN_IN_LOCKED`, with the time to retry).
+- If a command fails `UNAUTHORIZED`, `NO_API_KEY`, or `NO_IDENTITY`, sign in again. If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it (signing in does not change it).
+- If `rip auth login` reports `overridden_by`, the named variable (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) will keep later commands off the new sign-in until it is unset.
 
-If you lose the API key (`NO_API_KEY`, `UNAUTHORIZED`), run `rip auth register` again: an already-registered keypair gets a fresh key. `rip auth create-key` rotates the key on purpose and revokes the old one. `rip auth register --force` replaces the identity entirely.
+## Hand off to the next agent
 
-## Operator onboarding
-
-Every agent has an **operator**, the person who uses and oversees it. There are two ways to bind an agent to one.
-
-**The operator starts (connection code).** The operator creates a code in the dashboard (Settings → Connect agent). The agent claims it and gets a fresh account bound to that operator:
-
-```bash
-rip auth claim ABCD-EFGH [--label "telegram-bot"]
-```
-
-Codes are single-use and live 10 minutes. This is the path for headless agents with no browser.
-
-**The agent starts (operator link).** The operator signs in to tokenrip.com and verifies their email. The agent then generates a signed proof:
+A connected agent can make the code for the person's next agent, so no email is needed:
 
 ```bash
-rip operator-link                        # signed URL + 6-digit code
-rip operator-link --expires 1h
+rip auth code
 ```
 
-The operator opens the URL in the signed-in browser and confirms **Link agent**, or enters the code at `tokenrip.com/operator/connect`. The proof cannot sign a browser in. Once linked, the operator sees the agent's artifacts, workspaces, and teams in the dashboard.
+It prints one line for the person to paste into the next agent, for example:
+
+```
+Connect to my Tokenrip: https://tokenrip.com/setup — email ana@example.com, code 123456 (valid 10 minutes)
+```
+
+That agent signs in with `rip auth login --email <email> --code <code>` (or, for a chat app connecting through the browser, enters the code on the sign-in page). It lands on the same account and sees the same workspaces. Making a new code replaces the previous one this agent made.
+
+## Keys
+
+Each connected agent, each key made for a host, and each chat app connector holds its own key on the account.
+
+```bash
+rip auth keys                            # list: name, id, connected, last used, connector; (this agent) marks yours
+rip auth keys revoke <id>                # disconnect the agent using that key
+rip auth rotate-key                      # replace this agent's key (alias: create-key); others keep theirs; refused under TOKENRIP_API_KEY
+```
+
+The person sees the same list on the dashboard's Agents page and can remove any agent there.
+
+## Keys for hosts that take a pasted key
+
+Some hosts (personal agents with a key vault, settings screens) cannot run `rip auth login`. Make a key for them:
+
+```bash
+rip auth keys create --name "Hermes"
+```
+
+The key is shown once. Tell the person to paste it into the host's key vault or settings, never into a chat. It has full access to the account; revoke it with `rip auth keys revoke <id>`.
 
 ## Multiple accounts
 
@@ -44,34 +69,32 @@ rip --agent <name> <command>             # one-off identity override
 TOKENRIP_AGENT=<name> rip auth whoami    # same via env var
 ```
 
-Transfer an identity to another machine, encrypted end to end for the receiving account:
+## Keypair identities (advanced)
+
+Most agents should sign in by email. A keypair identity is a separate account of its own, identified by an Ed25519 keypair stored locally; it does not join any person's account.
 
 ```bash
-# On machine A
-rip account export my-agent --to rip1x9a2...   # outputs an encrypted blob
-
-# On machine B
-rip account import blob.txt                     # decrypts with B's private key (use - for stdin)
+rip account create --alias <name>        # generate a keypair and register a new account
+rip account recover-key                  # lost key: sign a recovery request; other keys keep working
+rip operator-link                        # bind it to a signed-in, verified person (signed URL + 6-digit code)
+rip account export <name> --to rip1...   # encrypted transfer to another keypair identity
+rip account import blob.txt              # decrypt with the current identity's keypair (- for stdin)
 ```
 
-## Linking the CLI to an MCP identity
+`operator-link` lets the person see the agent's work in the dashboard; the account stays separate. These commands sign with the local keypair, so an identity that signed in by email refuses them with `NO_LOCAL_KEYPAIR`: it is already on the person's account, and another machine signs in by email or with `rip auth code` instead of importing it.
 
-If the operator first connected through an MCP client (for example Claude Cowork), add a handle and password in web account settings, then recover that primary identity in the CLI:
-
-```bash
-rip auth link --alias your-username --password your-password [--force]
-```
-
-This downloads the account's keypair from the server. The CLI and MCP now share the same identity: the same artifacts, workspaces, tasks, and teams. CLI API keys and MCP OAuth grants are independent; rotating one does not affect the other.
+`rip auth register`, `rip auth claim`, and `rip auth link` are retired; they print a pointer to `rip auth login` (`USE_LOGIN` / `RETIRED`) and contact nothing.
 
 ## Configuration
 
 ```bash
 rip config show                          # API URL, key status, config paths
 rip config set-url https://api.tokenrip.com
-rip config set-key <key>                 # only to paste in a key from elsewhere
+rip config set-key <key>                 # saves a key used only for public reads
 rip config set-output json               # default to JSON output
 ```
+
+`set-key` does not sign in. To use a key from elsewhere (one made with `rip auth keys create`), set `TOKENRIP_API_KEY`; otherwise sign in with `rip auth login`.
 
 Environment variables override the config file:
 

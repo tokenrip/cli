@@ -1,44 +1,35 @@
-import { loadConfig, getApiUrl } from '../config.js';
-import { createHttpClient } from '../client.js';
+import { getFrontendUrl } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAuthKey, formatProfileUpdated, formatWhoami } from '../formatters.js';
-import { signPayload } from '../crypto.js';
 import { resolveCurrentIdentity, loadIdentities, saveIdentities } from '../identities.js';
 import { requireAuthClient } from '../auth-client.js';
 import { parseJsonObjectOption } from '../json.js';
 
-export async function authRegister(options: { alias?: string; force?: boolean }): Promise<void> {
-  let hasExisting = false;
-  try {
-    resolveCurrentIdentity();
-    hasExisting = true;
-  } catch {
-    // no identity found
-  }
-
-  if (hasExisting && !options.force) {
-    await recoverApiKey();
-    return;
-  }
-
-  const { accountCreate } = await import('./account.js');
-  await accountCreate({ alias: options.alias, activate: true });
+/** Where a retired setup command sends the agent: email sign-in, or the setup guide. */
+export function signInPointer(): string {
+  return `Sign in with the person's email: rip auth login --email <your email>. A connected agent can give you a code instead (rip auth code). Guide: ${getFrontendUrl()}/setup`;
 }
 
-async function recoverApiKey(): Promise<void> {
+/** `rip auth register` — retired. Accepts and ignores its old options; makes no request. */
+export async function authRegister(_options?: unknown): Promise<void> {
+  throw new CliError('USE_LOGIN', `rip auth register is retired. ${signInPointer()}`);
+}
+
+/** `rip auth rotate-key` — replace this agent's key. Every other key on the account keeps working. */
+export async function authRotateKey(): Promise<void> {
+  // The new key would be saved to the stored identity while TOKENRIP_API_KEY keeps being used,
+  // and the variable's key would be the one revoked.
+  if (process.env.TOKENRIP_API_KEY) {
+    throw new CliError(
+      'ENV_KEY_ROTATION',
+      "TOKENRIP_API_KEY is set. Rotate a stored identity's key by unsetting it; to replace a key kept in a host's vault, create a new one with `rip auth keys create --name <name>` and revoke the old one.",
+    );
+  }
+  const { client } = requireAuthClient();
   const identity = resolveCurrentIdentity();
-  const config = loadConfig();
-  const apiUrl = getApiUrl(config);
 
-  const exp = Math.floor(Date.now() / 1000) + 300;
-  const token = signPayload(
-    { sub: 'key-recovery', iss: identity.accountId, exp, jti: Math.random().toString(36).slice(2) },
-    identity.secretKey,
-  );
-
-  const client = createHttpClient({ baseUrl: apiUrl });
-  const { data } = await client.post('/v0/accounts/recover-key', { token });
+  const { data } = await client.post('/v0/accounts/revoke-key');
   const apiKey = data.data.api_key;
 
   const store = loadIdentities();
@@ -47,35 +38,10 @@ async function recoverApiKey(): Promise<void> {
     saveIdentities(store);
   }
 
-  outputSuccess(
-    { accountId: identity.accountId, apiKey, message: 'API key recovered and saved' },
-    formatAuthKey,
-  );
-}
-
-export async function authCreateKey(): Promise<void> {
-  const { client } = requireAuthClient();
-  const identity = resolveCurrentIdentity();
-
-  try {
-    const { data } = await client.post('/v0/accounts/revoke-key');
-    const apiKey = data.data.api_key;
-
-    const store = loadIdentities();
-    if (store[identity.accountId]) {
-      store[identity.accountId].apiKey = apiKey;
-      saveIdentities(store);
-    }
-
-    outputSuccess({
-      apiKey,
-      message: 'API key regenerated and saved',
-      note: 'Previous key has been revoked',
-    }, formatAuthKey);
-  } catch (error) {
-    if (error instanceof CliError) throw error;
-    throw new CliError('KEY_ROTATION_FAILED', 'Failed to regenerate API key.');
-  }
+  outputSuccess({
+    apiKey,
+    message: "Replaced this agent's key; other agents are not affected. The new key is saved.",
+  }, formatAuthKey);
 }
 
 export async function authWhoami(): Promise<void> {

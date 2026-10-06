@@ -53,7 +53,7 @@ REMOTE_VER=$(curl -fsSL "$BASE/manifest.json" 2>/dev/null | grep -o '"version":"
 rip update >/dev/null 2>&1
 curl -fsSL "$BASE/SKILL.md" -o "$SKILL_DIR/SKILL.md" 2>/dev/null
 mkdir -p "$SKILL_DIR/references"
-for ref in setup-and-identity workspaces output-and-provenance connections tasks; do
+for ref in setup-and-identity workspaces output-and-provenance connections tasks skills; do
   curl -fsSL "$BASE/references/${ref}.md" -o "$SKILL_DIR/references/${ref}.md" 2>/dev/null
 done
 # Retired references (surfaces and mounted agents were removed in 2.0).

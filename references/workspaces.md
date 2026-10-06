@@ -10,11 +10,12 @@ Membership is resolved live:
 - Other members of the owning team are internal **editors**.
 - An admin may add outside accounts as external **viewers** or **editors**.
 
-Every item has an `audience`: `internal` (owner or team only) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, id, and your `membership/role`; `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
+Every item has an `audience`: `internal` (owner or team only) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full UUID, slug, personal/team home, `membership/role`, and permitted capabilities; `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
 
 ## When to use
 
 - "work on project X from this harness" → `rip workspace load <workspace-id> --operation-id <stable-id>`, then use the returned `session.id` for write attribution
+- "refresh context for this session" → `rip workspace load <workspace-id> --session-id <session-id>`
 - "what changed since I last looked" → `rip workspace changes <workspace-id>`, then `rip workspace ack <workspace-id> --delivery-token <token>`
 - "this document the operator is looking at" → `rip workspace view context <workspace-id> <session-id>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
 - "open that document in their browser" → `rip workspace view open …` and read the receipt (`queued` / `deferred` / `applied` / `disconnected`)
@@ -55,11 +56,11 @@ Adoption is atomic, makes no copy, and keeps identity and history. You must own 
 
 ## Content inside a workspace — the ordinary commands
 
-Workspace content is written with the normal commands plus workspace flags. Every write to workspace content needs the precondition the read reported. The server answers `PRECONDITION_REQUIRED` when it is missing and `CONFLICT` (with `currentVersionId` / `currentRevision` / `currentWorkspaceRevision`) when it is stale. Re-read and retry; never overwrite.
+Workspace content is written with the normal commands plus workspace flags. New artifacts and folders need no expected revision. Existing content uses the applicable precondition the read reported; insert-only table rows need none unless they expand the schema. The server answers `PRECONDITION_REQUIRED` when it is missing and `CONFLICT` (with `currentVersionId` / `currentRevision` / `currentWorkspaceRevision`) when it is stale. Re-read on stale guards and correct the request; never overwrite. Creation audience/session fields require explicit workspace identity. Omit standalone visibility, team grants and legacy folder slugs, including private visibility; workspace access is governed by membership and audience.
 
 ```bash
 # create in the workspace
-rip artifact publish <file> --type markdown --workspace-id <ws> [--audience internal|shared]
+rip artifact publish <file> --type markdown --workspace-id <ws> [--audience internal|shared] --workspace-session-id <session-id>
 rip artifact publish --type table --title "..." --schema '<json>' --workspace-id <ws>
 rip artifact upload <file> --workspace-id <ws> [--audience internal|shared]
 rip folder create <slug> --workspace <ws> [--audience internal|shared]
@@ -90,28 +91,44 @@ rip task list --workspace-id <ws>
 rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--audience internal|shared]
 ```
 
-Add `--workspace-session-id <session-id>` to any of these writes (and to `task claim|touch|release|done|dismiss|reopen`, `artifact fork`, and `workspace adopt`) to attribute the write to your live session. It must be **your** credential's session in that workspace. Every write receipt returns the new `workspaceRevision`; carry it into the next call rather than re-reading.
+Add `--workspace-session-id <session-id>` to any of these writes (and to `task claim|touch|release|done|dismiss|reopen`, `artifact fork`, and `workspace adopt`) to attribute the write to your live session. It must be **your** credential's session in that workspace. Create receipts retain the authoritative `workspaceId`, `audience`, and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call.
 
 Folders are flat and grant nothing. A shared folder shows its shared children. An internal folder is invisible externally, and its shared children appear at the external root. `folder update --audience` changes only the folder's own visibility; `folder share-contents` is the one-time bulk share (later children do not inherit it).
+
+## Recover after losing local session state
+
+```bash
+rip workspace show <workspace-id>
+rip workspace show <workspace-id> --session-cursor <returned-cursor>  # when hasMore
+rip workspace load <workspace-id> --session-id <chosen-session-id>
+```
+
+`show` returns `sessionRecovery: { items, hasMore, nextCursor }` with at most 20 resumable sessions belonging to **this account and credential**. Each item has its full `id`, `operationId`, `createdAt`, `lastActivityAt`, and derived `idleExpiresAt`; human output prints these fields and safely quoted exact page/resume commands. Choose the session for the work you intend to continue, for example by a known operation identity. Never choose automatically by recency or because there is only one candidate. Discovery is a snapshot: it never keeps a session alive, expires it, or ends it, and resume rechecks access and expiry. Archived workspaces return no candidates. Another credential's sessions are absent; start new participation using project context/handoffs when returning with a different credential.
+
+The cursor is opaque and bound to workspace/account/credential; malformed or rebound values return `INVALID_CURSOR`. Pages are newest first by creation time and UUID and reveal no hidden counts. A page may have fewer than 20 candidates to fit the full response budget; identities stay complete. Always follow `hasMore`/`nextCursor` rather than inferring completeness from the item count. Workspace names may repeat. Select using full UUID, slug, personal/team home and capabilities; clarify any unresolved ambiguity instead of selecting the most recent workspace.
 
 ## Sessions, pins, and handoffs
 
 ```bash
-rip workspace load <workspace-id> --operation-id <stable-id> [--artifact-offset <n>] [--task-cursor <c>] [--activity-cursor <c>] [--handoff-offset <n>]
+rip workspace load <workspace-id> --operation-id <stable-id>   # intentional keyed start or replay
+rip workspace load <workspace-id> --session-id <session-id>    # exact context refresh/resume
+# Either selector supports --artifact-offset, --task-cursor, --activity-cursor, --handoff-offset.
 ```
 
-`load` starts **or resumes** your credential's session. The same `--operation-id` always returns the same session, so retries (and paging) never duplicate. The response is bounded, and human output prints all of it:
+`load` requires exactly one selector. `--operation-id` deliberately starts participation or replays the same live start. A new identity creates independent participation. `--session-id` resumes that exact live session after rechecking workspace, caller, credential, access and idle expiry; it never creates a replacement. Both selectors refuse terminal participation on active workspaces. Refresh preserves browser link and pairing. The response is bounded, and human output prints all of it:
 
 - `Workspace:` name, id, `membership/role`, and `Can:` — the capabilities you hold now
-- `Session:` the session id (use it for `--workspace-session-id` and `session end`), and `Browser:` — the link the operator opens to pair a browser tab
+- `Session:` the id used for `--workspace-session-id` and `session end`; `Operation:` the keyed start identity; `Browser:` — the link the operator opens to pair a browser tab
 - `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run exactly that
 - `Latest handoff` — the newest handoff, inline or with the same `rip artifact cat … --version-id …` command (handoffs usually arrive as references), plus the ids of earlier handoffs
 - `Tasks` (20), `Recent changes` (50; a `refresh`/`historyGap` warning when set), and the `Artifacts` index (50)
-- `More` — one `rip workspace load <ws> --operation-id <same id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset <value>` line per list that continues
+- `More` — one `rip workspace load <ws> --session-id <returned-session-id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset <value>` line per list that continues
 
 With `--json`, the same data is under `workspace`, `session`, `pins[]`, `handoffs.items[]`, `tasks`, `activity`, `artifacts`, and `browserLink`; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above).
 
-Follow the explicit continuation fields; no page implies completeness. An archived workspace loads read-only with `session: null`. Sessions expire after 24 hours idle (harness calls count; browser polling does not). Loading does **not** acknowledge activity.
+Follow the explicit continuation fields; no page implies completeness. An archived workspace loads authorized read-only context with `session: null`. A session selector still validates ownership; neither selector acquires or touches participation. Human continuation commands reuse the invocation selector. Restoring the workspace leaves old archived sessions inactive. Sessions expire after 24 hours idle (harness calls count; browser polling does not). Loading does **not** acknowledge activity.
+
+**Pins or skills?** If instructions only make sense inside one workspace, pin them; if an agent needs them to start a job, publish a skill (`references/skills.md`). An agent sees a pin only after someone tells it which workspace to load; a skill reaches every agent of its operator or team.
 
 ```bash
 rip workspace pin add <workspace-id> <artifact-id-or-alias> [--position <n>]   # internal editors; markdown only; max 20
@@ -151,13 +168,15 @@ rip workspace changes <workspace-id> [--limit <n>] [--delivery-token <token>]
 rip workspace ack <workspace-id> --delivery-token <token>
 ```
 
-`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position — workspace, member, artifact, folder, and task events. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
+`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position — workspace, member, artifact, folder, task, and recorded session start/end events. Recent activity, load previews, changes, and the operator's peek/polling share the same event-time audience and current access policy. Retained session events remain visible after transient-session cleanup, without exposing operation identities or credential metadata. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
 
-Reading, loading, and polling never acknowledge; only `ack` advances the position, and only through the delivered page. While a page is outstanding a new one is refused (`WORKSPACE_PAGE_UNACKNOWLEDGED`); pass its token to `changes` to replay it. A wrong or expired (10 minute) token is `INVALID_WORKSPACE_DELIVERY`. Positions are per credential: another key, or the operator's browser, has its own.
+Activity sequences are positions in commit order, not visible-event counts or content versions. A retained activity window can be older than the current content returned by `load`. `ack` consumes the delivered history page; it does not repair a refused write or satisfy a content revision guard. Already consumed history is not rewound automatically.
+
+Reading, loading, and polling never acknowledge visible history; `ack` consumes its delivered page. Invisible-only ranges can be traversed automatically. While a page is outstanding a new one is refused (`WORKSPACE_PAGE_UNACKNOWLEDGED`); pass its token to `changes` to replay it. A wrong or expired (10 minute) token is `INVALID_WORKSPACE_DELIVERY`. Positions are per credential: another key, or the operator's browser, has its own.
 
 ## Rules worth memorising
 
-- **Retry identity.** `load`, `view open`, and `session end` are safe to retry with the same operation id or input; they return the original outcome.
+- **Retry identity.** Replay a load start with the same operation id; refresh or page by exact session id. Terminal participation refuses without replacement. `view open` and `session end` replay their original receipts with the same operation id or input.
 - **Preconditions are mandatory.** No workspace write succeeds without the expected version, row revision, or workspace revision it needs.
 - **A session id is not a credential.** It only attributes writes and routes browser coordination; every call is still authenticated and authorized live.
 - **Audience is per item and independent of versions.** Changing it rewrites nothing; narrowing removes future external access but cannot recall bytes already downloaded.
