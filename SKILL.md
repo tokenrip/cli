@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip holds shared project work, not local
   development workflows.
-version: 2.3.0
+version: 2.3.1
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.3.0 -->
+<!-- tokenrip-skill-version: 2.3.1 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -447,7 +447,7 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `TEAM_NOT_FOUND` | Run `rip team sync` to refresh the local team cache |
 | `FILE_NOT_FOUND` | Verify the file exists before running the command |
 | `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
-| `TIMEOUT` / `NETWORK_ERROR` | Inspect uncertain effects before retrying a create and preserve known keyed identity; check API URL with `rip config show` and network connectivity |
+| `TIMEOUT` / `NETWORK_ERROR` | Read the local timing and response observations in [troubleshooting](references/setup-and-identity.md#transport-troubleshooting); inspect uncertain write outcomes before retrying |
 | `PRECONDITION_REQUIRED` / `CONFLICT` | An existing-item write needs its applicable guard or has a stale one. Read the authorized current value and reconcile before a corrected write (`references/workspaces.md`) |
 | `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep full content and session attribution |
 | `INVALID_SCOPE` | Supply explicit workspace identity for audience/session attribution, or omit those fields |

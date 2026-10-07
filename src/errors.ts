@@ -12,7 +12,39 @@ export interface DomainErrorDetails {
   /** `INVALID_SKILL`: which skill rule refused (closed set, mirrors the server). */
   reason?: string;
 }
-export type CliErrorDetails = DomainErrorDetails | ValidationDetail[];
+/** Observations made by the local client, never copied from an API response. */
+export interface TransportErrorDetails {
+  elapsedMs?: number;
+  timeoutMs?: number;
+  transportCode?: string;
+  responseReceived?: boolean;
+  httpStatus?: number;
+}
+export type CliErrorDetails = (DomainErrorDetails & TransportErrorDetails) | ValidationDetail[];
+
+const TRANSPORT_CODES: ReadonlySet<string> = new Set([
+  'ECONNABORTED', 'ETIMEDOUT', 'ERR_PROXY_TUNNEL', 'ERR_CANCELED', 'ERR_NETWORK',
+  'ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
+  'ERR_BAD_REQUEST', 'ERR_BAD_RESPONSE', 'ERR_INVALID_URL', 'ERR_INVALID_ARG_TYPE',
+  'ERR_FR_TOO_MANY_REDIRECTS', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID',
+]);
+
+/** A distinct construction channel prevents remote bodies from claiming local facts. */
+export function safeTransportErrorDetails(value: unknown): TransportErrorDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const body = value as Record<string, unknown>;
+  const details: TransportErrorDetails = {};
+  for (const field of ['elapsedMs', 'timeoutMs'] as const) {
+    if (typeof body[field] === 'number' && Number.isFinite(body[field]) && body[field] >= 0) details[field] = body[field];
+  }
+  if (typeof body.transportCode === 'string' && TRANSPORT_CODES.has(body.transportCode)) details.transportCode = body.transportCode;
+  if (typeof body.responseReceived === 'boolean') details.responseReceived = body.responseReceived;
+  if (details.responseReceived === true && typeof body.httpStatus === 'number' && Number.isInteger(body.httpStatus)
+    && body.httpStatus >= 100 && body.httpStatus <= 599) details.httpStatus = body.httpStatus;
+  return Object.keys(details).length ? details : undefined;
+}
 
 /** The server's `SKILL_INVALID_REASONS` (apps/backend/src/db/models/Skill.ts). */
 const SKILL_INVALID_REASONS: ReadonlySet<string> = new Set([
@@ -21,7 +53,7 @@ const SKILL_INVALID_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /** The server owns refusal codes; only curated correction metadata is copied. */
-export function safeErrorDetails(code: string, value: unknown): CliErrorDetails | undefined {
+export function safeErrorDetails(code: string, value: unknown): DomainErrorDetails | ValidationDetail[] | undefined {
   if (Array.isArray(value)) {
     if (['CONFLICT', 'STATE_CONFLICT', 'PRECONDITION_REQUIRED', 'WORKSPACE_AUTHORITY', 'INELIGIBLE_STORAGE', 'INVALID_SCOPE',
       'WORKSPACE_SESSION_INVALID', 'WORKSPACE_SESSION_REVOKED', 'WORKSPACE_SESSION_EXPIRED', 'WORKSPACE_SESSION_INACTIVE',
@@ -61,10 +93,11 @@ export class CliError extends Error {
     public readonly code: string,
     message: string,
     details?: CliErrorDetails,
+    localTransportDetails?: TransportErrorDetails,
   ) {
     super(message);
     this.name = 'CliError';
-    this.details = safeErrorDetails(code, details);
+    this.details = safeTransportErrorDetails(localTransportDetails) ?? safeErrorDetails(code, details);
   }
 }
 

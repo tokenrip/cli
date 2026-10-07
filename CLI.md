@@ -978,8 +978,8 @@ Client-side codes:
 | `UNAUTHORIZED` | API key not valid (revoked, or a bodiless 401). If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it. Otherwise sign in again: `rip auth login --email <email>` |
 | `NO_LOCAL_KEYPAIR` | The command signs with a local keypair; this identity signed in by email |
 | `USE_LOGIN` / `RETIRED` | A retired setup command (`auth register` / `auth claim`, `auth link`); use `rip auth login` |
-| `TIMEOUT` | Request timed out |
-| `NETWORK_ERROR` | Cannot reach the API server |
+| `TIMEOUT` | Transport expiry; compare local elapsed and configured timeout |
+| `NETWORK_ERROR` | Transport or local processing failure; a response may have arrived |
 | `AUTH_FAILED` | Could not create API key |
 | `INVALID_AGENT_ID` | Agent ID doesn't start with `rip1` |
 

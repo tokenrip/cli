@@ -34,7 +34,13 @@ export function outputError(err: CliError): never {
   } else {
     console.error(`Error [${err.code}]: ${err.message}`);
     const details = err.details;
-    if (details && !Array.isArray(details)) {
+    if (details && !Array.isArray(details) && ('elapsedMs' in details || 'timeoutMs' in details || 'transportCode' in details || 'responseReceived' in details)) {
+      if (details.elapsedMs !== undefined) console.error(`Elapsed: ${Math.round(details.elapsedMs)} ms`);
+      if (details.timeoutMs !== undefined) console.error(`Configured timeout: ${details.timeoutMs} ms`);
+      if (details.transportCode) console.error(`Transport code: ${details.transportCode}`);
+      if (details.responseReceived !== undefined) console.error(`HTTP response received: ${details.responseReceived ? 'yes' : 'no'}`);
+      if (details.httpStatus !== undefined) console.error(`HTTP status: ${details.httpStatus}`);
+    } else if (details && !Array.isArray(details)) {
       if (details.currentVersionId) console.error(`Current version: ${details.currentVersionId}`);
       if (details.currentRevision) console.error(`Current revision: ${details.currentRevision}`);
       if (details.currentWorkspaceRevision) console.error(`Current workspace revision: ${details.currentWorkspaceRevision}`);

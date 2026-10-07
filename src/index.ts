@@ -4,7 +4,7 @@ export { createHttpClient } from './client.js';
 export type { ClientConfig } from './client.js';
 export type { WorkspaceSummary } from './commands/workspace.js';
 export { CliError, toCliError } from './errors.js';
-export type { CliErrorDetails, DomainErrorDetails, ValidationDetail } from './errors.js';
+export type { CliErrorDetails, DomainErrorDetails, ValidationDetail, TransportErrorDetails } from './errors.js';
 export { outputSuccess, outputError, wrapCommand } from './output.js';
 export { requireAuthClient } from './auth-client.js';
 export type { AuthContext } from './auth-client.js';

@@ -21,6 +21,16 @@ rip auth whoami
 - If a command fails `UNAUTHORIZED`, `NO_API_KEY`, or `NO_IDENTITY`, sign in again. If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it (signing in does not change it).
 - If `rip auth login` reports `overridden_by`, the named variable (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) will keep later commands off the new sign-in until it is unset.
 
+## Transport troubleshooting
+
+`TIMEOUT` reports a transport expiry; `NETWORK_ERROR` also covers cancellation and local processing failures. Neither proves the API was unreachable. Check `rip config show` and the host's network settings while preserving required proxy and certificate trust configuration.
+
+The shared client defaults to 30,000 ms. Its native proxy connection uses the effective request timeout; response and transfer behavior retains Axios's inactivity semantics. This is not a whole-command deadline. A timeout can arrive earlier than the configured value, so compare locally measured `elapsedMs` with `timeoutMs` instead of assuming thirty seconds elapsed. Library callers can override the timeout; factory `timeout: 0` retains the default, while per-request `timeout: 0` disables the timeout. Caller-selected agents, adapters, transports, and explicit proxy settings keep their own policy.
+
+Human stderr and JSON stdout expose available flat local `details`: `elapsedMs` (monotonic time since dispatch preparation), `timeoutMs` (effective configured value), `transportCode` (an allowlisted code when available), `responseReceived` (whether this client observed an HTTP reply), and `httpStatus` only when a reply was observed. `ERR_CANCELED` indicates cancellation, not timeout expiry. These observations do not identify a network phase or establish whether a write committed. Failures before dispatch preparation may have no timing observations. Raw exceptions, URLs, proxy credentials, and request contents are excluded from local diagnostics.
+
+The CLI sends a sign-in redemption once. If its response is lost after the server commits, the code is consumed and a new key exists, but the CLI cannot save the unobserved key. An existing local identity remains unchanged, and sibling agents keep working. Inspect the Agents page or existing key-list controls before another sign-in; revoke a stranded key there if needed and obtain a fresh code. Do not blindly repeat a mutation because `responseReceived` is false. The canonical setup guide remains `https://tokenrip.com/setup`.
+
 ## Hand off to the next agent
 
 A connected agent can make the code for the person's next agent, so no email is needed:

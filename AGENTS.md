@@ -446,8 +446,8 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip account list` to see available accounts |
 | `FILE_NOT_FOUND` | File path does not exist | Verify the file exists |
 | `INVALID_TYPE` | Unrecognised `--type` value | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
-| `TIMEOUT` | Request timed out | Inspect uncertain effects before retrying a create; preserve known keyed identity |
-| `NETWORK_ERROR` | Cannot reach the API server | Check `TOKENRIP_API_URL` and network connectivity |
+| `TIMEOUT` | Transport expiry; compare local elapsed and configured timeout | Inspect uncertain effects before retrying a create; preserve known keyed identity |
+| `NETWORK_ERROR` | Transport or local processing failure; a response may have arrived | Check `TOKENRIP_API_URL` and network connectivity |
 | `AUTH_FAILED` | Could not register or create key | Check if the server is running |
 | `INVALID_AGENT_ID` | Bad agent ID format | Agent IDs start with `rip1` |
 | `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write lacks, or has a stale, version id or revision | Re-read and retry with the current value |

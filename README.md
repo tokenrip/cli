@@ -103,3 +103,9 @@ See [`SECURITY.md`](./SECURITY.md).
 ## License
 
 MIT
+
+## HTTP client and transport failures
+
+The library's `createHttpClient()` returns a configurable Axios instance with a 30,000 ms default. Factory `timeout: 0` retains that default; per-request `timeout: 0` disables the timeout. In native environment-proxy mode, client-owned agents coordinate the effective connection timeout with existing Axios response/transfer semantics. This is not a whole-command deadline. Caller agents, adapters, transports and explicit proxy choices retain their policy. Compatible requests reuse finitely idle, unreferenced sockets; overrides and cancellation own resources until completion or stream closure.
+
+Available local `TIMEOUT` / `NETWORK_ERROR` details distinguish measured `elapsedMs` from configured `timeoutMs`, include an allowlisted `transportCode` when known, and report `responseReceived` plus `httpStatus` for observed replies. No response does not prove a write failed to commit. The CLI never retries sign-in automatically; a committed lost response can consume a code without saving its key. See [transport troubleshooting](references/setup-and-identity.md#transport-troubleshooting) before repeating a write.

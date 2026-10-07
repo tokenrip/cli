@@ -39,6 +39,12 @@ JSON failures preserve `ok`, `error`, and `message`, with optional safe `details
 
 A corrected request differs from an identical retry. MCP's `retry` describes safety, not success, and the CLI does not automatically retry writes. After a timeout, inspect the operation outcome before repeating a write: the server may have committed it. Keep the existing keyed operation identity when checking or replaying a potentially committed operation.
 
+## Local transport observations
+
+For client-generated `TIMEOUT` and `NETWORK_ERROR`, human stderr and JSON stdout expose the same available flat `details`: `elapsedMs`, `timeoutMs`, optional allowlisted `transportCode`, `responseReceived`, and `httpStatus` only for an observed response. The elapsed value is measured locally with a monotonic clock; the configured timeout is a connection/response policy, not proof of elapsed time or a whole-command deadline. Server error bodies cannot supply these local observations. Failures before dispatch preparation may have no timing observations.
+
+`responseReceived: false` says no HTTP reply was observed; a request may still have reached the server and committed. `NETWORK_ERROR` can also follow a received response or caller cancellation (`ERR_CANCELED`). Inspect uncertain mutation outcomes before repeating them. See [transport troubleshooting](setup-and-identity.md#transport-troubleshooting), including the single-use sign-in code and lost-response limit.
+
 ## Provenance flags
 
 Build lineage and traceability with these flags on `artifact publish` and `artifact upload` (`--context` also works on `artifact update`):

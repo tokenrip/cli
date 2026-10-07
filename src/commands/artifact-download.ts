@@ -31,7 +31,8 @@ export async function artifactDownload(
 
     const response = await client.get(endpoint, { responseType: 'arraybuffer' });
 
-    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    const header = response.headers['content-type'];
+    const contentType = typeof header === 'string' && header ? header : 'application/octet-stream';
     const ext = mime.extension(contentType) || 'bin';
     const outPath = path.resolve(options.output || `${uuid}.${ext}`);
 
