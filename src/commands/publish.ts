@@ -11,10 +11,11 @@ import { resolveTeam, resolveTeams } from '../teams.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'table', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
-function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; workspaceSessionId?: string }): void {
+function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; why?: string; handoff?: boolean }): void {
   if (options.workspaceId) body.workspaceId = options.workspaceId;
   if (options.audience) body.audience = options.audience;
-  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.handoff) body.handoff = true;
+  if (options.why !== undefined) body.why = options.why;
 }
 
 /**
@@ -65,7 +66,9 @@ export async function publish(
     strict?: boolean;
     workspaceId?: string;
     audience?: 'internal' | 'shared';
-    workspaceSessionId?: string;
+    why?: string;
+    /** Publish markdown as the workspace's handoff note (requires `workspaceId`). */
+    handoff?: boolean;
   },
 ): Promise<void> {
   assertWorkspaceCreationScope(options);

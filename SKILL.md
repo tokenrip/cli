@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip holds shared project work, not local
   development workflows.
-version: 2.3.1
+version: 2.5.0
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,13 +52,13 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.3.1 -->
+<!-- tokenrip-skill-version: 2.5.0 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
 > **What this is.** Auto-loaded context for using the `rip` CLI to work in a
 > Tokenrip workspace: load it, read and write its artifacts, tables, folders,
-> and tasks, and leave a handoff for whoever comes next.
+> and tasks, and see what earlier agents worked toward.
 
 ## Auto-Installation
 
@@ -81,9 +81,10 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or read it from their inbox if you can), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed.
 2. If you receive `NO_API_KEY`, `NO_IDENTITY`, or `UNAUTHORIZED`, sign in again the same way. Signing in never disconnects the person's other agents. Never paste a key into a chat.
 3. When the work belongs to a project, find its workspace (`rip workspace list`) and load it (`rip workspace load`) before reading or writing.
-4. Always parse and present `data.url` from JSON responses to the user.
-5. Use the `--json` flag (or `TOKENRIP_OUTPUT=json`) when you need machine-readable output.
-6. Run `rip <command> --help` for full flag syntax. This skill teaches *when* and *why* to use a command, not every flag.
+4. Every write to workspace content states **why**: `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit. "Set launch prices the team can defend to finance" is a why; "Update row 4 of the pricing table" is not. Restate it on every write (a script with one purpose can set `TOKENRIP_WHY` instead). Without it the server refuses `WHY_REQUIRED`.
+5. Always parse and present `data.url` from JSON responses to the user.
+6. Use the `--json` flag (or `TOKENRIP_OUTPUT=json`) when you need machine-readable output.
+7. Run `rip <command> --help` for full flag syntax. This skill teaches *when* and *why* to use a command, not every flag.
 
 ## First Steps
 
@@ -91,28 +92,29 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 rip auth whoami                                               # who am I acting as?
 rip auth login --email <email> [--code <code>]                # if not signed in (rule 1)
 rip workspace list                                            # full UUIDs, slugs, personal/team homes, capabilities
-rip workspace load <workspace-id> --operation-id <stable-id>  # intentionally start keyed participation, or replay that live start
+rip workspace load <workspace-id>                             # bounded context, recent sessions, your browser link
 ```
 
 `workspace load` prints, without `--json`:
 
-- the workspace, your role, what you **Can** do, and the **Session** id (use it for `--workspace-session-id` and `session end`) plus its **Operation** identity;
+- the workspace, your role, what you **Can** do, and the **Browser** link: give it to the person so their tab follows you;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - the **Latest handoff**, the same way (inline, or the `rip artifact cat … --version-id …` command), plus the ids of earlier handoffs;
+- **Recent sessions**: who worked, from which tool, toward which goals (the whys they stated), and what they changed;
 - open **Tasks**, **Recent changes**, and the **Artifacts** index;
-- `rip workspace load … --session-id <returned-session-id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
+- `rip workspace load <workspace-id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
 
-Read the pins and the latest handoff first. Replay a start with the same `--operation-id`; refresh context or page with `rip workspace load <workspace-id> --session-id <returned-session-id>`. Exactly one selector is required. A new operation identity deliberately starts independent participation. Terminal selection refuses without replacement. Archived loads return read-only context and no session; their continuation reuses the invocation selector without starting or touching participation. With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
+Read the pins, the latest handoff and the recent sessions first. Loading again is safe: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). **Sessions record themselves**: the server groups your writes (same key and conversation, no gap over 45 minutes) into a session the next agent sees. There is nothing to start or end. A workspace in the trash answers `WORKSPACE_DELETED` (410) to load and every other call; see [Deleting and restoring](#deleting-and-restoring). With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
 
 ## Read-First Table
 
 | Source | Command | What to extract |
 |---|---|---|
 | Identity | `rip auth whoami` | Alias, account ID, API key status — confirms you can act |
-| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full UUID, slug, home and capabilities; `show` adds audiences and this credential’s bounded session recovery |
-| Deliberate start/replay | `rip workspace load <ws> --operation-id <id>` | Session identity, pins and latest handoff (inline, or `rip artifact cat <publicId> --version-id <v>`), tasks, changes, artifacts |
-| Exact resume/refresh | `rip workspace load <ws> --session-id <chosen-session-id>` | The same live participation and browser link, with bounded current context; no replacement session |
-| What changed | `rip workspace changes <ws>` | Events since you last acknowledged, plus a `deliveryToken` |
+| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full UUID, slug, home and capabilities; `show` adds audiences |
+| Context | `rip workspace load <ws>` | Pins and latest handoff (inline, or `rip artifact cat <publicId> --version-id <v>`), recent sessions, tasks, changes, artifacts, browser link |
+| Who worked on what | `rip workspace sessions <ws>` | Recent sessions, newest first: who, which tool, goals, items changed, handoff notes |
+| What changed | `rip workspace changes <ws>` | Events since you last acknowledged, each with its why, plus a `deliveryToken` |
 | Work queue | `rip task list --workspace-id <ws>` | Open and claimed tasks — ids to claim (`references/tasks.md`) |
 | Search | `rip search "<query>"` | Existing artifacts — avoid duplicate publishes |
 | Teams | `rip team list` | Team slugs for `--team` flags |
@@ -120,29 +122,31 @@ Read the pins and the latest handoff first. Replay a start with the same `--oper
 
 ## Choosing What to Do
 
-After losing local participation state, run `rip workspace show <workspace-id>` (MCP `workspace_show`) and inspect `sessionRecovery.items`. Each candidate gives full session/operation IDs and creation/activity/idle-expiry times. Choose the session for the intended work, for example by a known operation identity, then resume with `rip workspace load <workspace-id> --session-id <chosen-id>`. Pages contain at most 20 of this account/credential's active unexpired sessions; use `--session-cursor <nextCursor>` when `hasMore`. Discovery does not choose or keep sessions alive; resume rechecks. Archived workspaces have no candidates, and a different credential starts new participation from context/handoffs. Duplicate workspace names require selection by UUID, slug, home and capabilities; clarify unresolved ambiguity. See [workspaces reference](references/workspaces.md#recover-after-losing-local-session-state).
+Duplicate workspace names require selection by UUID, slug, home and capabilities; clarify unresolved ambiguity.
 
 ### Working in a workspace
 
-Creation audience and session attribution require an explicit workspace identity. Omit `--visibility`, `--team`, `--folder`, and `--public-asset` when creating workspace content. `private` is standalone owner-private access; it does not mean workspace internal. If scope is refused, correct the sharing input and keep the same workspace/session attribution.
+Creation audience and a handoff require an explicit workspace identity. Omit `--visibility`, `--team`, `--folder`, and `--public-asset` when creating workspace content. `private` is standalone owner-private access; it does not mean workspace internal. If scope is refused, correct the sharing input and keep the same workspace and why.
 
 Every item in a workspace has an **audience**: `internal` (the owner or owning team) or `shared` (external members too). New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
 
-Workspace history includes authorized recorded session starts and ends, even after transient-session cleanup. Activity sequences are positions, not counts or content versions; `load` can show current content with an older fixed history window. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
+Activity sequences are positions, not counts or content versions; `load` can show current content with an older fixed history window. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
+
+Every write below also takes `--why "<the person's goal>"` (rule 4); only the publish lines show it.
 
 ```
-Deliberately start participation or replay its known start?
-  → rip workspace load <workspace-id> --operation-id <stable-retry-id>
+Pick up a workspace?
+  → rip workspace load <workspace-id>
 
-Resume or refresh the selected live participation?
-  → rip workspace load <workspace-id> --session-id <chosen-session-id>
+Who worked here recently, toward what?
+  → rip workspace sessions <workspace-id>                         # --cursor <nextCursor> for older sessions
 
 What changed since I last looked?
   → rip workspace changes <workspace-id>
   → rip workspace ack <workspace-id> --delivery-token <token>     # only after you have processed the page
 
 Put a new document into the workspace?
-  → rip artifact publish <file> --type markdown --title "..." --workspace-id <ws> [--audience internal|shared] --workspace-session-id <session-id>
+  → rip artifact publish <file> --type markdown --title "..." --workspace-id <ws> [--audience internal|shared] --why "<the person's goal>"
 
 Replace a workspace document's content?
   → rip artifact update <id> <file> --type markdown --expected-version-id <current-version-id>
@@ -158,10 +162,10 @@ Keep a document in every agent's context on load?
   → rip workspace pin add <workspace-id> <artifact-id>              # markdown only, max 20
 
 "This document" the operator has open in the browser?
-  → rip workspace view context <workspace-id> <session-id>
+  → rip workspace view context <workspace-id>
 
-Finished for now? Leave a handoff.
-  → rip workspace session end <workspace-id> <session-id> --summary "<what changed, decisions, what is left>"
+Decisions or loose ends the next agent should read? Leave a handoff note (optional).
+  → rip artifact publish notes.md --type markdown --title "Handoff: ..." --workspace-id <ws> --handoff --why "<the person's goal>"
 ```
 
 ### What to publish
@@ -340,17 +344,30 @@ Publish a new version (content changed)?
 See what changed between a version and the one before it?
   → rip artifact diff <id-or-alias> [--version-id <versionId>]
 
-Archive (hide from listings, still accessible by ID), or delete for good?
-  → rip artifact archive <identifier>  ·  rip artifact unarchive <identifier>
+Remove an artifact (it goes to the trash for 30 days)?
   → rip artifact delete <identifier>
 
-Move, archive, or delete many artifacts at once (up to 200)?
+Move, or delete, many artifacts at once (up to 200)?
   → rip artifact bulk move --ids "id1,id2" --folder <slug>
-  → rip artifact bulk archive --ids "id1,id2"
   → rip artifact bulk delete --ids "id1,id2"
 ```
 
-In a workspace, these writes also need the precondition: `--expected-version-id` for `update`, `--expected-workspace-revision` for `patch`, `move`, `archive`, `unarchive`, `delete` and `delete-version`, and `--expected-workspace-revisions '{"<id>": <n>}'` for `bulk`.
+In a workspace, these writes also need the precondition: `--expected-version-id` for `update`, `--expected-workspace-revision` for `patch`, `move`, `delete` and `delete-version`, and `--expected-workspace-revisions '{"<id>": <n>}'` for `bulk`.
+
+### Deleting and restoring
+
+Deleting an artifact, folder, bundle or workspace moves it to the trash for 30 days. A folder or workspace takes everything in it along. While it is in the trash it leaves listings and search, its name stays held, and reads answer 410 `DELETED` (or `WORKSPACE_DELETED`) with `deletedAt` and `purgeAt`. Until `purgeAt`, anyone who could delete it can bring it back as it was:
+
+```
+What is in the trash?
+  → rip trash list                                  # yours: standalone artifacts, bundles, personal folders and workspaces
+  → rip trash list --team <slug>  ·  rip trash list --workspace <ws>
+Bring it back?
+  → rip trash restore <type> <id>                   # type: artifact | bundle | folder | workspace
+  → rip trash restore artifact <id> --expected-workspace-revision <n>   # a workspace file or folder: the entry's revision
+```
+
+A deleted folder or workspace is one entry: restore it, not the files that went with it. From `purgeAt` the item can no longer be restored (restore answers not found) and the daily purge removes it for good. Agents cannot purge anything. A person can choose **Delete forever** in the dashboard to remove an item before its purge date. Version and table-row deletes are immediate and permanent; they do not use the trash.
 
 ### Aliases and resolution
 
@@ -370,23 +387,25 @@ Team aliases: `rip team alias research-team rt`, then use `rt` anywhere a team s
 # 1. Identity and workspace
 rip auth whoami
 rip workspace list
-rip workspace load 4f2c1b90-... --operation-id pricing-review-2026-09-28
-# → read the pins and the latest handoff (run any "read it with: rip artifact cat ..." line);
-#   note the Session id
+rip workspace load 4f2c1b90-...
+# → read the pins, the latest handoff (run any "read it with: rip artifact cat ..." line)
+#   and the recent sessions; give the person the Browser link
 
-# 2. Take the waiting task
+# 2. Take the waiting task. One goal for this sitting, restated on every write:
+export TOKENRIP_WHY="Get the pricing page ready for Thursday's launch review"
 rip task list --workspace-id 4f2c1b90-... --status open
 rip task claim 7a1c2d1e-... --lease-hours 4
 
 # 3. Do the work and publish it into the workspace
 rip artifact publish review.md --type markdown --title "Pricing page review" \
-  --workspace-id 4f2c1b90-... --workspace-session-id <session-id>
+  --workspace-id 4f2c1b90-...
 # → Share the returned URL with the user
 
-# 4. Complete the task with the result, then leave a handoff
+# 4. Complete the task with the result; leave a note only if there is something to hand on
 rip task done 7a1c2d1e-... --result artifact:<publicId>
-rip workspace session end 4f2c1b90-... <session-id> \
-  --summary "Reviewed pricing copy; three edits proposed in 'Pricing page review'. Open: legal sign-off."
+rip artifact publish handoff.md --type markdown --title "Handoff: pricing review" \
+  --workspace-id 4f2c1b90-... --handoff
+# → The session (who, goal, what changed) is recorded without this note; the note adds open questions
 ```
 
 ### Example 2: Build a living table and track data over time
@@ -425,7 +444,7 @@ rip table update 660f9500-... <row-id> --data '{"status":"contacted"}'
 
 For signing in, handing off to another agent (`rip auth code`), managing keys (`rip auth keys`), keys for vault hosts, multiple accounts, or keypair identities, read `references/setup-and-identity.md`.
 
-For workspaces (load, sessions and handoffs, pins, browser context and navigation, adopt, internal/shared audience, external members, guarded writes, changes and ack), read `references/workspaces.md`.
+For workspaces (load, why, sessions and handoff notes, pins, browser context and navigation, adopt, internal/shared audience, external members, guarded writes, changes and ack), read `references/workspaces.md`.
 
 For claiming and completing tasks (leases, claim races, results) and the account/team activity feed, read `references/tasks.md`.
 
@@ -448,11 +467,16 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `FILE_NOT_FOUND` | Verify the file exists before running the command |
 | `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |
 | `TIMEOUT` / `NETWORK_ERROR` | Read the local timing and response observations in [troubleshooting](references/setup-and-identity.md#transport-troubleshooting); inspect uncertain write outcomes before retrying |
+| `WHY_REQUIRED` | Add `--why "<what the person is trying to accomplish>"` (or set `TOKENRIP_WHY`) and retry. If `rip` has no `--why` flag, run `rip update` |
+| `INVALID_FIELD` (`why`) | Keep why to one sentence, at most 300 characters |
 | `PRECONDITION_REQUIRED` / `CONFLICT` | An existing-item write needs its applicable guard or has a stale one. Read the authorized current value and reconcile before a corrected write (`references/workspaces.md`) |
-| `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep full content and session attribution |
-| `INVALID_SCOPE` | Supply explicit workspace identity for audience/session attribution, or omit those fields |
+| `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep the content and the why |
+| `INVALID_SCOPE` | Supply explicit workspace identity for audience or `--handoff`, or omit those fields |
+| `INVALID_HANDOFF` | A handoff note is markdown: publish with `--type markdown` |
+| `SESSION_END_RETIRED` | Sessions record themselves; nothing to end. To leave a note, `rip artifact publish ... --handoff` |
 | `STATE_CONFLICT` | Inspect current state before a corrected request; no resource revision change is implied |
-| `WORKSPACE_FORBIDDEN` / `WORKSPACE_ARCHIVED` | No access to that workspace or audience, or it is archived |
+| `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
+| `DELETED` / `WORKSPACE_DELETED` | The item (or its folder, named by `via`), or its workspace, is in the trash until `purgeAt`. If you may delete it, `rip trash restore <type> <id>`; a 409 `WORKSPACE_DELETED` on restore means restore the workspace first ([Deleting and restoring](#deleting-and-restoring)) |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
 | `SKILL_NOT_FOUND` / `OPERATOR_AMBIGUOUS` / `INVALID_SKILL` | Not in reach of this agent (add `--team`, or switch `--agent`); two operators share the name (read by id); fix the folder per `reason` (`references/skills.md`) |
 | `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases — `references/tasks.md` § Error recovery |

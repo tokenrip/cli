@@ -23,7 +23,7 @@ export interface TaskAddOptions {
   due?: string;
   payload?: string;
   audience?: 'internal' | 'shared';
-  workspaceSessionId?: string;
+  why?: string;
 }
 
 export interface TaskUpdateOptions {
@@ -32,7 +32,16 @@ export interface TaskUpdateOptions {
   body?: string;
   assignee?: string;
   audience?: 'internal' | 'shared';
-  workspaceSessionId?: string;
+  why?: string;
+}
+
+/** The task write field every verb shares: why. */
+export interface TaskWriteOptions {
+  why?: string;
+}
+
+function attribution(options: TaskWriteOptions): Record<string, string> {
+  return options.why !== undefined ? { why: options.why } : {};
 }
 
 function path(id?: string, verb?: string): string {
@@ -67,7 +76,7 @@ export async function taskAdd(title: string, options: TaskAddOptions): Promise<v
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = { title, workspaceId: options.workspaceId };
   if (options.audience) body.audience = options.audience;
-  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.why !== undefined) body.why = options.why;
   // Account ids and aliases pass through; the server resolves them.
   if (options.assignee) body.assignee = options.assignee;
   if (options.kind) body.kind = options.kind;
@@ -91,28 +100,28 @@ export async function taskUpdate(id: string, options: TaskUpdateOptions): Promis
   if (options.body !== undefined) body.body = options.body;
   if (options.assignee !== undefined) body.assignee = options.assignee;
   if (options.audience !== undefined) body.audience = options.audience;
-  if (options.workspaceSessionId !== undefined) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.why !== undefined) body.why = options.why;
   const { data } = await client.patch(path(id), body);
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskClaim(id: string, options: { leaseHours?: string; workspaceSessionId?: string }): Promise<void> {
+export async function taskClaim(id: string, options: { leaseHours?: string } & TaskWriteOptions): Promise<void> {
   const { client } = requireAuthClient();
-  const body = { ...(options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {}), ...(options.workspaceSessionId ? { workspaceSessionId: options.workspaceSessionId } : {}) };
+  const body = { ...(options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {}), ...attribution(options) };
   const { data } = await client.post(path(id, 'claim'), body);
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskTouch(id: string, options: { leaseHours?: string; workspaceSessionId?: string }): Promise<void> {
+export async function taskTouch(id: string, options: { leaseHours?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const body = { ...(options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {}), ...(options.workspaceSessionId ? { workspaceSessionId: options.workspaceSessionId } : {}) };
+  const body = options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {};
   const { data } = await client.post(path(id, 'touch'), body);
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskRelease(id: string, options: { workspaceSessionId?: string } = {}): Promise<void> {
+export async function taskRelease(id: string, options: TaskWriteOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(path(id, 'release'), options);
+  const { data } = await client.post(path(id, 'release'), attribution(options));
   outputSuccess(data.data, formatTask);
 }
 
@@ -137,21 +146,21 @@ export function parseResultFlags(raw: string[] | undefined): Array<{ type: strin
   });
 }
 
-export async function taskDone(id: string, options: { result?: string[]; workspaceSessionId?: string }): Promise<void> {
+export async function taskDone(id: string, options: { result?: string[] } & TaskWriteOptions): Promise<void> {
   const { client } = requireAuthClient();
   const results = parseResultFlags(options.result);
-  const { data } = await client.post(path(id, 'complete'), { ...(results.length ? { results } : {}), ...(options.workspaceSessionId ? { workspaceSessionId: options.workspaceSessionId } : {}) });
+  const { data } = await client.post(path(id, 'complete'), { ...(results.length ? { results } : {}), ...attribution(options) });
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskDismiss(id: string, options: { reason?: string; workspaceSessionId?: string }): Promise<void> {
+export async function taskDismiss(id: string, options: { reason?: string } & TaskWriteOptions): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(path(id, 'dismiss'), { ...(options.reason ? { reason: options.reason } : {}), ...(options.workspaceSessionId ? { workspaceSessionId: options.workspaceSessionId } : {}) });
+  const { data } = await client.post(path(id, 'dismiss'), { ...(options.reason ? { reason: options.reason } : {}), ...attribution(options) });
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskReopen(id: string, options: { workspaceSessionId?: string } = {}): Promise<void> {
+export async function taskReopen(id: string, options: TaskWriteOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(path(id, 'reopen'), options);
+  const { data } = await client.post(path(id, 'reopen'), attribution(options));
   outputSuccess(data.data, formatTask);
 }

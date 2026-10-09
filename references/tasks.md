@@ -40,12 +40,12 @@ rip task reopen <id>
 rip task update <id> --expected-revision <n> --title "…"   # title/body/assignee/audience
 ```
 
-Every write accepts `--workspace-session-id <id>` to attribute it to your live workspace session.
+Every write except `touch` states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any workspace write; without it the server refuses `WHY_REQUIRED`. Task history, whys included, is in `rip workspace changes`.
 
 ### Who can do what
 
 - **Visibility** follows the workspace: internal members see both audiences, external members only `shared`. No access → `WORKSPACE_FORBIDDEN`.
-- **Writing** (add, claim, done, dismiss, reopen, update) needs task-write access for the task's audience; an archived workspace answers `WORKSPACE_ARCHIVED`.
+- **Writing** (add, claim, done, dismiss, reopen, update) needs task-write access for the task's audience. A workspace in the trash answers 410 `WORKSPACE_DELETED` to every task call until an admin restores it.
 - `--assignee` is a **suggestion**, not a lock. It must be a current workspace editor who can see the task's audience; any such editor may still claim the task.
 - A **workspace admin** may release anyone's claim; everyone else releases only their own.
 
@@ -63,6 +63,7 @@ Every write accepts `--workspace-session-id <id>` to attribute it to your live w
 - `--result artifact:<publicId>[@version]` or `--result url:<https://…>`, repeatable, up to 50. An artifact result must live in the task's workspace and be visible to its audience.
 - Completing after **your own lease lapsed** → `CLAIM_LOST`, but **your results are kept** on the task as orphaned results. Re-claim and complete again; nothing is lost.
 - Completing a task you **never held** → `NOT_CLAIMANT`, and **nothing is persisted**. Keep your results locally, claim, retry.
+- An artifact result that is in the trash is refused (410 `DELETED`), and `rip task show` leaves out results that are in the trash.
 - Reopening keeps the results. Status is the truth, not the result set.
 
 ### A task's history
@@ -95,13 +96,13 @@ Verbs: `artifact.shared_to_team`, `connection.created`, `connection.rotated`, `c
 
 ## Attribution — which harness you are
 
-Every claim, session and activity row records the **harness** it came from, not just the account. The CLI resolves it automatically: an explicit `TOKENRIP_SURFACE` wins, otherwise Claude Code names itself (`claude-code`), otherwise plain `cli`.
+Every claim and activity row records the **harness** it came from, not just the account, and the agent key that acted. The CLI resolves the harness automatically: an explicit `TOKENRIP_SURFACE` wins, otherwise Claude Code names itself (`claude-code`), then Codex (`codex`), otherwise plain `cli`. It also sends the harness conversation id (`TOKENRIP_CONVERSATION`, else `CLAUDE_CODE_SESSION_ID`, else `CODEX_THREAD_ID`; stored only as a hash), so two conversations on one key form two sessions.
 
 ```bash
 TOKENRIP_SURFACE=nightly-batch rip task claim <id>
 ```
 
-That value lands on the task's `claimedVia` and every activity row — so a feed can tell a dashboard claim from a cron-shell claim. Attribution is metadata and can never fail a call.
+That value lands on the task's `claimedVia` and every activity row — so a feed can tell a dashboard claim from a cron-shell claim. Attribution is metadata and can never fail a call; only a missing `--why` on a write refuses.
 
 ---
 
@@ -111,7 +112,7 @@ That value lands on the task's `claimedVia` and every activity row — so a feed
 |---|---|
 | `WORKSPACE_REQUIRED` | `task list` / `task add` need `--workspace-id` — every task lives in a workspace |
 | `WORKSPACE_FORBIDDEN` | You have no access to the workspace or the task's audience, or no task-write access |
-| `WORKSPACE_ARCHIVED` | The workspace is archived; restore it first |
+| `WORKSPACE_DELETED` | The workspace is in the trash; a workspace admin can `rip trash restore workspace <id>` |
 | `TASK_ALREADY_CLAIMED` | Someone else holds it. The error names `claimedBy` and `leaseExpiresAt` — pick another task or wait |
 | `CLAIM_LOST` | Your lease lapsed. Results from a `done` are kept as orphaned refs — re-claim and complete again |
 | `NOT_CLAIMANT` | You never held the claim; nothing was saved. Claim first, then retry |

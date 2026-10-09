@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError, type InternalAxiosRequestConfig, type AxiosResponse, type AxiosAdapter, type CancelToken } from 'axios';
 import { CliError, safeErrorDetails, type TransportErrorDetails } from './errors.js';
 import { createProxyAgentOwner } from './proxy-agents.js';
+import { CLI_VERSION } from './version.js';
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -58,13 +59,32 @@ function normalizeSurface(raw: string): string | null {
  * (`claimed_via`) and agent sessions (`surface`).
  *
  * An explicit `TOKENRIP_SURFACE` wins; otherwise Claude Code names itself (it
- * exports `CLAUDECODE=1` into every tool shell) and anything else is plain
- * `cli`. The fallback is applied *after* normalization, so an empty or
- * unslugifiable `TOKENRIP_SURFACE` still yields a surface instead of silently
- * dropping attribution.
+ * exports `CLAUDECODE=1` into every tool shell), then Codex (it exports
+ * `CODEX_THREAD_ID` into every tool shell), and anything else is plain `cli`.
+ * The fallback is applied *after* normalization, so an empty or unslugifiable
+ * `TOKENRIP_SURFACE` still yields a surface instead of silently dropping
+ * attribution.
  */
 export function resolveSurface(env: Record<string, string | undefined> = process.env): string {
-  return normalizeSurface(env.TOKENRIP_SURFACE ?? '') ?? (env.CLAUDECODE ? 'claude-code' : 'cli');
+  return normalizeSurface(env.TOKENRIP_SURFACE ?? '')
+    ?? (env.CLAUDECODE ? 'claude-code' : env.CODEX_THREAD_ID ? 'codex' : 'cli');
+}
+
+const CONVERSATION_MAX_CHARS = 256;
+
+/**
+ * The harness conversation this process belongs to, sent as
+ * `X-Tokenrip-Conversation` so the server can group one sitting's writes (it
+ * stores only a hash). An explicit `TOKENRIP_CONVERSATION` wins, then Claude
+ * Code's `CLAUDE_CODE_SESSION_ID`, then Codex's `CODEX_THREAD_ID`. A value that is
+ * blank, over 256 characters, or one an HTTP header cannot carry counts as unset
+ * and the next one is tried: attribution is best effort and must never fail a
+ * request.
+ */
+export function resolveConversation(env: Record<string, string | undefined> = process.env): string | undefined {
+  return [env.TOKENRIP_CONVERSATION, env.CLAUDE_CODE_SESSION_ID, env.CODEX_THREAD_ID]
+    .map(candidate => candidate?.trim())
+    .find(candidate => !!candidate && candidate.length <= CONVERSATION_MAX_CHARS && /^[\x20-\x7e]+$/.test(candidate));
 }
 
 export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
@@ -73,7 +93,10 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   if (config.apiKey) {
     headers['Authorization'] = `Bearer ${config.apiKey}`;
   }
+  headers['User-Agent'] = `tokenrip-cli/${CLI_VERSION}`;
   headers['X-Tokenrip-Surface'] = resolveSurface();
+  const conversation = resolveConversation();
+  if (conversation) headers['X-Tokenrip-Conversation'] = conversation;
 
   const client = axios.create({
     baseURL: baseUrl,
@@ -186,6 +209,8 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         currentRevision?: unknown;
         currentWorkspaceRevision?: unknown;
         reason?: unknown;
+        /** A trashed refusal's dates (`DELETED`, `WORKSPACE_DELETED`). */
+        data?: unknown;
         errors?: Array<{ code?: string; message?: string }>;
       }>,
     ) => {
@@ -214,7 +239,11 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const errorCode = data.error ?? 'API_ERROR';
         let message = data.message || 'Unknown API error';
         const fieldLines: string[] = [];
+        // A trashed refusal (410 DELETED / WORKSPACE_DELETED, or 409 WORKSPACE_DELETED on restore) carries its dates in `data`.
+        const trashed = (errorCode === 'DELETED' || errorCode === 'WORKSPACE_DELETED')
+          && data.data && typeof data.data === 'object' && !Array.isArray(data.data) ? data.data as Record<string, unknown> : {};
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
+          ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
           ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),

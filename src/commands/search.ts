@@ -9,8 +9,6 @@ export async function search(
     limit?: string;
     offset?: string;
     artifactType?: string;
-    archived?: boolean;
-    includeArchived?: boolean;
     mode?: string;
     artifact?: string;
   },
@@ -21,8 +19,6 @@ export async function search(
   if (options.limit) params.limit = options.limit;
   if (options.offset) params.offset = options.offset;
   if (options.artifactType) params.artifact_type = options.artifactType;
-  if (options.archived) params.archived = 'true';
-  if (options.includeArchived) params.include_archived = 'true';
   if (options.mode) params.mode = options.mode;
   if (options.artifact) params.artifact = options.artifact;
 

@@ -10,6 +10,7 @@ import {
   formatBundleList,
   formatBundleDetail,
   formatBundleVersions,
+  formatTrashed,
 } from '../formatters.js';
 import { zipDirectory } from '../zip.js';
 
@@ -83,12 +84,9 @@ export async function bundleDeploy(dir: string, options: DeployOptions): Promise
   );
 }
 
-export async function bundleList(options: { archived?: boolean; includeArchived?: boolean }): Promise<void> {
+export async function bundleList(): Promise<void> {
   const { client } = requireAuthClient();
-  const params: Record<string, string> = {};
-  if (options.archived) params.archived = 'true';
-  if (options.includeArchived) params.include_archived = 'true';
-  const { data } = await client.get('/v0/bundles/status', { params });
+  const { data } = await client.get('/v0/bundles/status');
   outputSuccess(data.data.bundles, formatBundleList);
 }
 
@@ -137,9 +135,9 @@ export async function bundleOpen(idOrSlug: string, options: { browser?: boolean 
 
 export async function bundleDelete(idOrSlug: string, options: { yes?: boolean }): Promise<void> {
   if (!options.yes) {
-    throw new CliError('CONFIRM_REQUIRED', `This permanently deletes the bundle and all its versions. Re-run with --yes to confirm.`);
+    throw new CliError('CONFIRM_REQUIRED', 'This moves the bundle to the trash for 30 days: its live site stops serving. Re-run with --yes to confirm.');
   }
   const { client } = requireAuthClient();
-  await client.delete(`/v0/bundles/${encodeURIComponent(idOrSlug)}`);
-  outputSuccess({ deleted: idOrSlug }, (raw) => `Deleted: ${(raw as { deleted: string }).deleted}`);
+  const { data } = await client.delete(`/v0/bundles/${encodeURIComponent(idOrSlug)}`);
+  outputSuccess(data.data, formatTrashed);
 }

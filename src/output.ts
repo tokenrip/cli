@@ -49,7 +49,6 @@ export function outputError(err: CliError): never {
       if (err.code === 'INVALID_SCOPE' && details.field) console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'Use workspace audience to share content.'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
-      if (details.status) console.error(`Session status: ${details.status}. Select another resumable session or explicitly start new participation.`);
     }
   }
 
@@ -95,4 +94,8 @@ export const ERROR_HINTS: Record<string, string> = {
   NO_OPERATOR: 'This account is not linked to a verified person. Sign in by email instead (`rip auth login --email <your email>`), or link this agent with `rip operator-link`.',
   INVALID_AGENT_ID: 'Agent IDs start with rip1. Example: rip1x9a2f...',
   INVALID_OUTPUT_FORMAT: 'Valid values are "json" and "human".',
+  DELETED: 'The item is in the trash. If you deleted it (or may delete it), bring it back with `rip trash restore <type> <id>`; `rip trash list` shows the entry.',
+  WORKSPACE_DELETED: 'The workspace is in the trash. A workspace admin can bring it back, with everything in it, using `rip trash restore workspace <id>`.',
+  WHY_REQUIRED: 'Add --why "<what the person is trying to accomplish>" or set TOKENRIP_WHY. If your rip has no --why flag, run `rip self-update`.',
+  SESSION_END_RETIRED: 'Sessions record themselves. Leave a note with `rip artifact publish <file> --type markdown --workspace-id <id> --handoff --why "…"`.',
 };

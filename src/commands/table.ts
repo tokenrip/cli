@@ -8,7 +8,7 @@ import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
 
 export async function tableAppend(
   uuid: string,
-  options: { data?: string; file?: string; upsertOn?: string; expectedWorkspaceRevision?: string; workspaceSessionId?: string },
+  options: { data?: string; file?: string; upsertOn?: string; expectedWorkspaceRevision?: string; why?: string },
 ): Promise<void> {
   let rows: Record<string, unknown>[];
 
@@ -28,7 +28,7 @@ export async function tableAppend(
   const body: Record<string, unknown> = { rows };
   if (options.upsertOn) body.upsertOn = options.upsertOn;
   if (options.expectedWorkspaceRevision) body.expectedWorkspaceRevision = Number(options.expectedWorkspaceRevision);
-  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, body);
   outputSuccess({ rows: data.data, count: data.data.length }, formatRowsAppended);
 }
@@ -71,17 +71,17 @@ export async function tableRows(
 export async function tableUpdate(
   uuid: string,
   rowId: string,
-  options: { data: string; expectedRevision?: string; expectedWorkspaceRevision?: string; workspaceSessionId?: string },
+  options: { data: string; expectedRevision?: string; expectedWorkspaceRevision?: string; why?: string },
 ): Promise<void> {
   const parsed = parseJsonObjectOption(options.data, '--data');
   const { client } = requireAuthClient();
-  const { data } = await client.put(`/v0/artifacts/${uuid}/rows/${rowId}`, { data: parsed, expectedRevision: options.expectedRevision === undefined ? undefined : Number(options.expectedRevision), expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), workspaceSessionId: options.workspaceSessionId });
+  const { data } = await client.put(`/v0/artifacts/${uuid}/rows/${rowId}`, { data: parsed, expectedRevision: options.expectedRevision === undefined ? undefined : Number(options.expectedRevision), expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), why: options.why });
   outputSuccess(data.data, formatRowUpdated);
 }
 
 export async function tableDelete(
   uuid: string,
-  options: { rows: string; expectedRevisions?: string; workspaceSessionId?: string },
+  options: { rows: string; expectedRevisions?: string; why?: string },
 ): Promise<void> {
   const ids = options.rows.split(',').map((s) => s.trim());
   const { client } = requireAuthClient();
@@ -90,6 +90,6 @@ export async function tableDelete(
     try { expectedRevisions = JSON.parse(options.expectedRevisions); }
     catch { throw new CliError('INVALID_JSON', '--expected-revisions is not valid JSON.'); }
   }
-  await client.delete(`/v0/artifacts/${uuid}/rows`, { data: { row_ids: ids, expectedRevisions, workspaceSessionId: options.workspaceSessionId } });
+  await client.delete(`/v0/artifacts/${uuid}/rows`, { data: { row_ids: ids, expectedRevisions, why: options.why } });
   outputSuccess({ deleted: ids.length }, formatRowsDeleted);
 }

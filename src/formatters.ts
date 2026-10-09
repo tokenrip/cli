@@ -100,10 +100,6 @@ export const formatArtifactPatched: Formatter = (data) => {
   return lines.join('\n');
 };
 
-export const formatArtifactDeleted: Formatter = (data) => {
-  return `Deleted: ${data.id}`;
-};
-
 export const formatArtifactList: Formatter = (data) => {
   const artifacts = data as unknown as Record<string, unknown>[];
   if (!Array.isArray(artifacts) || artifacts.length === 0) {
@@ -683,6 +679,53 @@ function capabilityList(capabilities: unknown): string | null {
   return allowed.length ? allowed.join(', ') : 'none';
 }
 
+/** A delete reply: the item is in the trash, restorable until `purgeAt`, and the command that restores it. */
+export const formatTrashed: Formatter = (data) => {
+  const reply = data as Record<string, any>;
+  return `Moved to trash. Restorable until ${reply.purgeAt}.\nRestore with: rip trash restore ${reply.type} ${reply.id}`;
+};
+
+/** `rip trash list`: one line per entry, newest first, with every id needed to restore it. */
+export const formatTrashList: Formatter = (data) => {
+  const d = data as { items?: Array<Record<string, any>>; nextOffset?: number | null };
+  const items = d.items ?? [];
+  if (items.length === 0) return 'The trash is empty.';
+  const lines = [`Trash (${items.length} item${items.length === 1 ? '' : 's'}, newest first):`];
+  for (const item of items) {
+    const by = item.deletedBy ? (item.deletedBy.alias ?? item.deletedBy.id) : 'unknown';
+    lines.push(`  ${item.type}  ${item.id}  ${item.title ?? '(untitled)'}`);
+    lines.push(`    deleted ${item.deletedAt} by ${by}; purges ${item.purgeAt}`);
+    if (item.workspaceId) lines.push(`    workspace ${item.workspaceId}, revision ${item.workspaceRevision}`);
+  }
+  if (d.nextOffset !== null && d.nextOffset !== undefined) lines.push('', `More: rip trash list --offset ${d.nextOffset}`);
+  lines.push('', 'Restore with: rip trash restore <type> <id>');
+  return lines.join('\n');
+};
+
+/** `rip trash restore`: the item is back; a file whose folder is still in the trash comes back unfiled. */
+export const formatRestored: Formatter = (data) => {
+  const reply = data as Record<string, any>;
+  const line = `Restored ${reply.type} ${reply.id}.`;
+  return reply.unfiled ? `${line} Its folder is still in the trash, so it is back unfiled.` : line;
+};
+
+/** `rip artifact bulk`: the counts, every item a delete moved to the trash with its purge date, then the failures. */
+export const formatBulkResult: Formatter = (data) => {
+  const d = data as Record<string, any>;
+  const lines = [`Bulk ${d.action}: ${d.succeeded} succeeded, ${d.failed_count} failed`];
+  const deleted = (d.deleted ?? []) as Array<{ id: string; purgeAt: string }>;
+  if (deleted.length > 0) {
+    lines.push('', 'Moved to trash:');
+    for (const item of deleted) lines.push(`  ${item.id}  restorable until ${item.purgeAt}`);
+  }
+  const failed = (d.failed ?? []) as Array<{ publicId: string; error: string }>;
+  if (failed.length > 0) {
+    lines.push('', 'Failed:');
+    for (const f of failed) lines.push(`  ${f.publicId}: ${f.error}`);
+  }
+  return lines.join('\n');
+};
+
 /** Workspace output keeps every durable handle copyable in human mode. */
 export const formatWorkspace: Formatter = (data) => {
   const w = data as Record<string, any>;
@@ -696,7 +739,6 @@ export const formatWorkspace: Formatter = (data) => {
     `Audiences:  ${Array.isArray(w.audiences) ? w.audiences.join(', ') : '-'}`,
     `Sequence:   ${w.mutationSequence ?? '-'}`,
     `Generation: ${w.accessGeneration ?? '-'}`,
-    `Archived:   ${w.archivedAt ?? 'no'}`,
     ...(w.description ? ['', String(w.description)] : []),
   ].join('\n');
 };
@@ -705,25 +747,6 @@ export const formatWorkspaceList: Formatter = (data) => {
   const rows = data as unknown as Array<Record<string, any>>;
   if (!rows.length) return 'No workspaces.';
   return rows.map(w => `${w.name}  ${w.membership}/${w.role}  [${w.id}]  slug=${w.slug}  home=${w.ownerAccountId ?? (w.teamId ? `team ${w.teamId}` : '-')}  can=${capabilityList(w.capabilities) || '-'}`).join('\n');
-};
-
-/** Show recovery is credential-owned snapshot metadata, never an automatic selection. */
-export const formatWorkspaceShow: Formatter = (data) => {
-  const value = data as Record<string, any>;
-  const recovery = value.sessionRecovery;
-  const lines = [formatWorkspace(data)];
-  if (!recovery) return lines.join('\n');
-  lines.push('', 'Resumable sessions (snapshot; resume rechecks access and expiry):');
-  const items: Array<Record<string, any>> = Array.isArray(recovery.items) ? recovery.items : [];
-  if (!items.length) lines.push('  (none)');
-  for (const item of items) {
-    lines.push(`  Session: ${item.id}`, `    Operation: ${item.operationId}`,
-      `    Created: ${item.createdAt}`, `    Last activity: ${item.lastActivityAt}`, `    Idle expiry: ${item.idleExpiresAt}`,
-      `    rip workspace load ${workspaceShellArgument(value.id)} --session-id ${workspaceShellArgument(item.id)}`);
-  }
-  if (items.length) lines.push('Choose the session for the work you intend to continue.');
-  if (recovery.hasMore && recovery.nextCursor) lines.push('', `rip workspace show ${workspaceShellArgument(value.id)} --session-cursor ${workspaceShellArgument(recovery.nextCursor)}`);
-  return lines.join('\n');
 };
 
 /**
@@ -754,22 +777,63 @@ function workspaceShellArgument(value: unknown): string {
   return /^[A-Za-z0-9_./:-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\"'\"'")}'`;
 }
 
+/** Who worked and from which harness: the agent's key name only reaches its own account. */
+function sessionWho(session: Record<string, any>): string {
+  const who = session.account?.alias ? `~${session.account.alias}` : (session.account?.id ?? '-');
+  const tool = [session.agent?.name, session.surface].filter(Boolean).join(', ');
+  return tool ? `${who} (${tool})` : who;
+}
+
+/** A computed session: who, when, the goals in order, what they touched, any handoff note. */
+function sessionLines(session: Record<string, any>, indent = ''): string[] {
+  const goals: string[] = Array.isArray(session.goals) ? session.goals : [];
+  const items: Array<Record<string, any>> = Array.isArray(session.items) ? session.items : [];
+  const handoffs: Array<Record<string, any>> = Array.isArray(session.handoffs) ? session.handoffs : [];
+  const goalText = goals.length ? goals.join(' → ') : session.inBrowser ? 'in the browser' : 'no stated goal';
+  const lines = [
+    `${indent}${sessionWho(session)}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}  ${session.eventCount ?? 0} change${session.eventCount === 1 ? '' : 's'}`,
+    `${indent}  Goals: ${session.goalsTruncated ? '… → ' : ''}${goalText}`,
+  ];
+  for (const item of items) {
+    const version = item.versionId ? `  version ${item.versionId}` : '';
+    lines.push(`${indent}  ${item.type ?? '-'}  ${item.title ?? '(gone)'}  [${item.id}]  ×${item.changes ?? 1}${version}`);
+  }
+  if (session.itemsTruncated) lines.push(`${indent}  … earlier items not shown`);
+  for (const note of handoffs) lines.push(`${indent}  Handoff: ${note.title ?? '(untitled)'}  [${note.artifactId}]  rip artifact cat ${note.artifactId}`);
+  if (session.handoffsTruncated) lines.push(`${indent}  … earlier handoffs not shown`);
+  if (session.earlierActivityNotShown) lines.push(`${indent}  (earlier activity of this session not shown)`);
+  return lines;
+}
+
+/** `rip workspace sessions`: recent computed sessions, newest first, with the next-page command. */
+export const formatWorkspaceSessions = (data: unknown, workspace?: string): string => {
+  const value = data as Record<string, any>;
+  const items: Array<Record<string, any>> = Array.isArray(value.items) ? value.items : [];
+  const continues = Boolean(value.hasMore && value.nextCursor && workspace);
+  if (!items.length && !continues) return 'No sessions.';
+  // A page can be empty and still continue (a stretch of activity that forms no session).
+  const lines = items.length
+    ? items.flatMap((session, index) => [...(index ? [''] : []), ...sessionLines(session)])
+    : ['No sessions in this range.'];
+  if (continues) {
+    lines.push('', `More: rip workspace sessions ${workspaceShellArgument(workspace)} --cursor ${workspaceShellArgument(value.nextCursor)}`);
+  }
+  return lines.join('\n');
+};
+
 /**
  * `rip workspace load` in human mode is the first thing an agent reads, so it
  * carries everything the load returned: pins (inline or with the command that
  * reads them), the latest handoff, open tasks, recent changes, the artifact
  * index, and the exact flags that page each list further.
  */
-export const formatWorkspaceLoad = (data: unknown, selector?: { operationId?: string; sessionId?: string }): string => {
+export const formatWorkspaceLoad: Formatter = (data) => {
   const value = data as Record<string, any>;
   const workspace = (value.workspace ?? {}) as Record<string, any>;
   const workspaceId = workspace.id ?? value.workspaceId ?? '-';
-  const session = (value.session ?? {}) as Record<string, any>;
   const lines = [
-    `Workspace: ${workspace.name ?? '-'} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}${workspace.archived ? '  (archived)' : ''}`,
-    value.session ? `Session:   ${session.id} (${session.status})` : 'Session:   none (read-only context)',
+    `Workspace: ${workspace.name ?? '-'} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}`,
   ];
-  if (session.operationId !== undefined) lines.push(`Operation: ${session.operationId}`);
   const can = capabilityList(workspace.capabilities);
   if (can) lines.push(`Can:       ${can}`);
   if (value.browserLink) lines.push(`Browser:   ${value.browserLink}`);
@@ -782,6 +846,13 @@ export const formatWorkspaceLoad = (data: unknown, selector?: { operationId?: st
   const handoffItems: Array<Record<string, any>> = Array.isArray(handoffs.items) ? handoffs.items : [];
   lines.push(...loadSection('Latest handoff:', handoffItems.length ? loadDocumentLines(handoffItems[0]) : []));
   if (handoffItems.length > 1) lines.push(`  ${handoffItems.length - 1} earlier: ${handoffItems.slice(1).map((h) => h.publicId).join(', ')}`);
+
+  if (value.sessions) {
+    const sessions = value.sessions;
+    const sessionItems: Array<Record<string, any>> = Array.isArray(sessions.items) ? sessions.items : [];
+    lines.push(...loadSection(`Recent sessions (${sessionItems.length}${sessions.hasMore ? '+' : ''}):`, sessionItems.flatMap((session) => sessionLines(session, '  '))));
+    if (sessions.hasMore && sessions.nextCursor) lines.push(`  More: rip workspace sessions ${workspaceShellArgument(workspaceId)} --cursor ${workspaceShellArgument(sessions.nextCursor)}`);
+  }
 
   const tasks = value.tasks ?? {};
   const taskItems: Array<Record<string, any>> = Array.isArray(tasks.items) ? tasks.items : [];
@@ -812,19 +883,41 @@ export const formatWorkspaceLoad = (data: unknown, selector?: { operationId?: st
   if (activity.nextCursor != null) more.push(`--activity-cursor ${workspaceShellArgument(activity.nextCursor)}`);
   if (handoffs.nextOffset != null) more.push(`--handoff-offset ${handoffs.nextOffset}`);
   if (more.length) {
-    const continuation = value.session ? `--session-id ${workspaceShellArgument(session.id)}`
-      : selector?.sessionId !== undefined ? `--session-id ${workspaceShellArgument(selector.sessionId)}`
-      : selector?.operationId !== undefined ? `--operation-id ${workspaceShellArgument(selector.operationId)}` : null;
-    lines.push('', value.session ? 'More (resume this exact session):' : 'More (read-only context):');
-    if (continuation) for (const flag of more) lines.push(`  rip workspace load ${workspaceShellArgument(workspaceId)} ${continuation} ${flag}`);
+    lines.push('', 'More:');
+    for (const flag of more) lines.push(`  rip workspace load ${workspaceShellArgument(workspaceId)} ${flag}`);
   }
   return lines.join('\n');
 };
 
+/**
+ * Consecutive changes made by one actor toward one goal print under one heading. A browser edit
+ * states no goal by design. Change items carry no key, so the browser is read from its harness.
+ */
+function changeHeading(item: Record<string, any>): string {
+  const actor = item.actor ?? {};
+  const tool = [item.agent?.name, actor.surface].filter(Boolean).join(', ');
+  const goal = item.why
+    ?? (actor.type === 'system' ? 'system' : !item.agent && actor.surface === 'dashboard' ? 'in the browser' : 'no stated goal');
+  return `${actor.id ?? '-'}${tool ? ` (${tool})` : ''}: ${goal}`;
+}
+
 export const formatWorkspaceChanges: Formatter = (data) => {
   const value = data as Record<string, any>;
   const items = Array.isArray(value.items) ? value.items : [];
-  const lines = items.map((item: Record<string, any>) => `${item.sequence ?? '-'}  ${item.type ?? 'change'}  ${item.subject?.type ?? '-'}:${item.subject?.id ?? '-'}`);
+  const lines: string[] = [];
+  let heading: string | null = null;
+  for (const item of items as Array<Record<string, any>>) {
+    // A server from before session capture sends no why at all: print the line as it always was.
+    if (!('why' in item)) {
+      lines.push(`${item.sequence ?? '-'}  ${item.type ?? 'change'}  ${item.subject?.type ?? '-'}:${item.subject?.id ?? '-'}`);
+      heading = null;
+      continue;
+    }
+    const next = changeHeading(item);
+    if (next !== heading) lines.push(next);
+    heading = next;
+    lines.push(`  ${item.createdAt ?? '-'}  ${item.type ?? 'change'}  ${item.subject?.type ?? '-'}:${item.subject?.id ?? '-'}`);
+  }
   lines.push(`Delivery token: ${value.deliveryToken ?? '-'}`);
   if (value.nextCursor != null) lines.push(`Next cursor: ${value.nextCursor}`);
   return lines.join('\n');

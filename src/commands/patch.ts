@@ -17,7 +17,7 @@ export async function patch(
     visibility?: string;
     audience?: 'internal' | 'shared';
     expectedWorkspaceRevision?: string;
-    workspaceSessionId?: string;
+    why?: string;
   },
 ): Promise<void> {
   if (
@@ -54,7 +54,7 @@ export async function patch(
   if (options.expectedWorkspaceRevision !== undefined) {
     body.expectedWorkspaceRevision = parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   }
-  if (options.workspaceSessionId !== undefined) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.why !== undefined) body.why = options.why;
 
   const id = parseArtifactId(identifier);
   const { client, config } = requireAuthClient();

@@ -20,24 +20,25 @@ Priority (highest wins): `--json` flag → `TOKENRIP_OUTPUT` env var → config 
 - JSON mode passes the server's data through unchanged. Human mode prints every identifier and URL in full; nothing is truncated.
 - Always parse `data.url` from a successful artifact response and present it to the user.
 - Workspace write receipts carry the new `workspaceRevision`. Carry it into the next write instead of re-reading.
+- Every delete of an artifact, folder, bundle or workspace replies `{ type, id, deletedAt, purgeAt }`: the item is in the trash and can be restored until `purgeAt`. Human output prints the matching `rip trash restore <type> <id>` line.
 - In human mode, `rip connection call` prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON so a script can parse stdout directly. With `--json` it is wrapped like every other command.
 
 ## Correct a refusal before continuing
 
 Artifact publish/upload create receipts retain `workspaceId`, `audience`, and `workspaceRevision` when the server returns a workspace home. Human output shows audience; retained standalone visibility compatibility fields grant no workspace access. New artifacts need no expected revision.
 
-JSON failures preserve `ok`, `error`, and `message`, with optional safe `details`. Domain details include the applicable current version/revision, a known required field, incompatible sharing fields, or an authorized inactive session status. Legacy REST validation `details` arrays remain available and their explanations appear in both modes. Human output prints required fields and current revisions in full.
+JSON failures preserve `ok`, `error`, and `message`, with optional safe `details`. Domain details include the applicable current version/revision, a known required field, or incompatible sharing fields. Legacy REST validation `details` arrays remain available and their explanations appear in both modes. Human output prints required fields and current revisions in full.
 
 - `PRECONDITION_REQUIRED`: read the resource and supply the required `expectedVersionId`, `expectedRevision`, the row-deletion `expectedRevisions` map, or `expectedWorkspaceRevision`.
 - Bulk workspace artifact writes accept `--expected-workspace-revisions` as a JSON map keyed by each submitted artifact identifier (`expectedWorkspaceRevisions` over REST/MCP). Read current workspace revisions and include every selected artifact. Bulk results report per-item failure codes. Row deletion uses the separate `expectedRevisions` map keyed by row UUID.
 - `CONFLICT`: read the current authorized resource and reconcile before writing again. A 409 with another code is a state/domain refusal; do not invent version advice.
-- `INELIGIBLE_STORAGE`: omit independently public storage creation flags, or select eligible standalone content for adoption. Preserve the intended workspace and session attribution.
+- `INELIGIBLE_STORAGE`: omit independently public storage creation flags, or select eligible standalone content for adoption. Preserve the intended workspace and why.
 - `WORKSPACE_AUTHORITY`: omit incompatible standalone sharing fields and use workspace audience. `INVALID_SCOPE` with `field: workspaceId` requires workspace identity or removal of workspace-only inputs.
-- `WORKSPACE_SESSION_INVALID`, `WORKSPACE_SESSION_EXPIRED`, or `WORKSPACE_SESSION_INACTIVE`: select participation belonging to the current credential, or explicitly start new participation. A revoked credential requires reconnecting. Foreign/nonexistent sessions expose no metadata.
+- `WHY_REQUIRED`: the write changes workspace content and states no why. Add `--why "<what the person is trying to accomplish>"` (or set `TOKENRIP_WHY`) and send the same write again. `INVALID_FIELD` with `field: why`: shorten it to one sentence (300 characters at most).
 - `WORKSPACE_PAGE_UNACKNOWLEDGED`: replay or acknowledge the delivered page. `INVALID_WORKSPACE_DELIVERY` or `INVALID_CURSOR`: restart the affected flow. These are separate from content revisions.
-- `WORKSPACE_ARCHIVED`: the workspace is read-only; re-reading a version cannot make a write succeed.
+- `DELETED` / `WORKSPACE_DELETED`: the item, its folder (`via`) or its workspace is in the trash. `details` carry `type`, `id`, `deletedAt`, `purgeAt` and `via`. A caller who may restore it also gets `restorable: true`, `deletedBy` and, for a workspace file or folder, `workspaceId` and `workspaceRevision`, which is what `rip trash restore <type> <id> --expected-workspace-revision <n>` needs. Re-reading a version cannot make a write succeed; restore first.
 
-A corrected request differs from an identical retry. MCP's `retry` describes safety, not success, and the CLI does not automatically retry writes. After a timeout, inspect the operation outcome before repeating a write: the server may have committed it. Keep the existing keyed operation identity when checking or replaying a potentially committed operation.
+A corrected request differs from an identical retry. MCP's `retry` describes safety, not success, and the CLI does not automatically retry writes. After a timeout, inspect the operation outcome before repeating a write: the server may have committed it. For `rip workspace view open`, keep the same `--operation-id` when checking or replaying a potentially committed request.
 
 ## Local transport observations
 

@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "2.3.1",
+  "version": "2.5.0",
   "description": "CLI and library for AI agents working in Tokenrip workspaces: artifacts, tables, folders, tasks, and connections",
   "keywords": [
     "ai-agents",
@@ -40,9 +40,10 @@
     "references"
   ],
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "build": "node scripts/write-version.mjs && tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
+    "dev": "node scripts/write-version.mjs && tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
     "@noble/curves": "^2.2.0",

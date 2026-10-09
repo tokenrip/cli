@@ -8,7 +8,7 @@ export async function forkArtifact(
     versionId?: string;
     title?: string;
     folder?: string;
-    workspaceSessionId?: string;
+    why?: string;
   },
 ): Promise<void> {
   const { client } = requireAuthClient();
@@ -16,7 +16,7 @@ export async function forkArtifact(
   if (options.versionId) body.versionId = options.versionId;
   if (options.title) body.title = options.title;
   if (options.folder) body.folder = options.folder;
-  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.why !== undefined) body.why = options.why;
 
   const res = await client.post(`/v0/artifacts/${identifier}/fork`, body);
   outputSuccess(res.data.data, formatArtifactCreated);

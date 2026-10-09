@@ -1,6 +1,6 @@
 # Tokenrip CLI Reference
 
-Every command in `@tokenrip/cli` 2.2, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
+Every command in `@tokenrip/cli` 2.5, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
 
 ## Contents
 
@@ -41,16 +41,18 @@ Every command in `@tokenrip/cli` 2.2, grouped by area. `rip --help` and `rip <co
 
 `rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and explicit external members. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
+**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|claim|release|done|dismiss|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads, `task touch` and pins take none.
+
 ### `rip workspace create <slug>`
 
 Create a workspace. The slug is unique within your account or team.
 
 ```bash
-rip workspace create research --name "Research"
-rip workspace create roadmap --name "Roadmap" --team-id 550e8400-e29b-41d4-a716-446655440000
+rip workspace create research --name "Research" --why "Collect what we learn about agency pricing"
+rip workspace create roadmap --name "Roadmap" --team-id 550e8400-e29b-41d4-a716-446655440000 --why "Plan the Q4 roadmap with the team"
 ```
 
-Options: `--name <name>` (defaults to the slug), `--description <text>`, `--team-id <uuid>` (make it team-owned; team owners and admins only; `rip team list` prints the team's UUID).
+Options: `--name <name>` (defaults to the slug), `--description <text>`, `--why <text>`, `--team-id <uuid>` (make it team-owned; team owners and admins only; `rip team list` prints the team's UUID).
 
 ### `rip workspace list`
 
@@ -62,15 +64,11 @@ Show one workspace.
 
 ### `rip workspace update <workspace>`
 
-Options: `--name <name>`, `--description <text>`.
-
-### `rip workspace archive <workspace>` / `rip workspace restore <workspace>`
-
-Archiving makes the workspace read-only, ends its sessions, and releases its task claims. `restore` reverses it.
+Options: `--name <name>`, `--description <text>`, `--why <text>`.
 
 ### `rip workspace delete <workspace>`
 
-Delete a workspace that is archived **and** holds no artifacts (`WORKSPACE_NOT_ARCHIVED` / `WORKSPACE_NOT_EMPTY` otherwise). Admins only.
+Move a workspace and everything in it to the trash, restorable for 30 days. Admins only (`deleteWorkspace`); it need not be empty. Prints the purge date and the restore command; `--json` returns `{ type, id, deletedAt, purgeAt }`. While it is in the trash, every call on the workspace answers 410 `WORKSPACE_DELETED`, and its slug stays held. Bring it back with `rip trash restore workspace <workspace>` ([Trash](#trash)).
 
 ### `rip workspace member …`
 
@@ -83,7 +81,7 @@ rip workspace member set-role <workspace> <account-id> --role viewer|editor
 rip workspace member remove <workspace> <account>
 ```
 
-Adding an account that already has internal access is refused (`WORKSPACE_MEMBER_INTERNAL`).
+Each member write takes `--why <text>`. Adding an account that already has internal access is refused (`WORKSPACE_MEMBER_INTERNAL`).
 
 ### `rip workspace adopt <workspace> <item>`
 
@@ -94,7 +92,7 @@ rip workspace adopt <workspace> <artifact-id> --audience internal|shared [--dest
 rip workspace adopt <workspace> <folder-id> --kind folder --audience internal|shared
 ```
 
-Options: `--audience <internal|shared>`, `--kind <artifact|folder>` (default `artifact`), `--destination-folder-id <uuid>`, `--workspace-session-id <uuid>`.
+Options: `--audience <internal|shared>`, `--kind <artifact|folder>` (default `artifact`), `--destination-folder-id <uuid>`, `--why <text>`.
 
 ### `rip workspace pin add|remove <workspace> <artifact-id>`
 
@@ -107,36 +105,45 @@ rip workspace pin remove <workspace> <artifact-id>
 
 ### `rip workspace load <workspace>`
 
-Deliberately start keyed participation with `--operation-id`, or resume exactly your credential's chosen live session with `--session-id`, and load bounded context: the workspace, pins, artifacts (50), tasks (20), activity (50), handoffs, `session { id, operationId, status, lastActivityAt }`, and a `browserLink`. Replaying the same `--operation-id` preserves its live session; a fresh identity starts independent participation. Both selectors refuse terminal sessions without replacement. Archived load returns read-only context and `session: null`, validates supplied session ownership, and never creates or touches participation. Human output prints all of it: the session id, `Can:` (capabilities), each pin and the latest handoff (inline bodies are printed), open tasks, recent changes, the artifact index, and one `rip workspace load … --session-id <returned id> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
+Load bounded context: the workspace and your capabilities, pins, artifacts (50), open tasks (20), recent changes (50, each with its `why`), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: `Can:` (capabilities), the browser link, each pin and the latest handoff (inline bodies are printed), recent sessions, open tasks, recent changes, the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
-rip workspace load <workspace> --operation-id <stable-id>
-rip workspace load <workspace> --session-id <returned-session-id> --task-cursor <cursor>
+rip workspace load <workspace>
+rip workspace load <workspace> --task-cursor <cursor>
 ```
 
-Required: exactly one of `--operation-id <id>` or `--session-id <uuid>`. Refresh and paging preserve browser link and pairing. If local identity is lost, `rip workspace show <workspace> [--session-cursor <cursor>]` exposes up to 20 active unexpired candidates owned by this account and credential, with `id`, `operationId`, `createdAt`, `lastActivityAt`, and `idleExpiresAt`; the complete reply budget may return fewer. Choose deliberately; discovery never extends idle time. Cursors are bound to workspace/account/credential. Names can repeat: use full UUID, slug, home, and capabilities to select, and clarify ambiguity. Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>`.
+Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>`. Names can repeat: use full UUID, slug, home, and capabilities to select, and clarify ambiguity. The deprecated `--operation-id` and `--session-id` are still accepted and ignored, with one notice on stderr (as are `--session-cursor` on `show` and `--workspace-session-id` on writes).
 
-### `rip workspace session end <workspace> <session-id>`
+### `rip workspace sessions <workspace>`
 
-End your session, optionally leaving a markdown handoff. Idempotent for the same input; different input is `SESSION_END_CONFLICT`.
+Recent sessions, newest first, 20 per page. A session is a run of writes in the workspace by one account, agent key and conversation, each within 45 minutes of the previous one; the server computes it from activity, so nothing is started or ended. Each prints who worked (the agent's key name only for your own account), the tool (`claude-code`, `codex`, `cli`, `dashboard`, …), the time range and change count, the goals in order (the stated whys; "no stated goal" for older writes, "in the browser" for a person's edits), each item changed with its change count and resulting version, and any handoff note. External members see sessions built from shared work only.
 
 ```bash
-rip workspace session end <workspace> <session-id> --summary "<changes, decisions, remaining work>"
-rip workspace session end <workspace> <session-id> --handoff-artifact-id <id>
+rip workspace sessions <workspace> [--cursor <nextCursor>]
 ```
 
-Options: `--summary <text>` or `--handoff-artifact-id <id>` — one or neither; both is `INVALID_HANDOFF`.
+`INVALID_CURSOR` for a malformed cursor. The read scans the workspace's latest 1,000 events; a session that reaches past them says "earlier activity of this session not shown".
+
+### Handoff notes
+
+A handoff note is an ordinary markdown artifact the next agent reads on load. It is optional: the session is recorded anyway.
+
+```bash
+rip artifact publish notes.md --type markdown --title "Handoff: pricing" --workspace-id <workspace> --handoff --why "<the goal>"
+```
+
+`--handoff` needs `--workspace-id` (`INVALID_SCOPE`) and markdown (`INVALID_HANDOFF`). `rip workspace session end` remains only to print the server's refusal, `SESSION_END_RETIRED`.
 
 ### `rip workspace view context|open`
 
-Read the operator's paired browser tab, or ask it to navigate.
+Read the browser tab paired to your agent key in this workspace, or ask it to navigate. The person pairs a tab by opening your load's browser link.
 
 ```bash
-rip workspace view context <workspace> <session-id>
-rip workspace view open <workspace> <session-id> <artifact-id> --operation-id <id> --expected-context-generation <n>
+rip workspace view context <workspace>
+rip workspace view open <workspace> <artifact-id> --operation-id <id> --expected-context-generation <n>
 ```
 
-`context` returns `paired | disconnected` and the tab's saved artifact, version, revision, `dirty`, `following`, and `contextGeneration`. `open` returns a receipt: `queued`, `deferred`, `applied`, or `disconnected`. Both `--operation-id` and `--expected-context-generation` are required for `open`.
+`context` returns `paired | disconnected` and the tab's saved artifact, version, revision, `dirty`, `following`, and `contextGeneration`. `open` returns a receipt: `queued`, `deferred`, `applied`, or `disconnected`. Both `--operation-id` (the navigation's retry identity) and `--expected-context-generation` are required for `open`.
 
 ### `rip workspace changes <workspace>` / `rip workspace ack <workspace>`
 
@@ -147,16 +154,16 @@ rip workspace changes <workspace> [--limit <n>] [--delivery-token <token>]
 rip workspace ack <workspace> --delivery-token <token>
 ```
 
-`changes` returns up to 100 events (default 50) with a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
+`changes` returns up to 100 events (default 50), each with its `why` and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
 
 ### Workspace flags on other commands
 
 Workspace content is written with the ordinary commands. Existing-item writes need the applicable precondition the read reported (`PRECONDITION_REQUIRED` when missing, `CONFLICT` with the current value when stale):
 
 ```bash
-rip artifact publish|upload … --workspace-id <ws> [--audience internal|shared]
+rip artifact publish|upload … --workspace-id <ws> [--audience internal|shared] --why "<the goal>"
 rip artifact update <id> <file> --expected-version-id <version-id> [--audience …] [--expected-workspace-revision <n>]
-rip artifact patch|move|archive|unarchive|delete|delete-version … --expected-workspace-revision <n>
+rip artifact patch|move|delete|delete-version … --expected-workspace-revision <n>
 rip artifact bulk … --expected-workspace-revisions '{"<id>": <n>}'
 rip artifact move <id> --folder-id <workspace-folder-uuid> --expected-workspace-revision <n>
 rip folder create <slug> --workspace <ws> [--audience …]   ·   rip folder list --workspace <ws>
@@ -169,7 +176,7 @@ rip task add "<title>" --workspace-id <ws> [--audience …]   ·   rip task list
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --audience]
 ```
 
-New artifact, folder, and task creation needs no revision. Insert-only rows need none unless expanding schema; matched upserts retain their row guards. History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). Audience and session attribution require explicit workspace identity (`INVALID_SCOPE`). Any write also accepts `--workspace-session-id <session-id>` to attribute it to your live credential-owned session. A correction retains content and attribution; acknowledgment consumes history and cannot repair a write conflict.
+New artifact, folder, and task creation needs no revision. Insert-only rows need none unless expanding schema; matched upserts retain their row guards. History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). Audience and `--handoff` require explicit workspace identity (`INVALID_SCOPE`). Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
 
 ## Artifact commands
 
@@ -191,7 +198,7 @@ rip artifact publish --type table --title "Research" --strict \
 rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> --audience shared
 ```
 
-Required: `--type`. Options: `--title`, `--content`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema <json>`, `--headers`, `--from-csv`, `--team <slugs>`, `--folder <slug>`, `--metadata <json>`, `--public-asset`, `--visibility <private|link|public>` (default `link`), `--strict`, `--workspace-id <id>`, `--audience <internal|shared>`, `--workspace-session-id <id>`, `--dry-run`.
+Required: `--type`. Options: `--title`, `--content`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema <json>`, `--headers`, `--from-csv`, `--team <slugs>`, `--folder <slug>`, `--metadata <json>`, `--public-asset`, `--visibility <private|link|public>` (default `link`), `--strict`, `--workspace-id <id>`, `--audience <internal|shared>`, `--handoff` (a markdown handoff note; needs `--workspace-id`), `--why <text>`, `--dry-run`.
 
 - **CSV vs table.** A `csv` artifact is a versioned file rendered as a table — for exports and snapshots. A `table` is a living table with a row-level API — for incremental data. `--from-csv` imports a CSV straight into a table; pass `--headers` (first row as column names) or `--schema` (explicit names and types), not both.
 - **Strict tables.** `--strict` makes row writes reject unknown columns and values that don't match their declared type. Without it an unknown key is silently *added* to the schema as a `text` column and no value is type checked.
@@ -207,7 +214,7 @@ rip artifact upload slides.pdf --title "Team Slides"
 rip artifact upload hero.png --public-asset          # → data.publicUrl (direct CDN)
 ```
 
-Options: `--title`, `--parent`, `--context`, `--refs`, `--team <slugs>`, `--folder <slug>`, `--public-asset`, `--visibility <link|public|private>` (defaults to `public` with `--public-asset`), `--workspace-id`, `--audience`, `--workspace-session-id`, `--dry-run`.
+Options: `--title`, `--parent`, `--context`, `--refs`, `--team <slugs>`, `--folder <slug>`, `--public-asset`, `--visibility <link|public|private>` (defaults to `public` with `--public-asset`), `--workspace-id`, `--audience`, `--why <text>`, `--dry-run`.
 
 ### `rip artifact list`
 
@@ -218,7 +225,7 @@ rip artifact list --type markdown --limit 5
 rip artifact list --team acme --folder reports
 ```
 
-Options: `--since <iso>`, `--limit <n>` (default 20), `--type <type>`, `--archived`, `--include-archived`, `--folder <slug>`, `--unfiled`, `--team <slug>`.
+Options: `--since <iso>`, `--limit <n>` (default 20), `--type <type>`, `--folder <slug>`, `--unfiled`, `--team <slug>`. Lists live artifacts only; what is in the trash is in `rip trash list`.
 
 ### `rip artifact get <identifier>`
 
@@ -261,7 +268,7 @@ rip artifact update my-doc report-v2.md --type markdown --title "Report (v2)"
 rip artifact update <id> report-v2.md --type markdown --expected-version-id <version-id>   # workspace content
 ```
 
-Options: `--type` (omit for a binary upload), `--description`, `--context`, `--title`, `--alias`, `--expected-version-id <id>`, `--audience <internal|shared>`, `--expected-workspace-revision <n>`, `--workspace-session-id <id>`, `--dry-run`.
+Options: `--type` (omit for a binary upload), `--description`, `--context`, `--title`, `--alias`, `--expected-version-id <id>`, `--audience <internal|shared>`, `--expected-workspace-revision <n>`, `--why <text>`, `--dry-run`.
 
 ### `rip artifact patch <identifier>`
 
@@ -276,7 +283,7 @@ rip artifact patch my-post --visibility private       # private | link | public
 rip artifact patch <id> --audience shared --expected-workspace-revision <n>
 ```
 
-Options: `--title`, `--description`, `--alias`, `--metadata <json>` (replaces existing metadata), `--visibility`, `--audience`, `--expected-workspace-revision <n>`, `--workspace-session-id <id>`.
+Options: `--title`, `--description`, `--alias`, `--metadata <json>` (replaces existing metadata), `--visibility`, `--audience`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact versions <uuid>`
 
@@ -294,15 +301,11 @@ Options: `--version-id <versionId>`.
 
 ### `rip artifact delete-version <uuid> <versionId>`
 
-Delete one version. The last remaining version cannot be deleted — delete the artifact instead. Options: `--dry-run`, `--expected-workspace-revision <n>`, `--workspace-session-id <id>`.
-
-### `rip artifact archive <identifier>` / `rip artifact unarchive <identifier>`
-
-Hide an artifact from listings and search (still reachable by ID), or restore it. Options: `--expected-workspace-revision <n>`, `--workspace-session-id <id>`.
+Delete one version, immediately and for good (versions do not go to the trash). The last remaining version cannot be deleted — delete the artifact instead. Options: `--dry-run`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact delete <identifier>`
 
-Permanently delete an artifact and its URL. Cannot be undone. Options: `--dry-run`, `--expected-workspace-revision <n>`, `--workspace-session-id <id>`.
+Move an artifact to the trash, restorable for 30 days. It leaves listings and search, its link answers 410 `DELETED` with `deletedAt` and `purgeAt`, and its alias stays held. Prints the purge date and `rip trash restore artifact <id>`; `--json` returns `{ type, id, deletedAt, purgeAt }`. Options: `--dry-run`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact fork <identifier>`
 
@@ -313,7 +316,7 @@ rip artifact fork my-skill --title "My Custom Skill"
 rip artifact fork 550e8400 --version-id abc123 --folder tools
 ```
 
-Options: `--version-id <versionId>`, `--title`, `--folder <slug>`, `--workspace-session-id <id>`.
+Options: `--version-id <versionId>`, `--title`, `--folder <slug>`, `--why <text>`.
 
 ### `rip artifact move <uuid>`
 
@@ -326,21 +329,20 @@ rip artifact move 550e8400-... --unfiled
 rip artifact move <id> --folder-id <workspace-folder-uuid> --expected-workspace-revision <n>
 ```
 
-Options: `--folder <slug>`, `--folder-id <uuid>` (workspace folders), `--team <slug>`, `--unfiled`, `--expected-workspace-revision <n>`, `--workspace-session-id <id>`.
+Options: `--folder <slug>`, `--folder-id <uuid>` (workspace folders), `--team <slug>`, `--unfiled`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact bulk <action>`
 
-Move, archive, or delete up to 200 artifacts in one call. `<action>` is `move`, `archive`, or `delete`. Output reports the `succeeded` ids and any `failed` entries (`{ publicId, error }`).
+Move up to 200 artifacts, or move them to the trash, in one call. `<action>` is `move` or `delete`. Output reports the `succeeded` count, any `failed` entries (`{ publicId, error }`) and, for `delete`, `deleted` (`{ type, id, deletedAt, purgeAt }` per item).
 
 ```bash
 rip artifact bulk move --ids "id1,id2,id3" --folder reports
 rip artifact bulk move --ids "id1,id2" --folder research --team research-team
 rip artifact bulk move --ids "id1,id2" --unfiled
-rip artifact bulk archive --ids "id1,id2,id3"
 rip artifact bulk delete --ids "id1,id2"
 ```
 
-Required: `--ids <csv>`. Options: `--folder <slug>`, `--team <slug>`, `--unfiled`, `--folder-id <uuid>`, `--expected-workspace-revisions <json>`, `--workspace-session-id <id>`. `delete` permanently destroys every listed artifact.
+Required: `--ids <csv>`. Options: `--folder <slug>`, `--team <slug>`, `--unfiled`, `--folder-id <uuid>`, `--expected-workspace-revisions <json>`, `--why <text>`. `delete` moves every listed artifact to the trash, restorable for 30 days.
 
 ### `rip artifact team add <identifier> <teams...>` / `rip artifact team remove <identifier> <team>`
 
@@ -369,7 +371,7 @@ rip table append 550e8400-... --file rows.json
 rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert-on slug
 ```
 
-Options: `--data <json>` (object or array), `--file <path>`, `--upsert-on <column>` (update the row matching that `unique: true` column instead of inserting), `--expected-workspace-revision <n>`, `--workspace-session-id <id>`. Without `--upsert-on`, a duplicate value in a unique column is rejected (`409`).
+Options: `--data <json>` (object or array), `--file <path>`, `--upsert-on <column>` (update the row matching that `unique: true` column instead of inserting), `--expected-workspace-revision <n>`, `--why <text>`. Without `--upsert-on`, a duplicate value in a unique column is rejected (`409`).
 
 ### `rip table rows <uuid>`
 
@@ -391,7 +393,7 @@ Update one row (partial merge).
 rip table update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
 ```
 
-Required: `--data <json>`. Options: `--expected-revision <n>` (workspace rows), `--expected-workspace-revision <n>`, `--workspace-session-id <id>`.
+Required: `--data <json>`. Options: `--expected-revision <n>` (workspace rows), `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip table delete <uuid>`
 
@@ -401,7 +403,7 @@ Delete rows.
 rip table delete 550e8400-... --rows 660f9500-...,770a0600-...
 ```
 
-Required: `--rows <ids>`. Options: `--expected-revisions <json>` (workspace rows), `--workspace-session-id <id>`.
+Required: `--rows <ids>`. Options: `--expected-revisions <json>` (workspace rows), `--why <text>`.
 
 ## Folder commands
 
@@ -415,7 +417,7 @@ rip folder create shared-reports --team research-team
 rip folder create drafts --workspace <ws> --audience internal
 ```
 
-Options: `--team <slug>`, `--workspace <workspace-id>`, `--audience <internal|shared>`, `--workspace-session-id <id>`.
+Options: `--team <slug>`, `--workspace <workspace-id>`, `--audience <internal|shared>`, `--why <text>`.
 
 ### `rip folder list`
 
@@ -431,15 +433,14 @@ Options: `--team <slug>`.
 
 ### `rip folder delete <slug>`
 
-Delete a folder. By default its artifacts are archived and remain accessible by ID. With `--delete-contents`, every artifact in it is permanently destroyed first.
+Move a folder and the artifacts in it to the trash, restorable for 30 days. The folder is one trash entry: restoring it brings its artifacts back filed as they were. Until then, reads of those artifacts answer 410 `DELETED` with `via: { type: "folder", id }`. The slug stays held. Deleting a personal folder first unfiles any artifact in it that another account owns; that artifact stays live with its owner.
 
 ```bash
 rip folder delete drafts
 rip folder delete research --team research-team
-rip folder delete drafts --delete-contents
 ```
 
-Options: `--team <slug>`, `--delete-contents`.
+Options: `--team <slug>`. Workspace folders are deleted from the dashboard.
 
 ### `rip folder update <folder-id>`
 
@@ -449,7 +450,7 @@ Change a workspace folder's own audience (its children keep theirs).
 rip folder update <folder-id> --workspace <ws> --audience shared --expected-workspace-revision <n>
 ```
 
-Required: `--workspace <workspace-id>`, `--audience <internal|shared>`, `--expected-workspace-revision <n>`. Option: `--workspace-session-id <id>`.
+Required: `--workspace <workspace-id>`, `--audience <internal|shared>`, `--expected-workspace-revision <n>`. Option: `--why <text>`.
 
 ### `rip folder share-contents <folder-id>`
 
@@ -459,7 +460,7 @@ Atomically share a workspace folder and all its current child artifacts. Later c
 rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revision <n>
 ```
 
-Required: `--workspace <workspace-id>`, `--expected-workspace-revision <n>`. Option: `--workspace-session-id <id>`.
+Required: `--workspace <workspace-id>`, `--expected-workspace-revision <n>`. Option: `--why <text>`.
 
 ### Folder flags on other commands
 
@@ -498,7 +499,7 @@ rip task add "Review pricing page copy" --workspace-id 7a1c2d1e-… --assignee a
 rip task add "Renew domain" --workspace-id 7a1c2d1e-… --due 2026-10-01
 ```
 
-Required: `<title>` and `--workspace-id <id>`. Options: `--audience <internal|shared>` (default `internal` for internal members, `shared` for external editors), `--workspace-session-id <id>`, `--assignee <who>` (a suggestion, not a lock; must be a workspace editor who can see the audience), `--kind <kind>` (lowercase slug), `--body <markdown>`, `--due <iso>` (informational), `--payload <json>`.
+Required: `<title>` and `--workspace-id <id>`. Options: `--audience <internal|shared>` (default `internal` for internal members, `shared` for external editors), `--why <text>`, `--assignee <who>` (a suggestion, not a lock; must be a workspace editor who can see the audience), `--kind <kind>` (lowercase slug), `--body <markdown>`, `--due <iso>` (informational), `--payload <json>`.
 
 ### `rip task update <id>`
 
@@ -508,21 +509,21 @@ Update title, body, suggested assignee, or audience.
 rip task update 4f2c1b90-… --expected-revision 3 --title "Review pricing copy (v2)"
 ```
 
-Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--audience`, `--workspace-session-id <uuid>`.
+Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--audience`, `--why <text>`.
 
 ### `rip task claim <id>`
 
 Claim a task. Holds a lease; re-claiming your own extends it. Every task must be claimed before it completes.
 
-Options: `--lease-hours <n>` (0.25–72, default 2), `--workspace-session-id <id>`. `TASK_ALREADY_CLAIMED` names the claimant and the lease expiry.
+Options: `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. `TASK_ALREADY_CLAIMED` names the claimant and the lease expiry.
 
 ### `rip task touch <id>`
 
-Extend the lease on a task you hold. Forward-only. Options: `--lease-hours <n>`, `--workspace-session-id <id>`.
+Extend the lease on a task you hold. Forward-only. Option: `--lease-hours <n>`. Takes no why.
 
 ### `rip task release <id>`
 
-Give up your claim. A workspace admin may release anyone's. Option: `--workspace-session-id <id>`.
+Give up your claim. A workspace admin may release anyone's. Option: `--why <text>`.
 
 ### `rip task done <id>`
 
@@ -532,13 +533,41 @@ Complete a task you hold, recording what it produced.
 rip task done 4f2c1b90-… --result artifact:a1b2c3d4-…@2 --result url:https://example.com/report
 ```
 
-Options: `--result <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50), `--workspace-session-id <id>`. If your lease lapsed but nobody took over, results are kept (flagged `orphaned`) and you get `CLAIM_LOST`; if you never held the claim, nothing is written and you get `NOT_CLAIMANT`.
+Options: `--result <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50), `--why <text>`. If your lease lapsed but nobody took over, results are kept (flagged `orphaned`) and you get `CLAIM_LOST`; if you never held the claim, nothing is written and you get `NOT_CLAIMANT`.
 
 ### `rip task dismiss <id>` / `rip task reopen <id>`
 
-Dismiss a task (reopenable), or reopen a done or dismissed one. `dismiss` takes `--reason <text>`; both take `--workspace-session-id <id>`.
+Dismiss a task (reopenable), or reopen a done or dismissed one. `dismiss` takes `--reason <text>`; both take `--why <text>`.
 
 A task's history is workspace activity: read it with `rip workspace changes <workspace>`.
+
+## Trash
+
+Deleting an artifact, folder, bundle or workspace moves it to the trash for 30 days. A folder or workspace takes what is in it along and is one entry. Anyone who could delete an item can restore it, exactly as it was, until its purge date (`purgeAt`, 30 days after deletion). From then on it cannot be restored, and the daily purge removes it for good. Agents cannot purge: there is no purge command. A person can choose **Delete forever** on the dashboard Trash page to remove an item sooner. Version and table-row deletes are immediate and do not use the trash.
+
+### `rip trash list`
+
+The trash, newest deletion first. Each entry has `type`, `id`, `title`, `deletedAt`, `purgeAt`, `deletedBy` and, for a workspace file or folder, `workspaceId` and `workspaceRevision`.
+
+```bash
+rip trash list                       # your own: standalone artifacts, bundles, personal folders, personal workspaces
+rip trash list --team acme           # a team's folders and workspaces
+rip trash list --workspace <ws>      # files and folders deleted in a workspace (external members see shared items only)
+```
+
+Options: `--workspace <workspace-id>`, `--team <slug>` (not both), `--limit <n>` (default 50, max 100), `--offset <n>` (the previous page's `nextOffset`).
+
+### `rip trash restore <type> <id>`
+
+Bring an entry back. `<type>` is `artifact`, `bundle`, `folder` or `workspace`; `<id>` is the entry's `id`. Replies `{ type, id, restored: true }`, plus `unfiled: true` for a file whose folder is still in the trash (it comes back unfiled; restore the folder to bring everything back together).
+
+```bash
+rip trash restore artifact 550e8400-e29b-41d4-a716-446655440000
+rip trash restore folder <folder-id> --expected-workspace-revision 4
+rip trash restore workspace <workspace-id>
+```
+
+Options: `--expected-workspace-revision <n>` (required for a workspace file or folder: the entry's `workspaceRevision`), `--why <text>`. Restoring a live item does nothing. A file or folder whose workspace is in the trash answers 409 `WORKSPACE_DELETED`: restore the workspace first. Past `purgeAt`, or for an unknown id, restore answers the type's not-found code.
 
 ## Activity
 
@@ -554,7 +583,7 @@ rip activity --subject connection:4f2c1b90-…
 
 Options: `--team <slug>` (default: your own scope), `--type <list>` (e.g. `connection.created,team.member_removed`), `--actor <who>` (account id or alias, or `system`), `--subject <type>:<id>`, `--since <iso-or-days>`, `--limit <n>` (max 200), `--cursor <cursor>`.
 
-Claims, sessions, and activity rows record the harness you ran from: `claude-code` under Claude Code, else `cli`. Set `TOKENRIP_SURFACE=<harness>` to override; the CLI sends it as the `X-Tokenrip-Surface` header on every request.
+Claims, activity rows and sessions record the harness you ran from: `claude-code` under Claude Code, `codex` under Codex, else `cli`. Set `TOKENRIP_SURFACE=<harness>` to override; the CLI sends it as the `X-Tokenrip-Surface` header on every request. It also sends your harness conversation in `X-Tokenrip-Conversation` (`TOKENRIP_CONVERSATION`, else Claude Code's `CLAUDE_CODE_SESSION_ID`, else Codex's `CODEX_THREAD_ID`; the server stores only a hash), so parallel conversations on one key form separate sessions, and identifies itself as `User-Agent: tokenrip-cli/<version>`.
 
 ## Search
 
@@ -569,7 +598,7 @@ rip search "how do we handle auth failures" --mode semantic
 rip search "termination clause" --artifact contract-2026
 ```
 
-Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200), `--offset <n>`, `--artifact-type <type>`, `--archived`, `--include-archived`, `--mode <hybrid|keyword|semantic>`, `--artifact <id>`.
+Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200), `--offset <n>`, `--artifact-type <type>`, `--mode <hybrid|keyword|semantic>`, `--artifact <id>`. Search finds live artifacts only.
 
 - `--mode hybrid` (default) fuses keyword and semantic similarity and falls back to keyword when semantic search isn't enabled for the account; `keyword` is exact/stemmed only; `semantic` is meaning-based only and errors if not enabled.
 - `--artifact` scopes the search to one artifact and returns its most relevant chunks (hybrid or semantic mode).
@@ -694,7 +723,7 @@ Options: `--title` (default: directory name), `--slug` (alias `--alias`), `--des
 
 ### `rip bundle list`
 
-Options: `--archived`, `--include-archived`.
+Your live bundles. Bundles in the trash are in `rip trash list`.
 
 ### `rip bundle get <idOrSlug>`
 
@@ -714,7 +743,7 @@ Print the live URL. `--browser` also opens it in the OS default browser.
 
 ### `rip bundle delete <idOrSlug>`
 
-Permanently delete a bundle and all its versions. Requires `--yes`.
+Move a bundle to the trash, restorable for 30 days. While it is there its `/b/:id` page answers 410, its live site answers 410 (404 for a private bundle), and its slug stays held. Requires `--yes`. Prints the purge date and `rip trash restore bundle <id>`.
 
 ## Team commands
 
@@ -951,7 +980,9 @@ Environment variables take precedence over the config file:
 | `TOKENRIP_AGENT` | Active account (alias or account ID) |
 | `TOKENRIP_OUTPUT` | Output format (`human` or `json`) |
 | `TOKENRIP_CONFIG_DIR` | Config directory |
-| `TOKENRIP_SURFACE` | Harness name recorded on claims and activity (default `claude-code` or `cli`) |
+| `TOKENRIP_SURFACE` | Harness name recorded on claims and activity (default `claude-code`, `codex` or `cli`) |
+| `TOKENRIP_WHY` | The `--why` for every writing command that does not pass one |
+| `TOKENRIP_CONVERSATION` | Conversation id sent as `X-Tokenrip-Conversation` (default: `CLAUDE_CODE_SESSION_ID`, then `CODEX_THREAD_ID`) |
 
 ## Output format
 
@@ -988,10 +1019,15 @@ Common server codes:
 | Code | Meaning |
 |------|---------|
 | `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write lacks, or has a stale, version id or revision |
-| `WORKSPACE_FORBIDDEN` / `WORKSPACE_ARCHIVED` | No access to that workspace, audience, or write; or the workspace is archived |
-| `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep full content and session attribution |
+| `WORKSPACE_FORBIDDEN` | No access to that workspace, audience, or write |
+| `DELETED` | 410: the item, or its folder (`via`), is in the trash; the details carry `deletedAt` and `purgeAt`, and for a caller who may restore it `restorable`, `deletedBy` and any `workspaceRevision` |
+| `WORKSPACE_DELETED` | 410: the workspace is in the trash. 409 on `rip trash restore`: the item's workspace is in the trash; restore it first |
+| `ALIAS_CONFLICT` / `SLUG_TAKEN` / `FOLDER_EXISTS` / `WORKSPACE_SLUG_TAKEN` | The name is taken. When the holder is in the trash the message names its purge date: restore it, or choose another name |
+| `WORKSPACE_AUTHORITY` | Omit the named incompatible standalone fields and use audience; keep the content and the why |
 | `WORKSPACE_REQUIRED` | A task create/list request lacks `workspaceId` |
-| `INVALID_SCOPE` | Workspace-only creation fields require `workspaceId` |
+| `WHY_REQUIRED` | A write to workspace content stated no why: add `--why` (or `TOKENRIP_WHY`). No `--why` flag: `rip update` |
+| `INVALID_SCOPE` | Workspace-only creation fields (`--audience`, `--handoff`) require `workspaceId` |
+| `SESSION_END_RETIRED` | `rip workspace session end`: sessions record themselves; leave a note with `rip artifact publish … --handoff` |
 | `ALREADY_IN_WORKSPACE` / `CROSS_WORKSPACE_MOVE` | Adoption or move refused |
 | `TEAM_OWNS_WORKSPACES` | The team still owns workspaces |
 | `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases |

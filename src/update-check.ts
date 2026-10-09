@@ -1,8 +1,5 @@
-import { createRequire } from 'node:module';
 import { loadConfig, saveConfig, getFrontendUrl } from './config.js';
-
-const require = createRequire(import.meta.url);
-const { version: currentVersion } = require('../package.json');
+import { CLI_VERSION as currentVersion } from './version.js';
 
 export interface UpdateManifest {
   name: string;

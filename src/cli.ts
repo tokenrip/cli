@@ -1,13 +1,10 @@
 #!/usr/bin/env node
-import { createRequire } from 'node:module';
-import { Command } from 'commander';
-import type { WorkspaceLoadSelector } from './commands/workspace.js';
+import { Command, Option } from 'commander';
 import { configSetKey, configSetUrl, configShow } from './commands/config.js';
 import { upload } from './commands/upload.js';
 import { publish } from './commands/publish.js';
 import { status } from './commands/status.js';
 import { deleteArtifact } from './commands/delete.js';
-import { archiveArtifact, unarchiveArtifact } from './commands/archive.js';
 import { forkArtifact } from './commands/fork.js';
 import { update } from './commands/update.js';
 import { deleteVersion } from './commands/delete-version.js';
@@ -23,23 +20,48 @@ import { wrapCommand, setForceJson, setConfigHuman, outputSuccess } from './outp
 import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 import { checkForUpdate } from './update-check.js';
+import { CLI_VERSION } from './version.js';
 
-const require = createRequire(import.meta.url);
-const { version } = require('../package.json');
+/**
+ * Every writing command states why: one sentence on the person's goal, which the
+ * server records on workspace items. `TOKENRIP_WHY` stands in for the flag (for a
+ * script with one purpose); the flag wins.
+ */
+function withWhy(command: Command): Command {
+  return command.addOption(new Option('--why <text>', 'One sentence: what the person is trying to accomplish, in their terms — not a description of this edit. Required for workspace items.').env('TOKENRIP_WHY'));
+}
+
+/**
+ * Retired flags (plan D7): still accepted so an old invocation runs, hidden from help, and ignored.
+ * The program's preAction hook prints one notice naming those given and clears them, so no command
+ * sends them.
+ */
+const retiredOptions = new WeakSet<Option>();
+function retired(flags: string): Option {
+  const option = new Option(flags).hideHelp();
+  retiredOptions.add(option);
+  return option;
+}
 
 const program = new Command();
 program
   .name('rip')
   .description('Tokenrip — shared workspaces for people and AI agents')
-  .version(version)
+  .version(CLI_VERSION)
   .option('--json', 'Use JSON output instead of human-readable')
   .option('--agent <name>', 'Use a specific agent identity for this command')
-  .hook('preAction', async (thisCommand) => {
+  .hook('preAction', async (thisCommand, actionCommand) => {
     if (program.opts().json) setForceJson(true);
     const opts = thisCommand.optsWithGlobals();
     if (opts.agent) {
       const { setAgentOverride } = await import('./identities.js');
       setAgentOverride(opts.agent);
+    }
+    const given = actionCommand.options.filter(option => retiredOptions.has(option) && actionCommand.getOptionValue(option.attributeName()) !== undefined);
+    if (given.length) {
+      const { retiredFlagsNotice } = await import('./commands/workspace.js');
+      console.error(retiredFlagsNotice(given.map(option => option.long!)));
+      for (const option of given) actionCommand.setOptionValue(option.attributeName(), undefined);
     }
   });
 
@@ -49,8 +71,8 @@ const artifact = program
   .alias('art')
   .description('Create, manage, and inspect artifacts');
 
-artifact
-  .command('upload')
+withWhy(artifact
+  .command('upload'))
   .argument('<file>', 'File path to upload (PDF, image, document, etc.)')
   .option('--title <title>', 'Display title for the artifact')
   .option('--parent <uuid>', 'Parent artifact ID for lineage tracking')
@@ -62,7 +84,7 @@ artifact
   .option('--visibility <level>', 'Standalone visibility (link | public | private); omit with --workspace-id')
   .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
   .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
-  .option('--workspace-session-id <id>', 'Attribute creation to your live session (requires --workspace-id)')
+  .addOption(retired('--workspace-session-id <id>'))
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
@@ -74,8 +96,8 @@ EXAMPLES:
 `)
   .action(wrapCommand(upload));
 
-artifact
-  .command('publish')
+withWhy(artifact
+  .command('publish'))
   .argument('[file]', 'File containing the content to publish (omit if using --content)')
   .requiredOption('--type <type>', 'Content type: markdown, html, chart, code, text, json, csv, or table')
   .option('--title <title>', 'Display title for the artifact')
@@ -95,7 +117,8 @@ artifact
   .option('--strict', 'For tables: reject unknown columns and type-mismatched values on row writes')
   .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
   .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
-  .option('--workspace-session-id <id>', 'Attribute creation to your live session (requires --workspace-id)')
+  .option('--handoff', 'Publish this markdown as the workspace handoff note for whoever comes next (requires --workspace-id)')
+  .addOption(retired('--workspace-session-id <id>'))
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -119,6 +142,8 @@ EXAMPLES:
     --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
   $ rip artifact publish leads.csv --type table --from-csv --headers \\
     --title "Leads from CSV"
+  $ rip artifact publish notes.md --type markdown --title "Handoff" \\
+    --workspace-id <id> --handoff --why "Leave the pricing work ready for the next agent"
 `)
   .action(wrapCommand(publish));
 
@@ -127,8 +152,6 @@ artifact
   .option('--since <iso-date>', 'Only show artifacts modified after this timestamp (ISO 8601)')
   .option('--limit <n>', 'Maximum number of artifacts to return (default: 20)', '20')
   .option('--type <type>', 'Filter by artifact type (markdown, html, chart, code, text, file)')
-  .option('--archived', 'Show only archived artifacts')
-  .option('--include-archived', 'Include archived artifacts alongside active ones')
   .option('--folder <slug>', 'Filter by folder')
   .option('--unfiled', 'Show only unfiled artifacts')
   .option('--team <slug>', 'Filter to team artifacts')
@@ -138,8 +161,6 @@ EXAMPLES:
   $ rip artifact list
   $ rip artifact list --since 2026-03-30T00:00:00Z
   $ rip artifact list --type markdown --limit 5
-  $ rip artifact list --archived
-  $ rip artifact list --include-archived
   $ rip artifact list --folder reports
   $ rip artifact list --unfiled
   $ rip artifact list --team acme
@@ -147,62 +168,34 @@ EXAMPLES:
 `)
   .action(wrapCommand(status));
 
-artifact
-  .command('delete')
+withWhy(artifact
+  .command('delete'))
   .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
-  .option('--dry-run', 'Show what would be deleted without deleting')
+  .option('--dry-run', 'Show what would move to the trash without moving it')
   .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
-  .description('Permanently delete an artifact and its shareable link')
+  .addOption(retired('--workspace-session-id <id>'))
+  .description('Move an artifact to the trash (restorable for 30 days)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact delete 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact delete my-alias
   $ rip artifact delete https://tokenrip.com/s/my-alias
 
-CAUTION:
-  This permanently removes the artifact and its shareable link.
-  This action cannot be undone.
+NOTE:
+  The artifact leaves listings and search, and its link answers 410 with the
+  deletion and purge dates. It is removed for good 30 days later. The alias
+  stays held while it is in the trash. Workspace artifacts need
+  --expected-workspace-revision.
 `)
   .action(wrapCommand(deleteArtifact));
 
-artifact
-  .command('archive')
-  .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
-  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
-  .description('Archive an artifact (hidden from listings but still accessible by ID)')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact archive 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact archive my-alias
-  $ rip artifact archive https://tokenrip.com/s/my-alias
-
-  Archived artifacts are hidden from listings and searches by default,
-  but remain accessible by ID and can be unarchived at any time.
-`)
-  .action(wrapCommand(archiveArtifact));
-
-artifact
-  .command('unarchive')
-  .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
-  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
-  .description('Unarchive an artifact, restoring it to published state')
-  .addHelpText('after', `
-EXAMPLES:
-  $ rip artifact unarchive 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact unarchive my-alias
-`)
-  .action(wrapCommand(unarchiveArtifact));
-
-artifact
-  .command('fork')
+withWhy(artifact
+  .command('fork'))
   .argument('<identifier>', 'Artifact public ID, alias, or scoped alias (~owner/alias) to fork')
   .option('--version-id <versionId>', 'Fork a specific version (defaults to latest)')
   .option('--title <title>', 'Title for the forked artifact (defaults to original)')
   .option('--folder <folder>', 'Folder slug to file the fork into')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Create your own copy of an existing artifact')
   .addHelpText('after', `
 EXAMPLES:
@@ -213,8 +206,8 @@ EXAMPLES:
 `)
   .action(wrapCommand(forkArtifact));
 
-artifact
-  .command('update')
+withWhy(artifact
+  .command('update'))
   .argument('<uuid>', 'Artifact public ID')
   .argument('<file>', 'File containing the new version content')
   .option('--type <type>', 'Content type (markdown, html, chart, code, text, json, csv) — omit for binary file upload')
@@ -225,7 +218,7 @@ artifact
   .option('--expected-version-id <id>', 'Required current version ID when replacing workspace content')
   .option('--audience <audience>', 'Set workspace audience: internal | shared')
   .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision when changing audience')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .option('--dry-run', 'Validate without publishing')
   .description('Publish a new version of an existing artifact')
   .addHelpText('after', `
@@ -236,13 +229,13 @@ EXAMPLES:
 `)
   .action(wrapCommand(update));
 
-artifact
-  .command('delete-version')
+withWhy(artifact
+  .command('delete-version'))
   .argument('<uuid>', 'Artifact ID')
   .argument('<versionId>', 'Version ID to delete')
   .option('--dry-run', 'Show what would be deleted without deleting')
   .option('--expected-workspace-revision <n>', 'Required live revision when deleting a workspace artifact version')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Delete a specific version of an artifact')
   .addHelpText('after', `
 EXAMPLES:
@@ -333,15 +326,15 @@ EXAMPLES:
 `)
   .action(wrapCommand(artifactDiff));
 
-artifact
-  .command('move')
+withWhy(artifact
+  .command('move'))
   .argument('<uuid>', 'Artifact UUID')
   .option('--folder <slug>', 'Target folder slug')
   .option('--folder-id <uuid>', 'Target workspace folder UUID')
   .option('--team <slug>', 'Target team (for team folders)')
   .option('--unfiled', 'Remove from current folder')
   .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Move an artifact into a folder or unfile it')
   .addHelpText('after', `
 EXAMPLES:
@@ -354,36 +347,35 @@ EXAMPLES:
     await artifactMove(uuid, options);
   }));
 
-artifact
-  .command('bulk')
-  .argument('<action>', 'Bulk action: move, archive, or delete')
+withWhy(artifact
+  .command('bulk'))
+  .argument('<action>', 'Bulk action: move or delete')
   .requiredOption('--ids <csv>', 'Comma-separated artifact identifiers (UUID, alias, or URL)')
   .option('--folder <slug>', 'Target folder slug (for move)')
   .option('--team <slug>', 'Target team for the folder (for move into a team folder)')
   .option('--unfiled', 'Unfile the artifacts (for move)')
   .option('--folder-id <uuid>', 'Target workspace folder UUID (for move)')
   .option('--expected-workspace-revisions <json>', 'Map artifact identifiers to live workspace revisions')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
-  .description('Move, archive, or delete many artifacts in one call')
+  .addOption(retired('--workspace-session-id <id>'))
+  .description('Move many artifacts, or move them to the trash, in one call')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact bulk move --ids "id1,id2,id3" --folder reports
   $ rip artifact bulk move --ids "id1,id2" --folder research --team my-team
   $ rip artifact bulk move --ids "id1,id2" --unfiled
-  $ rip artifact bulk archive --ids "id1,id2,id3"
   $ rip artifact bulk delete --ids "id1,id2"
 
-CAUTION:
-  The "delete" action permanently destroys every listed artifact and its
-  shareable link. This action cannot be undone. Up to 200 ids per call.
+NOTE:
+  The "delete" action moves every listed artifact to the trash, restorable
+  for 30 days, and prints each one's purge date. Up to 200 ids per call.
 `)
   .action(wrapCommand(async (action, options) => {
     const { artifactBulk } = await import('./commands/bulk.js');
     await artifactBulk(action, options);
   }));
 
-artifact
-  .command('patch')
+withWhy(artifact
+  .command('patch'))
   .argument('<identifier>', 'Artifact UUID or alias')
   .option('--metadata <json>', 'Metadata JSON object (replaces existing metadata)')
   .option('--alias <alias>', 'New alias for the artifact')
@@ -392,7 +384,7 @@ artifact
   .option('--visibility <level>', 'private | link | public')
   .option('--audience <audience>', 'Set workspace audience: internal | shared without creating a version')
   .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Update artifact metadata and/or alias without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
@@ -443,14 +435,14 @@ const table = program
   .command('table')
   .description('Manage table rows (append, list, update, delete)');
 
-table
-  .command('append')
+withWhy(table
+  .command('append'))
   .argument('<uuid>', 'Table artifact public ID')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
   .option('--upsert-on <column>', 'Update the row matching this column instead of inserting (column must be unique: true)')
   .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Append one or more rows to a table (max 1000 per call)')
   .addHelpText('after', `
 EXAMPLES:
@@ -502,14 +494,14 @@ EXAMPLES:
     await tableRows(uuid, options);
   }));
 
-table
-  .command('update')
+withWhy(table
+  .command('update'))
   .argument('<uuid>', 'Table artifact public ID')
   .argument('<rowId>', 'Row ID to update')
   .requiredOption('--data <json>', 'Fields to update as JSON (partial merge)')
   .option('--expected-revision <n>', 'Required live row revision for a workspace row')
   .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Update a single row in a table')
   .addHelpText('after', `
 EXAMPLES:
@@ -520,12 +512,12 @@ EXAMPLES:
     await tableUpdate(uuid, rowId, options);
   }));
 
-table
-  .command('delete')
+withWhy(table
+  .command('delete'))
   .argument('<uuid>', 'Table artifact public ID')
   .requiredOption('--rows <ids>', 'Comma-separated row IDs to delete')
   .option('--expected-revisions <json>', 'Map row IDs to live row revisions for workspace deletion')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Delete rows from a table')
   .addHelpText('after', `
 EXAMPLES:
@@ -580,8 +572,6 @@ deployOptions(bundle.command('deploy').argument('<dir>', 'Directory to deploy').
 
 bundle
   .command('list')
-  .option('--archived', 'Show only archived bundles')
-  .option('--include-archived', 'Include archived bundles')
   .description('List your bundles')
   .action(wrapCommand(bundleList));
 
@@ -615,7 +605,7 @@ bundle
   .command('delete')
   .argument('<idOrSlug>', 'Bundle public ID or slug')
   .option('--yes', 'Confirm deletion (required)')
-  .description('Permanently delete a bundle and all its versions')
+  .description('Move a bundle to the trash')
   .action(wrapCommand(bundleDelete));
 
 // ── auth commands ───────────────────────────────────────────────────
@@ -906,8 +896,6 @@ program
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
   .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table')
-  .option('--archived', 'Search only archived artifacts')
-  .option('--include-archived', 'Include archived artifacts in search results')
   .option('--mode <mode>', 'Search mode: hybrid (default), keyword, or semantic')
   .option('--artifact <id>', 'Scope to one artifact (publicId or alias) — returns its most relevant chunks')
   .addHelpText('after', `
@@ -915,8 +903,6 @@ EXAMPLES:
   $ rip search "quarterly report"
   $ rip search "chart" --artifact-type chart --since 7
   $ rip search "proposal" --limit 10
-  $ rip search "old report" --archived
-  $ rip search "report" --include-archived
   $ rip search "how do we handle auth failures" --mode semantic
   $ rip search "termination clause" --artifact contract-2026
 `)
@@ -1287,27 +1273,27 @@ task
     await taskShow(id);
   }));
 
-task
-  .command('update')
+withWhy(task
+  .command('update'))
   .argument('<id>', 'Task id')
   .requiredOption('--expected-revision <n>', 'Current task revision')
   .option('--title <title>', 'Replace the title')
   .option('--body <markdown>', 'Replace the body')
   .option('--assignee <who>', 'Suggested assignee — account id or alias')
   .option('--audience <audience>', 'Visibility: internal or shared')
-  .option('--workspace-session-id <uuid>', 'Attribute the write to an active workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Update task metadata')
   .action(wrapCommand(async (id, options) => {
     const { taskUpdate } = await import('./commands/task.js');
     await taskUpdate(id, options);
   }));
 
-task
-  .command('add')
+withWhy(task
+  .command('add'))
   .argument('<title>', 'Task title')
   .requiredOption('--workspace-id <id>', 'The workspace to file the task in')
   .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .option('--assignee <who>', 'Suggested assignee — account id or alias (a workspace editor)')
   .option('--kind <kind>', 'Task kind (lowercase slug, e.g. process-call)')
   .option('--body <markdown>', 'Details')
@@ -1324,11 +1310,11 @@ EXAMPLES:
     await taskAdd(title, options);
   }));
 
-task
-  .command('claim')
+withWhy(task
+  .command('claim'))
   .argument('<id>', 'Task id')
   .option('--lease-hours <n>', 'Lease length in hours (default 2, max 72)')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Claim a task (holds a lease; re-claiming your own extends it)')
   .action(wrapCommand(async (id, options) => {
     const { taskClaim } = await import('./commands/task.js');
@@ -1339,49 +1325,49 @@ task
   .command('touch')
   .argument('<id>', 'Task id')
   .option('--lease-hours <n>', 'New lease length in hours')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Extend the lease on a task you hold')
   .action(wrapCommand(async (id, options) => {
     const { taskTouch } = await import('./commands/task.js');
     await taskTouch(id, options);
   }));
 
-task
-  .command('release')
+withWhy(task
+  .command('release'))
   .argument('<id>', 'Task id')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Release your claim (workspace admins may release any claim)')
   .action(wrapCommand(async (id, options) => {
     const { taskRelease } = await import('./commands/task.js');
     await taskRelease(id, options);
   }));
 
-task
-  .command('done')
+withWhy(task
+  .command('done'))
   .argument('<id>', 'Task id')
   .option('--result <type:id>', 'Attach a result: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Complete a task you hold')
   .action(wrapCommand(async (id, options) => {
     const { taskDone } = await import('./commands/task.js');
     await taskDone(id, options);
   }));
 
-task
-  .command('dismiss')
+withWhy(task
+  .command('dismiss'))
   .argument('<id>', 'Task id')
   .option('--reason <text>', 'Why')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Dismiss a task (reopenable)')
   .action(wrapCommand(async (id, options) => {
     const { taskDismiss } = await import('./commands/task.js');
     await taskDismiss(id, options);
   }));
 
-task
-  .command('reopen')
+withWhy(task
+  .command('reopen'))
   .argument('<id>', 'Task id')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Reopen a done or dismissed task')
   .action(wrapCommand(async (id, options) => {
     const { taskReopen } = await import('./commands/task.js');
@@ -1578,8 +1564,8 @@ const workspace = program
   .alias('ws')
   .description('Workspaces — internal/shared collaboration over artifacts, folders, and tasks');
 
-workspace
-  .command('create')
+withWhy(workspace
+  .command('create'))
   .argument('<slug>', 'Workspace slug (unique within your account or team)')
   .option('--name <name>', 'Display name (defaults to slug)')
   .option('--description <text>', 'Workspace description')
@@ -1606,56 +1592,41 @@ workspace
 workspace
   .command('show')
   .argument('<workspace>', 'Workspace id (UUID)')
-  .description('Show workspace identity, capabilities, and this credential’s resumable sessions')
-  .option('--session-cursor <cursor>', 'Continue bounded recovery candidates from workspace show')
-  .action(wrapCommand(async (ws, options) => {
+  .description('Show workspace identity and capabilities')
+  .addOption(retired('--session-cursor <cursor>'))
+  .action(wrapCommand(async (ws) => {
     const { workspaceShow } = await import('./commands/workspace.js');
-    await workspaceShow(ws, options);
+    await workspaceShow(ws);
   }));
 
-workspace
-  .command('update')
+withWhy(workspace
+  .command('update'))
   .argument('<workspace>', 'Workspace UUID')
   .option('--name <name>', 'New display name')
   .option('--description <text>', 'New description')
   .description('Update workspace metadata')
   .action(wrapCommand(async (ws, options) => { const { workspaceUpdate } = await import('./commands/workspace.js'); await workspaceUpdate(ws, options); }));
 
-workspace
-  .command('archive')
+withWhy(workspace
+  .command('delete'))
   .argument('<workspace>', 'Workspace id (UUID)')
-  .description('Archive a workspace')
-  .action(wrapCommand(async (ws) => {
-    const { workspaceArchive } = await import('./commands/workspace.js');
-    await workspaceArchive(ws);
-  }));
-
-workspace
-  .command('restore')
-  .argument('<workspace>', 'Workspace UUID')
-  .description('Restore an archived workspace')
-  .action(wrapCommand(async (ws) => { const { workspaceRestore } = await import('./commands/workspace.js'); await workspaceRestore(ws); }));
-
-workspace
-  .command('delete')
-  .argument('<workspace>', 'Workspace id (UUID)')
-  .description('Delete an archived workspace that holds no artifacts')
-  .action(wrapCommand(async (ws) => {
+  .description('Move a workspace and everything in it to the trash (restorable for 30 days)')
+  .action(wrapCommand(async (ws, options) => {
     const { workspaceDelete } = await import('./commands/workspace.js');
-    await workspaceDelete(ws);
+    await workspaceDelete(ws, options);
   }));
 
 // workspace member subgroup
 const workspaceMember = workspace.command('member').description('Manage workspace members');
-workspaceMember
-  .command('set-role')
+withWhy(workspaceMember
+  .command('set-role'))
   .argument('<workspace>', 'Workspace UUID')
   .argument('<account-id>', 'External account UUID')
   .requiredOption('--role <role>', 'viewer | editor')
   .description('Change an external member role')
-  .action(wrapCommand(async (ws, accountId, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(ws, accountId, options.role); }));
-workspaceMember
-  .command('add')
+  .action(wrapCommand(async (ws, accountId, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(ws, accountId, options.role, options); }));
+withWhy(workspaceMember
+  .command('add'))
   .argument('<workspace>', 'Workspace id (UUID)')
   .argument('<account>', 'Account id or alias to add')
   .option('--role <role>', 'viewer | editor (default editor)')
@@ -1664,14 +1635,14 @@ workspaceMember
     const { workspaceMemberAdd } = await import('./commands/workspace.js');
     await workspaceMemberAdd(ws, account, options);
   }));
-workspaceMember
-  .command('remove')
+withWhy(workspaceMember
+  .command('remove'))
   .argument('<workspace>', 'Workspace id (UUID)')
   .argument('<account>', 'Account id to remove')
   .description('Remove a member from a workspace')
-  .action(wrapCommand(async (ws, account) => {
+  .action(wrapCommand(async (ws, account, options) => {
     const { workspaceMemberRemove } = await import('./commands/workspace.js');
-    await workspaceMemberRemove(ws, account);
+    await workspaceMemberRemove(ws, account, options);
   }));
 workspaceMember
   .command('list')
@@ -1682,14 +1653,14 @@ workspaceMember
     await workspaceMemberList(ws);
   }));
 
-workspace
-  .command('adopt')
+withWhy(workspace
+  .command('adopt'))
   .argument('<workspace>', 'Workspace UUID')
   .argument('<item>', 'Artifact identifier or folder UUID')
   .requiredOption('--audience <audience>', 'internal | shared')
   .option('--kind <kind>', 'artifact | folder', 'artifact')
   .option('--destination-folder-id <uuid>', 'Destination workspace folder UUID')
-  .option('--workspace-session-id <uuid>', 'Attribute the write to a live workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Move standalone content into workspace authority; sharing exposes full artifact history')
   .action(wrapCommand(async (ws, item, options) => { const { workspaceAdopt } = await import('./commands/workspace.js'); await workspaceAdopt(ws, item, options); }));
 
@@ -1697,12 +1668,14 @@ const workspacePinGroup = workspace.command('pin').description('Manage ordered m
 workspacePinGroup.command('add').argument('<workspace>').argument('<artifact-id>').option('--position <n>').action(wrapCommand(async (ws, artifactId, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(ws, artifactId, options); }));
 workspacePinGroup.command('remove').argument('<workspace>').argument('<artifact-id>').action(wrapCommand(async (ws, artifactId) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(ws, artifactId); }));
 
-workspace.command('load').argument('<workspace>').option('--operation-id <id>', 'Intentionally start keyed participation or replay that start').option('--session-id <id>', 'Resume exactly this live session (exclusive with --operation-id)').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Load bounded context: choose exactly one --operation-id or --session-id').action(wrapCommand(async (ws, options) => { const { operationId, sessionId, ...page } = options; const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { operationId, sessionId } as WorkspaceLoadSelector, page); }));
-const workspaceSession = workspace.command('session').description('Manage credential-bound workspace sessions');
-workspaceSession.command('end').argument('<workspace>').argument('<session-id>').option('--summary <text>').option('--handoff-artifact-id <id>').action(wrapCommand(async (ws, sessionId, options) => { const { workspaceSessionEnd } = await import('./commands/workspace.js'); await workspaceSessionEnd(ws, sessionId, options); }));
+workspace.command('load').argument('<workspace>').addOption(retired('--operation-id <id>')).addOption(retired('--session-id <id>')).option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Load bounded context: pins, artifacts, open tasks, recent changes and sessions, handoff notes, and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor, handoffOffset: options.handoffOffset }); }));
+const workspaceSession = workspace.command('session').description('Retired: sessions record themselves; read them with `rip workspace sessions`');
+workspaceSession.command('end').argument('<workspace>').argument('<session-id>').option('--summary <text>').option('--handoff-artifact-id <id>').description('Retired: sessions record themselves; prints the server refusal. Leave a note with `rip artifact publish --handoff`').action(wrapCommand(async (ws, sessionId, options) => { const { workspaceSessionEnd } = await import('./commands/workspace.js'); await workspaceSessionEnd(ws, sessionId, options); }));
 const workspaceView = workspace.command('view').description('Inspect or explicitly navigate a paired browser view');
-workspaceView.command('context').argument('<workspace>').argument('<session-id>').action(wrapCommand(async (ws, sessionId) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws, sessionId); }));
-workspaceView.command('open').argument('<workspace>').argument('<session-id>').argument('<artifact-id>').requiredOption('--operation-id <id>').requiredOption('--expected-context-generation <n>').action(wrapCommand(async (ws, sessionId, artifactId, options) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); await workspaceViewOpen(ws, sessionId, artifactId, options.operationId, options.expectedContextGeneration); }));
+// Addressed by workspace: the view follows the caller's key. An old invocation's session id (plan D7) is an excess positional, ignored with one notice.
+workspaceView.command('context').argument('<workspace>').allowExcessArguments(true).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws, _options, command) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws, command.args[1]); }));
+workspaceView.command('open').argument('<workspace>').argument('<artifact-id>').allowExcessArguments(true).requiredOption('--operation-id <id>').requiredOption('--expected-context-generation <n>').description("Ask the browser tab paired to this agent's key to open an artifact").action(wrapCommand(async (ws, artifactId, options, command) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); const legacy = command.args.length > 2; await workspaceViewOpen(ws, legacy ? command.args[2] : artifactId, options.operationId, options.expectedContextGeneration, legacy ? artifactId : undefined); }));
+workspace.command('sessions').argument('<workspace>').option('--cursor <cursor>', 'Continue from a previous page').description('Recent sessions, newest first: who worked, from which harness, toward which goals, and what they changed').action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
 workspace.command('changes').argument('<workspace>').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
 workspace.command('ack').argument('<workspace>').requiredOption('--delivery-token <token>').description('Acknowledge one delivered workspace change page').action(wrapCommand(async (ws, options) => { const { workspaceChangesAck } = await import('./commands/workspace.js'); await workspaceChangesAck(ws, options.deliveryToken); }));
 
@@ -1711,13 +1684,13 @@ const folder = program
   .command('folder')
   .description('Manage folders');
 
-folder
-  .command('create')
+withWhy(folder
+  .command('create'))
   .argument('<slug>', 'Folder slug (lowercase, alphanumeric, hyphens)')
   .option('--team <slug>', 'Create as a team folder')
   .option('--workspace <workspace-id>', 'Create inside a workspace; no expected revision required')
   .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace)')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Create a new folder')
   .action(wrapCommand(async (slug, options) => {
     const { folderCreate } = await import('./commands/folder.js');
@@ -1748,18 +1721,16 @@ folder
   .command('delete')
   .argument('<slug>', 'Folder slug')
   .option('--team <slug>', 'Delete a team folder')
-  .option('--delete-contents', 'Permanently delete all artifacts in the folder instead of archiving them')
-  .description('Delete a folder (archives its artifacts by default)')
+  .description('Move a folder and the artifacts in it to the trash (restorable for 30 days)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip folder delete drafts
   $ rip folder delete research --team my-team
-  $ rip folder delete drafts --delete-contents
 
-CAUTION:
-  By default, artifacts in the folder are archived and remain accessible.
-  With --delete-contents, every artifact in the folder is permanently
-  destroyed before the folder is removed. This action cannot be undone.
+NOTE:
+  The folder and every artifact in it leave listings; reads of those
+  artifacts answer 410 through the folder. Restoring the folder brings them
+  back filed as they were. The slug stays held while it is in the trash.
 `)
   .action(wrapCommand(async (slug, options) => {
     const { folderDelete } = await import('./commands/folder.js');
@@ -1777,29 +1748,80 @@ folder
     await folderRename(oldSlug, newSlug, options);
   }));
 
-folder
-  .command('update')
+withWhy(folder
+  .command('update'))
   .argument('<folder-id>', 'Workspace folder UUID')
   .requiredOption('--workspace <workspace-id>', 'Workspace UUID')
   .requiredOption('--audience <audience>', 'internal | shared')
   .requiredOption('--expected-workspace-revision <n>', 'Live folder workspace revision')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Change a workspace folder audience')
   .action(wrapCommand(async (folderId, options) => {
     const { folderUpdate } = await import('./commands/folder.js');
     await folderUpdate(folderId, options);
   }));
 
-folder
-  .command('share-contents')
+withWhy(folder
+  .command('share-contents'))
   .argument('<folder-id>', 'Workspace folder UUID')
   .requiredOption('--workspace <workspace-id>', 'Workspace UUID')
   .requiredOption('--expected-workspace-revision <n>', 'Live folder workspace revision')
-  .option('--workspace-session-id <id>', 'Attribute the write to a live credential-bound workspace session')
+  .addOption(retired('--workspace-session-id <id>'))
   .description('Atomically share a workspace folder and all current child artifacts')
   .action(wrapCommand(async (folderId, options) => {
     const { folderShareContents } = await import('./commands/folder.js');
     await folderShareContents(folderId, options);
+  }));
+
+// ── trash commands ──────────────────────────────────────────────────
+const trash = program
+  .command('trash')
+  .description('List what is in the trash and bring items back (restorable for 30 days after deletion)');
+
+trash
+  .command('list')
+  .option('--workspace <workspace-id>', "A workspace's trash: the artifacts and folders deleted in it")
+  .option('--team <slug>', "A team's trash: its folders and workspaces")
+  .option('--limit <n>', 'Page size (max 100, default 50)')
+  .option('--offset <n>', 'Skip this many entries (the nextOffset of the previous page)')
+  .description('List the trash, newest first (default: your own)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip trash list
+  $ rip trash list --team acme
+  $ rip trash list --workspace 3f1a2b4c-5d6e-4f70-8901-23456789abcd
+
+NOTES:
+  Your own trash holds your standalone artifacts, bundles, personal folders and
+  personal workspaces. A deleted folder or workspace is one entry: restoring it
+  brings back everything that went with it. Each entry says when it purges.
+`)
+  .action(wrapCommand(async (options) => {
+    const { trashList } = await import('./commands/trash.js');
+    await trashList(options);
+  }));
+
+withWhy(trash
+  .command('restore'))
+  .argument('<type>', 'artifact | bundle | folder | workspace (from `rip trash list`)')
+  .argument('<id>', 'The entry id from `rip trash list`')
+  .option('--expected-workspace-revision <n>', "Required for a workspace artifact or folder: the entry's workspace revision")
+  .addOption(retired('--workspace-session-id <id>'))
+  .description('Bring an item back from the trash')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip trash restore artifact 550e8400-e29b-41d4-a716-446655440000
+  $ rip trash restore folder 3f1a2b4c-5d6e-4f70-8901-23456789abcd --expected-workspace-revision 4
+
+NOTES:
+  Restoring needs the same authority as deleting. The item returns to its folder,
+  workspace and name. A file whose folder is still in the trash comes back
+  unfiled; one whose workspace is in the trash is refused until the workspace is
+  restored. Restoring a live item does nothing.
+`)
+  .action(wrapCommand(async (type, id, options) => {
+    const { trashRestore } = await import('./commands/trash.js');
+    await trashRestore(type, id, options);
   }));
 
 runMigrations();

@@ -19,8 +19,8 @@ export function parseDuration(s: string): number {
 }
 
 /** Validate supplied create scope before dry runs, filesystem reads or routing. */
-export function assertWorkspaceCreationScope(input: { workspaceId?: string; audience?: string; workspaceSessionId?: string; visibility?: string; team?: string; folder?: string; publicAsset?: boolean }): void {
-  if (!input.workspaceId && (input.audience !== undefined || input.workspaceSessionId !== undefined)) {
+export function assertWorkspaceCreationScope(input: { workspaceId?: string; audience?: string; visibility?: string; team?: string; folder?: string; publicAsset?: boolean; handoff?: boolean }): void {
+  if (!input.workspaceId && (input.audience !== undefined || input.handoff)) {
     throw new CliError('INVALID_SCOPE', 'Workspace-only fields require --workspace-id (or --workspace for folders). Supply the workspace identity or omit those fields.', { field: 'workspaceId' });
   }
   if (input.workspaceId) {

@@ -1,6 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
+import { formatTrashed } from '../formatters.js';
 import { assertWorkspaceCreationScope, parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
 import { resolveTeam } from '../teams.js';
@@ -25,12 +26,12 @@ export async function resolveFolderId(
   return data.data.id;
 }
 
-export async function folderCreate(slug: string, options: { team?: string; workspace?: string; audience?: 'internal' | 'shared'; workspaceSessionId?: string }): Promise<void> {
+export async function folderCreate(slug: string, options: { team?: string; workspace?: string; audience?: 'internal' | 'shared'; why?: string }): Promise<void> {
   assertWorkspaceCreationScope({ ...options, workspaceId: options.workspace });
   const { client } = requireAuthClient();
   if (options.workspace) {
     const { data } = await client.post(`/v0/workspaces/${encodeURIComponent(options.workspace)}/folders`, {
-      slug, audience: options.audience, workspaceSessionId: options.workspaceSessionId,
+      slug, audience: options.audience, why: options.why,
     });
     outputSuccess(data.data);
     return;
@@ -75,19 +76,17 @@ export async function folderShow(slug: string, options: { team?: string }): Prom
   }
 }
 
+/** Move a folder, and the artifacts in it, to the trash; restorable for 30 days. */
 export async function folderDelete(
   slug: string,
-  options: { team?: string; deleteContents?: boolean },
+  options: { team?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
-  const config = options.deleteContents ? { params: { mode: 'delete' } } : undefined;
-  if (options.team) {
-    const teamSlug = resolveTeam(options.team);
-    await client.delete(`/v0/teams/${encodeURIComponent(teamSlug)}/folders/${encodeURIComponent(slug)}`, config);
-  } else {
-    await client.delete(`/v0/folders/${encodeURIComponent(slug)}`, config);
-  }
-  outputSuccess({ deleted: true, slug, contents: options.deleteContents ? 'deleted' : 'archived' });
+  const path = options.team
+    ? `/v0/teams/${encodeURIComponent(resolveTeam(options.team))}/folders/${encodeURIComponent(slug)}`
+    : `/v0/folders/${encodeURIComponent(slug)}`;
+  const { data } = await client.delete(path);
+  outputSuccess(data.data, formatTrashed);
 }
 
 export async function folderRename(oldSlug: string, newSlug: string, options: { team?: string }): Promise<void> {
@@ -104,7 +103,7 @@ export async function folderRename(oldSlug: string, newSlug: string, options: { 
 
 export async function folderUpdate(
   folderId: string,
-  options: { workspace: string; audience: 'internal' | 'shared'; expectedWorkspaceRevision: string; workspaceSessionId?: string },
+  options: { workspace: string; audience: 'internal' | 'shared'; expectedWorkspaceRevision: string; why?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.patch(
@@ -112,7 +111,7 @@ export async function folderUpdate(
     {
       audience: options.audience,
       expectedWorkspaceRevision: parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision'),
-      workspaceSessionId: options.workspaceSessionId,
+      why: options.why,
     },
   );
   outputSuccess(data.data);
@@ -120,24 +119,24 @@ export async function folderUpdate(
 
 export async function folderShareContents(
   folderId: string,
-  options: { workspace: string; expectedWorkspaceRevision: string; workspaceSessionId?: string },
+  options: { workspace: string; expectedWorkspaceRevision: string; why?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.post(
     `/v0/workspaces/${encodeURIComponent(options.workspace)}/folders/${encodeURIComponent(folderId)}/share-contents`,
     {
       expectedWorkspaceRevision: parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision'),
-      workspaceSessionId: options.workspaceSessionId,
+      why: options.why,
     },
   );
   outputSuccess(data.data);
 }
 
-export async function artifactMove(uuid: string, options: { folder?: string; folderId?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevision?: string; workspaceSessionId?: string }): Promise<void> {
+export async function artifactMove(uuid: string, options: { folder?: string; folderId?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevision?: string; why?: string }): Promise<void> {
   const { client } = requireAuthClient();
 
   if (options.unfiled) {
-    await client.patch(`/v0/artifacts/${uuid}`, { folderId: null, expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), workspaceSessionId: options.workspaceSessionId });
+    await client.patch(`/v0/artifacts/${uuid}`, { folderId: null, expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), why: options.why });
     outputSuccess({ id: uuid, folder_id: null });
     return;
   }
@@ -148,6 +147,6 @@ export async function artifactMove(uuid: string, options: { folder?: string; fol
 
   const folderId = options.folderId ?? await resolveFolderId(client, options.folder!, options.team);
 
-  const { data } = await client.patch(`/v0/artifacts/${uuid}`, { folderId, expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), workspaceSessionId: options.workspaceSessionId });
+  const { data } = await client.patch(`/v0/artifacts/${uuid}`, { folderId, expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), why: options.why });
   outputSuccess(data.data);
 }

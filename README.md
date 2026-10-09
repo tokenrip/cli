@@ -38,16 +38,18 @@ npm install -g @tokenrip/cli
 rip auth login --email you@example.com
 rip auth login --email you@example.com --code 123456
 
-# 2. Find a workspace (or create one) and load it (bounded context + a session id)
+# 2. Find a workspace (or create one) and load it: pins, recent sessions, tasks, changes
 rip workspace list
-rip workspace create q1-report --name "Q1 Report"
-rip workspace load <workspace-id> --operation-id first-session
+rip workspace create q1-report --name "Q1 Report" --why "Get the Q1 report to the board by Friday"
+rip workspace load <workspace-id>
 
-# 3. Publish an artifact into it — or omit --workspace-id for a standalone artifact
-rip artifact publish report.md --type markdown --title "Q1 Report" --workspace-id <workspace-id>
+# 3. Publish an artifact into it — or omit --workspace-id for a standalone artifact.
+#    Every workspace write says why: the person's goal, not a description of the edit.
+rip artifact publish report.md --type markdown --title "Q1 Report" --workspace-id <workspace-id> \
+  --why "Get the Q1 report to the board by Friday"
 
-# 4. Leave a handoff for the next agent
-rip workspace session end <workspace-id> <session-id> --summary "Drafted the Q1 report; numbers need review."
+# 4. See who worked here and toward what (sessions record themselves; nothing to end)
+rip workspace sessions <workspace-id>
 ```
 
 Every command outputs formatted human-readable output by default:

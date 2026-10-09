@@ -10,7 +10,7 @@ import { formatArtifactCreated } from '../formatters.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
 
-export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string; workspaceId?: string; audience?: 'internal' | 'shared'; workspaceSessionId?: string }): Promise<void> {
+export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string; workspaceId?: string; audience?: 'internal' | 'shared'; why?: string }): Promise<void> {
   assertWorkspaceCreationScope(options);
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
@@ -45,7 +45,7 @@ export async function upload(filePath: string, options: { title?: string; parent
   if (options.folder) form.append('folder', options.folder);
   if (options.workspaceId) form.append('workspaceId', options.workspaceId);
   if (options.audience) form.append('audience', options.audience);
-  if (options.workspaceSessionId) form.append('workspaceSessionId', options.workspaceSessionId);
+  if (options.why !== undefined) form.append('why', options.why);
   // Public-asset uploads land in a public bucket and get a direct CDN URL
   // (data.publicUrl). A public asset can't be private, so pass a non-private
   // visibility (defaults to `public` when --public-asset is set without one).

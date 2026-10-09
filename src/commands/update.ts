@@ -14,7 +14,7 @@ type ContentType = (typeof VALID_TYPES)[number];
 export async function update(
   uuid: string,
   filePath: string,
-  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; audience?: 'internal' | 'shared'; expectedWorkspaceRevision?: string; workspaceSessionId?: string; dryRun?: boolean },
+  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; audience?: 'internal' | 'shared'; expectedWorkspaceRevision?: string; why?: string; dryRun?: boolean },
 ): Promise<void> {
   const expectedWorkspaceRevision = options.expectedWorkspaceRevision === undefined
     ? undefined
@@ -45,7 +45,7 @@ export async function update(
     if (options.expectedVersionId) body.expectedVersionId = options.expectedVersionId;
     if (options.audience) body.audience = options.audience;
     if (expectedWorkspaceRevision !== undefined) body.expectedWorkspaceRevision = expectedWorkspaceRevision;
-    if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+    if (options.why !== undefined) body.why = options.why;
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
     result = data.data;
@@ -58,7 +58,7 @@ export async function update(
     if (options.expectedVersionId) form.append('expectedVersionId', options.expectedVersionId);
     if (options.audience) form.append('audience', options.audience);
     if (expectedWorkspaceRevision !== undefined) form.append('expectedWorkspaceRevision', String(expectedWorkspaceRevision));
-    if (options.workspaceSessionId) form.append('workspaceSessionId', options.workspaceSessionId);
+    if (options.why !== undefined) form.append('why', options.why);
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, form, {
       headers: form.getHeaders(),
@@ -77,7 +77,7 @@ export async function update(
     if (options.title !== undefined) patchBody.title = options.title;
     if (options.alias !== undefined) patchBody.alias = options.alias;
     if (typeof result.workspaceRevision === 'number') patchBody.expectedWorkspaceRevision = result.workspaceRevision;
-    if (options.workspaceSessionId !== undefined) patchBody.workspaceSessionId = options.workspaceSessionId;
+    if (options.why !== undefined) patchBody.why = options.why;
     const { data: patched } = await client.patch(`/v0/artifacts/${uuid}`, patchBody);
     result = { ...result, title: patched.data.title ?? result.title, alias: patched.data.alias };
   }

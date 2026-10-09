@@ -1,15 +1,16 @@
 import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
+import { formatBulkResult } from '../formatters.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
 import { resolveFolderId } from './folder.js';
 
-const VALID_ACTIONS = ['move', 'archive', 'delete'] as const;
+const VALID_ACTIONS = ['move', 'delete'] as const;
 type BulkAction = (typeof VALID_ACTIONS)[number];
 
 export async function artifactBulk(
   action: string,
-  options: { ids?: string; folder?: string; folderId?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevisions?: string; workspaceSessionId?: string },
+  options: { ids?: string; folder?: string; folderId?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevisions?: string; why?: string },
 ): Promise<void> {
   if (!VALID_ACTIONS.includes(action as BulkAction)) {
     throw new CliError(
@@ -31,7 +32,7 @@ export async function artifactBulk(
 
   const { client } = requireAuthClient();
 
-  const body: { action: BulkAction; publicIds: string[]; folderId?: string | null; expectedWorkspaceRevisions?: Record<string, number>; workspaceSessionId?: string } = {
+  const body: { action: BulkAction; publicIds: string[]; folderId?: string | null; expectedWorkspaceRevisions?: Record<string, number>; why?: string } = {
     action: action as BulkAction,
     publicIds,
   };
@@ -39,7 +40,7 @@ export async function artifactBulk(
     try { body.expectedWorkspaceRevisions = JSON.parse(options.expectedWorkspaceRevisions); }
     catch { throw new CliError('INVALID_JSON', '--expected-workspace-revisions is not valid JSON.'); }
   }
-  if (options.workspaceSessionId) body.workspaceSessionId = options.workspaceSessionId;
+  if (options.why !== undefined) body.why = options.why;
 
   if (action === 'move') {
     if (options.unfiled) {
@@ -54,7 +55,11 @@ export async function artifactBulk(
   }
 
   const { data } = await client.post('/v0/artifacts/bulk', body);
-  const result = data.data as { succeeded: number; failed: { publicId: string; error: string }[] };
+  const result = data.data as {
+    succeeded: number;
+    failed: { publicId: string; error: string }[];
+    deleted?: { type: string; id: string; deletedAt: string; purgeAt: string }[];
+  };
 
   outputSuccess(
     {
@@ -63,20 +68,8 @@ export async function artifactBulk(
       succeeded: result.succeeded,
       failed: result.failed,
       failed_count: result.failed.length,
+      ...(result.deleted ? { deleted: result.deleted } : {}),
     },
-    (d) => {
-      const lines = [
-        `Bulk ${d.action}: ${d.succeeded as number} succeeded, ${d.failed_count as number} failed`,
-      ];
-      const failed = d.failed as { publicId: string; error: string }[];
-      if (failed.length > 0) {
-        lines.push('');
-        lines.push('Failed:');
-        for (const f of failed) {
-          lines.push(`  ${f.publicId}: ${f.error}`);
-        }
-      }
-      return lines.join('\n');
-    },
+    formatBulkResult,
   );
 }

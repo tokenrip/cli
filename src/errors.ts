@@ -5,12 +5,23 @@ export interface ValidationDetail {
 export interface DomainErrorDetails {
   field?: string;
   fields?: string[];
-  status?: string;
   currentVersionId?: string;
   currentRevision?: number;
   currentWorkspaceRevision?: number;
   /** `INVALID_SKILL`: which skill rule refused (closed set, mirrors the server). */
   reason?: string;
+  /** `DELETED` / `WORKSPACE_DELETED`: the item in the trash (or, via a folder, what put it there). */
+  type?: string;
+  id?: string;
+  deletedAt?: string;
+  purgeAt?: string;
+  via?: { type: string; id: string };
+  /** Only for callers who may restore it: `rip trash restore <type> <id>`. */
+  restorable?: true;
+  deletedBy?: { id: string; alias: string | null } | null;
+  /** Also only for a restorer, of a workspace file or folder: `--expected-workspace-revision` for `rip trash restore`. */
+  workspaceId?: string;
+  workspaceRevision?: number;
 }
 /** Observations made by the local client, never copied from an API response. */
 export interface TransportErrorDetails {
@@ -56,8 +67,7 @@ const SKILL_INVALID_REASONS: ReadonlySet<string> = new Set([
 export function safeErrorDetails(code: string, value: unknown): DomainErrorDetails | ValidationDetail[] | undefined {
   if (Array.isArray(value)) {
     if (['CONFLICT', 'STATE_CONFLICT', 'PRECONDITION_REQUIRED', 'WORKSPACE_AUTHORITY', 'INELIGIBLE_STORAGE', 'INVALID_SCOPE',
-      'WORKSPACE_SESSION_INVALID', 'WORKSPACE_SESSION_REVOKED', 'WORKSPACE_SESSION_EXPIRED', 'WORKSPACE_SESSION_INACTIVE',
-      'WORKSPACE_PAGE_UNACKNOWLEDGED', 'INVALID_WORKSPACE_DELIVERY', 'INVALID_CURSOR', 'WORKSPACE_ARCHIVED'].includes(code)) return undefined;
+      'WORKSPACE_PAGE_UNACKNOWLEDGED', 'INVALID_WORKSPACE_DELIVERY', 'INVALID_CURSOR', 'WORKSPACE_DELETED', 'DELETED'].includes(code)) return undefined;
     // Preserve the legacy public REST validation envelope and its human explanation.
     const issues = value.filter((issue): issue is Record<string, unknown> => !!issue && typeof issue === 'object').map(issue => ({
       ...(Array.isArray(issue.path) && issue.path.every(part => typeof part === 'string' || typeof part === 'number') ? { path: issue.path as Array<string | number> } : {}),
@@ -81,10 +91,39 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     const allowed = code === 'INELIGIBLE_STORAGE' ? ['publicAsset', 'public_asset'] : ['visibility', 'public', 'isPublic', 'is_public', 'team', 'teams', 'teamId', 'teamIds', 'folder', 'folderSlug'];
     const fields = [...new Set(body.fields.filter((field): field is string => typeof field === 'string' && allowed.includes(field)))].slice(0, 8);
     if (fields.length) details.fields = fields;
-  } else if ((code === 'WORKSPACE_SESSION_INACTIVE' || code === 'WORKSPACE_SESSION_EXPIRED') && typeof body.status === 'string'
-    && ['active', 'ended', 'expired', 'revoked', 'archived'].includes(body.status)) details.status = body.status;
-  else if (code === 'INVALID_SKILL' && typeof body.reason === 'string' && SKILL_INVALID_REASONS.has(body.reason)) details.reason = body.reason;
+  } else if (code === 'INVALID_SKILL' && typeof body.reason === 'string' && SKILL_INVALID_REASONS.has(body.reason)) details.reason = body.reason;
+  else if (code === 'DELETED' || code === 'WORKSPACE_DELETED') Object.assign(details, trashedDetails(body));
   return Object.keys(details).length ? details : undefined;
+}
+
+/** The server's `TRASH_ITEM_TYPES` (apps/backend/src/api/service/trash-contract.ts). */
+const TRASH_ITEM_TYPES: ReadonlySet<string> = new Set(['artifact', 'bundle', 'folder', 'workspace']);
+const TRASH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
+
+/** A trashed refusal's data, field by field: what it is, when it purges, and who may restore it. */
+function trashedDetails(body: Record<string, unknown>): DomainErrorDetails {
+  const details: DomainErrorDetails = {};
+  if (typeof body.type === 'string' && TRASH_ITEM_TYPES.has(body.type)) details.type = body.type;
+  if (typeof body.id === 'string' && TRASH_ID.test(body.id)) details.id = body.id;
+  for (const field of ['deletedAt', 'purgeAt'] as const) {
+    const value = body[field];
+    if (typeof value === 'string' && ISO_DATE.test(value)) details[field] = value;
+  }
+  const via = body.via as Record<string, unknown> | undefined;
+  if (via && typeof via === 'object' && typeof via.type === 'string' && TRASH_ITEM_TYPES.has(via.type)
+    && typeof via.id === 'string' && TRASH_ID.test(via.id)) details.via = { type: via.type, id: via.id };
+  if (body.restorable === true) {
+    details.restorable = true;
+    const by = body.deletedBy as Record<string, unknown> | null | undefined;
+    details.deletedBy = by && typeof by === 'object' && typeof by.id === 'string' && by.id.length <= 255
+      ? { id: by.id, alias: typeof by.alias === 'string' && by.alias.length <= 255 ? by.alias : null }
+      : null;
+    if (typeof body.workspaceId === 'string' && TRASH_ID.test(body.workspaceId)) details.workspaceId = body.workspaceId;
+    const revision = body.workspaceRevision;
+    if (typeof revision === 'number' && Number.isSafeInteger(revision) && revision > 0) details.workspaceRevision = revision;
+  }
+  return details;
 }
 
 export class CliError extends Error {
