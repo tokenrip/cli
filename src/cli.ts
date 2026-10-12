@@ -79,7 +79,7 @@ withWhy(artifact
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
-  .option('--folder <slug>', 'File into folder')
+  .option('--folder <slug>', 'File into folder (with --workspace-id: a folder in that workspace, by slug or id)')
   .option('--public-asset', 'Store in a public bucket and return a direct CDN URL (publicUrl)')
   .option('--visibility <level>', 'Standalone visibility (link | public | private); omit with --workspace-id')
   .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
@@ -110,7 +110,7 @@ withWhy(artifact
   .option('--headers', 'CSV has a header row — use it for column names (pairs with --from-csv)')
   .option('--from-csv', 'Parse the file as CSV and populate a new table (pairs with --type table)')
   .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
-  .option('--folder <slug>', 'File into folder')
+  .option('--folder <slug>', 'File into folder (with --workspace-id: a folder in that workspace, by slug or id)')
   .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
   .option('--public-asset', 'Store bytes in a public bucket and return a direct CDN URL (not valid with private visibility)')
   .option('--visibility <level>', 'Standalone visibility: private | link | public (default link); omit with --workspace-id')
@@ -216,8 +216,6 @@ withWhy(artifact
   .option('--title <title>', 'Also update the artifact title (applied via a follow-up patch)')
   .option('--alias <alias>', 'Also update the artifact alias (applied via a follow-up patch)')
   .option('--expected-version-id <id>', 'Required current version ID when replacing workspace content')
-  .option('--audience <audience>', 'Set workspace audience: internal | shared')
-  .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision when changing audience')
   .addOption(retired('--workspace-session-id <id>'))
   .option('--dry-run', 'Validate without publishing')
   .description('Publish a new version of an existing artifact')
@@ -226,6 +224,9 @@ EXAMPLES:
   $ rip artifact update 550e8400-... report-v2.md --type markdown
   $ rip artifact update 550e8400-... chart.png --description "with axes fixed"
   $ rip artifact update my-doc report-v2.md --type markdown --title "Report (v2)"
+
+A new version keeps the artifact's audience. To share a workspace artifact,
+use: rip artifact patch <id> --audience shared --expected-workspace-revision <n>
 `)
   .action(wrapCommand(update));
 
@@ -318,11 +319,13 @@ artifact
   .command('diff')
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--version-id <versionId>', 'Diff a specific version (default: current version)')
-  .description('Show what changed in a version vs. the previous version')
+  .option('--from <versionId>', 'Diff from this version (its predecessor is the base) up to --version-id')
+  .description('Show what changed in a version vs. the previous version, or across a range with --from')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact diff 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact diff my-alias --version-id abc123
+  $ rip artifact diff my-alias --from <firstVersionId> --version-id <lastVersionId>
 `)
   .action(wrapCommand(artifactDiff));
 
@@ -628,6 +631,10 @@ EXAMPLES:
   and gives this agent its own key on the person's account. The key is saved
   and this account becomes the current one. No other agent is disconnected.
   Signing in again replaces (and revokes) only this machine's previous key.
+
+  A code from the key sign-in page gives a run key instead: it acts as the
+  agent's saved key for this run, ends after 12 hours without use (24 hours
+  at most), and cannot manage keys. A run-key sign-in revokes no key.
 `)
   .action(wrapCommand(async (options) => {
     const { authLogin } = await import('./commands/auth-login.js');
@@ -891,20 +898,25 @@ NOTES:
 program
   .command('search')
   .argument('<query>', 'Search text')
-  .description('Full-text search across artifacts')
+  .description('Search artifacts: by keyword, and by meaning inside a workspace')
   .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
   .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table')
-  .option('--mode <mode>', 'Search mode: hybrid (default), keyword, or semantic')
-  .option('--artifact <id>', 'Scope to one artifact (publicId or alias) — returns its most relevant chunks')
+  .option('--workspace-id <uuid>', 'Search one workspace (its UUID): ranks by keywords and meaning, returns passages')
+  .option('--artifact <id>', 'Scope to one artifact (publicId or alias) — its passages, best first, up to --limit')
   .addHelpText('after', `
+Inside a workspace (--workspace-id, or --artifact of a workspace document) the
+search ranks by keywords and meaning together ("mode: hybrid") and prints each
+result's best passages. "pending: N" counts chunks not yet searchable by
+meaning. Everywhere else the ranking is by keyword.
+
 EXAMPLES:
   $ rip search "quarterly report"
   $ rip search "chart" --artifact-type chart --since 7
   $ rip search "proposal" --limit 10
-  $ rip search "how do we handle auth failures" --mode semantic
-  $ rip search "termination clause" --artifact contract-2026
+  $ rip search "how do we handle auth failures" --workspace-id <workspace-uuid>
+  $ rip search "termination clause" --artifact contract-2026 --limit 5
 `)
   .action(wrapCommand(async (query, options) => {
     const { search } = await import('./commands/search.js');
@@ -1247,17 +1259,18 @@ const collectResult = (v: string, prev: string[] = []): string[] => prev.concat(
 
 const task = program
   .command('task')
-  .description('Work queue — file, claim and complete tasks in a workspace');
+  .description('Work queue — file, start and complete tasks in a workspace');
 
 task
   .command('list')
   .requiredOption('--workspace-id <id>', 'The workspace whose tasks to list')
-  .option('--status <list>', "Comma list of open,claimed,done,dismissed or 'all' (default open,claimed)")
+  .option('--status <list>', "Comma list of todo,doing,done,cancelled or 'all' (default todo,doing)")
   .option('--kind <kind>', 'Only tasks of this kind')
-  .option('--mine', 'Only tasks suggested to or claimed by you')
+  .option('--mine', 'Only tasks suggested to you or held by you')
   .option('--since <iso>', 'Only tasks created after this ISO timestamp')
+  .option('--order <order>', "created (default, newest first) or finished (newest finish first; only with --status done and/or cancelled)")
   .option('--limit <n>', 'Page size (max 200)')
-  .option('--cursor <cursor>', 'Continue from a previous page')
+  .option('--cursor <cursor>', 'Continue from a previous page (same filters and order)')
   .description('List tasks')
   .action(wrapCommand(async (options) => {
     const { taskList } = await import('./commands/task.js');
@@ -1311,35 +1324,22 @@ EXAMPLES:
   }));
 
 withWhy(task
-  .command('claim'))
+  .command('start'))
   .argument('<id>', 'Task id')
-  .option('--lease-hours <n>', 'Lease length in hours (default 2, max 72)')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Claim a task (holds a lease; re-claiming your own extends it)')
+  .option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)')
+  .description('Start a task: it becomes yours under a lease; starting your own again renews it')
   .action(wrapCommand(async (id, options) => {
-    const { taskClaim } = await import('./commands/task.js');
-    await taskClaim(id, options);
-  }));
-
-task
-  .command('touch')
-  .argument('<id>', 'Task id')
-  .option('--lease-hours <n>', 'New lease length in hours')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Extend the lease on a task you hold')
-  .action(wrapCommand(async (id, options) => {
-    const { taskTouch } = await import('./commands/task.js');
-    await taskTouch(id, options);
+    const { taskStart } = await import('./commands/task.js');
+    await taskStart(id, options);
   }));
 
 withWhy(task
-  .command('release'))
+  .command('stop'))
   .argument('<id>', 'Task id')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Release your claim (workspace admins may release any claim)')
+  .description('Stop a task you hold; it goes back to To do (workspace admins may stop anyone\'s)')
   .action(wrapCommand(async (id, options) => {
-    const { taskRelease } = await import('./commands/task.js');
-    await taskRelease(id, options);
+    const { taskStop } = await import('./commands/task.js');
+    await taskStop(id, options);
   }));
 
 withWhy(task
@@ -1347,32 +1347,57 @@ withWhy(task
   .argument('<id>', 'Task id')
   .option('--result <type:id>', 'Attach a result: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
   .addOption(retired('--workspace-session-id <id>'))
-  .description('Complete a task you hold')
+  .description('Complete a task: one that is free (To do) or yours')
   .action(wrapCommand(async (id, options) => {
     const { taskDone } = await import('./commands/task.js');
     await taskDone(id, options);
   }));
 
 withWhy(task
-  .command('dismiss'))
+  .command('cancel'))
   .argument('<id>', 'Task id')
-  .option('--reason <text>', 'Why')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Dismiss a task (reopenable)')
+  .option('--reason <text>', 'Why it will not be done')
+  .description('Cancel a task that will not be done (reopenable)')
   .action(wrapCommand(async (id, options) => {
-    const { taskDismiss } = await import('./commands/task.js');
-    await taskDismiss(id, options);
+    const { taskCancel } = await import('./commands/task.js');
+    await taskCancel(id, options);
   }));
 
 withWhy(task
   .command('reopen'))
   .argument('<id>', 'Task id')
   .addOption(retired('--workspace-session-id <id>'))
-  .description('Reopen a done or dismissed task')
+  .description('Reopen a done or cancelled task')
   .action(wrapCommand(async (id, options) => {
     const { taskReopen } = await import('./commands/task.js');
     await taskReopen(id, options);
   }));
+
+/**
+ * The old task words, hidden until the task vocabulary window closes (workspace tasks plan M4).
+ * Each prints one note on stderr and runs the new command, which posts the new route: a 2.5.1 CLI
+ * never posts an old one, so the window query counts only older clients. touch runs start, so it
+ * needs a why as start does.
+ */
+const TASK_ALIASES = [
+  { name: 'claim', note: 'Deprecated: use rip task start', lease: true, reason: false, run: 'taskStart' },
+  { name: 'touch', note: 'Deprecated: use rip task start, which renews your hold and, like start, needs a why (--why or TOKENRIP_WHY)', lease: true, reason: false, run: 'taskStart' },
+  { name: 'release', note: 'Deprecated: use rip task stop', lease: false, reason: false, run: 'taskStop' },
+  { name: 'dismiss', note: 'Deprecated: use rip task cancel', lease: false, reason: true, run: 'taskCancel' },
+] as const;
+for (const alias of TASK_ALIASES) {
+  const command = withWhy(task.command(alias.name, { hidden: true }))
+    .argument('<id>', 'Task id')
+    .addOption(retired('--workspace-session-id <id>'))
+    .description(alias.note);
+  if (alias.lease) command.option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)');
+  if (alias.reason) command.option('--reason <text>', 'Why it will not be done');
+  command.action(wrapCommand(async (id, options) => {
+    console.error(alias.note);
+    const commands = await import('./commands/task.js');
+    await commands[alias.run](id, options);
+  }));
+}
 
 // ── team commands ────────────────────────────────────────────────────
 const team = program.command('team').description('Manage teams');
@@ -1668,15 +1693,15 @@ const workspacePinGroup = workspace.command('pin').description('Manage ordered m
 workspacePinGroup.command('add').argument('<workspace>').argument('<artifact-id>').option('--position <n>').action(wrapCommand(async (ws, artifactId, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(ws, artifactId, options); }));
 workspacePinGroup.command('remove').argument('<workspace>').argument('<artifact-id>').action(wrapCommand(async (ws, artifactId) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(ws, artifactId); }));
 
-workspace.command('load').argument('<workspace>').addOption(retired('--operation-id <id>')).addOption(retired('--session-id <id>')).option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Load bounded context: pins, artifacts, open tasks, recent changes and sessions, handoff notes, and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor, handoffOffset: options.handoffOffset }); }));
+workspace.command('load').argument('<workspace>').addOption(retired('--operation-id <id>')).addOption(retired('--session-id <id>')).option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Load bounded context: pins, artifacts, open tasks, recent changes, recent sessions (steps: each goal with the changes made for it), handoff notes, and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor, handoffOffset: options.handoffOffset }); }));
 const workspaceSession = workspace.command('session').description('Retired: sessions record themselves; read them with `rip workspace sessions`');
 workspaceSession.command('end').argument('<workspace>').argument('<session-id>').option('--summary <text>').option('--handoff-artifact-id <id>').description('Retired: sessions record themselves; prints the server refusal. Leave a note with `rip artifact publish --handoff`').action(wrapCommand(async (ws, sessionId, options) => { const { workspaceSessionEnd } = await import('./commands/workspace.js'); await workspaceSessionEnd(ws, sessionId, options); }));
 const workspaceView = workspace.command('view').description('Inspect or explicitly navigate a paired browser view');
 // Addressed by workspace: the view follows the caller's key. An old invocation's session id (plan D7) is an excess positional, ignored with one notice.
 workspaceView.command('context').argument('<workspace>').allowExcessArguments(true).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws, _options, command) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws, command.args[1]); }));
 workspaceView.command('open').argument('<workspace>').argument('<artifact-id>').allowExcessArguments(true).requiredOption('--operation-id <id>').requiredOption('--expected-context-generation <n>').description("Ask the browser tab paired to this agent's key to open an artifact").action(wrapCommand(async (ws, artifactId, options, command) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); const legacy = command.args.length > 2; await workspaceViewOpen(ws, legacy ? command.args[2] : artifactId, options.operationId, options.expectedContextGeneration, legacy ? artifactId : undefined); }));
-workspace.command('sessions').argument('<workspace>').option('--cursor <cursor>', 'Continue from a previous page').description('Recent sessions, newest first: who worked, from which harness, toward which goals, and what they changed').action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
-workspace.command('changes').argument('<workspace>').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
+workspace.command('sessions').argument('<workspace>').option('--cursor <cursor>', 'Continue from a previous page').description('Recent sessions, newest first: who worked (you or someone else, their agent or the browser), from which harness, and steps: each goal with the changes made for it').action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
+workspace.command('changes').argument('<workspace>').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them: who made each, why, and the item by title and id').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
 workspace.command('ack').argument('<workspace>').requiredOption('--delivery-token <token>').description('Acknowledge one delivered workspace change page').action(wrapCommand(async (ws, options) => { const { workspaceChangesAck } = await import('./commands/workspace.js'); await workspaceChangesAck(ws, options.deliveryToken); }));
 
 // ── folder commands ─────────────────────────────────────────────────

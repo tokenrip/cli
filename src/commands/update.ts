@@ -6,7 +6,6 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatVersionCreated } from '../formatters.js';
-import { parseNonNegativeInteger } from '../input.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
@@ -14,11 +13,8 @@ type ContentType = (typeof VALID_TYPES)[number];
 export async function update(
   uuid: string,
   filePath: string,
-  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; audience?: 'internal' | 'shared'; expectedWorkspaceRevision?: string; why?: string; dryRun?: boolean },
+  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; why?: string; dryRun?: boolean },
 ): Promise<void> {
-  const expectedWorkspaceRevision = options.expectedWorkspaceRevision === undefined
-    ? undefined
-    : parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
@@ -43,8 +39,6 @@ export async function update(
     if (options.description) body.description = options.description;
     if (options.context) body.creatorContext = options.context;
     if (options.expectedVersionId) body.expectedVersionId = options.expectedVersionId;
-    if (options.audience) body.audience = options.audience;
-    if (expectedWorkspaceRevision !== undefined) body.expectedWorkspaceRevision = expectedWorkspaceRevision;
     if (options.why !== undefined) body.why = options.why;
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
@@ -56,8 +50,6 @@ export async function update(
     if (options.description) form.append('description', options.description);
     if (options.context) form.append('creatorContext', options.context);
     if (options.expectedVersionId) form.append('expectedVersionId', options.expectedVersionId);
-    if (options.audience) form.append('audience', options.audience);
-    if (expectedWorkspaceRevision !== undefined) form.append('expectedWorkspaceRevision', String(expectedWorkspaceRevision));
     if (options.why !== undefined) form.append('why', options.why);
 
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, form, {

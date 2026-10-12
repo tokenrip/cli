@@ -22,6 +22,19 @@ export interface DomainErrorDetails {
   /** Also only for a restorer, of a workspace file or folder: `--expected-workspace-revision` for `rip trash restore`. */
   workspaceId?: string;
   workspaceRevision?: number;
+  /** `TASK_TAKEN`: who holds the task, as the server projects it (never a key id). */
+  holder?: TaskHolderDetails;
+}
+/** The server's task `holder` projection (workspace tasks plan D5), copied field by field. */
+export interface TaskHolderDetails {
+  account: { id: string; alias: string | null };
+  agent: { name: string } | null;
+  surface: string | null;
+  inBrowser: boolean;
+  since: string;
+  leaseExpiresAt: string | null;
+  mine: boolean;
+  heldByCaller: boolean;
 }
 /** Observations made by the local client, never copied from an API response. */
 export interface TransportErrorDetails {
@@ -93,7 +106,36 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     if (fields.length) details.fields = fields;
   } else if (code === 'INVALID_SKILL' && typeof body.reason === 'string' && SKILL_INVALID_REASONS.has(body.reason)) details.reason = body.reason;
   else if (code === 'DELETED' || code === 'WORKSPACE_DELETED') Object.assign(details, trashedDetails(body));
+  else if (code === 'TASK_TAKEN') {
+    const holder = taskHolderDetails(body.holder);
+    if (holder) details.holder = holder;
+  }
   return Object.keys(details).length ? details : undefined;
+}
+
+const NAME_MAX = 255;
+const shortString = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= NAME_MAX;
+
+/** A `TASK_TAKEN` holder, every field checked; anything malformed drops the whole holder. */
+function taskHolderDetails(value: unknown): TaskHolderDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const h = value as Record<string, unknown>;
+  const account = h.account as Record<string, unknown> | undefined;
+  const agent = h.agent as Record<string, unknown> | null | undefined;
+  if (!account || typeof account !== 'object' || !shortString(account.id)) return undefined;
+  if (account.alias !== null && !shortString(account.alias)) return undefined;
+  if (agent !== null && !(agent && typeof agent === 'object' && shortString(agent.name))) return undefined;
+  if (h.surface !== null && !shortString(h.surface)) return undefined;
+  if (typeof h.since !== 'string' || !ISO_DATE.test(h.since)) return undefined;
+  if (h.leaseExpiresAt !== null && !(typeof h.leaseExpiresAt === 'string' && ISO_DATE.test(h.leaseExpiresAt))) return undefined;
+  if (typeof h.inBrowser !== 'boolean' || typeof h.mine !== 'boolean' || typeof h.heldByCaller !== 'boolean') return undefined;
+  return {
+    account: { id: account.id, alias: account.alias as string | null },
+    agent: agent ? { name: agent.name as string } : null,
+    surface: h.surface as string | null,
+    inBrowser: h.inBrowser, since: h.since, leaseExpiresAt: h.leaseExpiresAt as string | null,
+    mine: h.mine, heldByCaller: h.heldByCaller,
+  };
 }
 
 /** The server's `TRASH_ITEM_TYPES` (apps/backend/src/api/service/trash-contract.ts). */

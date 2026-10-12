@@ -9,12 +9,32 @@ import { addIdentity, loadIdentities, resolveAccountId } from '../identities.js'
 /** What happened to the key a repeat sign-in replaced on this machine (and its id when it is still live). */
 type PreviousKey = { status: 'revoked' | 'already_invalid' | 'not_revoked'; id?: string };
 
+/** `POST /v0/auth/sign-in` 201: a key of the agent's own, or (outcome `run`) a run key for its lasting key. */
+type SignedIn = { api_key: string; account_id: string; email: string } & (
+  | { outcome: 'registered' | 'existing_account' }
+  | {
+      outcome: 'run';
+      agent: { key_id: string; name: string };
+      ends_by: string;
+      idle_timeout_seconds: number;
+      renew_url: string;
+    }
+);
+
+const RUN_KEY_PREFIX = 'tr_run_';
+
 /**
  * `rip auth login` — sign in with the person's email. Without `code`, Tokenrip emails a six-digit
  * code; with it (emailed, or issued by a connected agent or the dashboard), the CLI gets a key of
  * its own on the person's account, stores it as a keypair-less identity, and makes that identity
  * current. Signing in never disturbs another agent's key. Signing in again on an account this
  * machine already holds revokes the key it replaces, best-effort.
+ *
+ * A run code (from the key sign-in page, issued with the agent's lasting key) returns a run key
+ * instead (`outcome: 'run'`): a short-lived key that acts as that lasting key, ends after
+ * `idle_timeout_seconds` without use and by `ends_by` at the latest, and cannot manage keys. It is
+ * stored like any key, but it revokes nothing: the key this machine held may be the lasting key it
+ * stands for. Nor is a previously held run key ever retired; it ends on its own.
  */
 export async function authLogin(options: { email: string; code?: string; name?: string }): Promise<void> {
   const config = loadConfig();
@@ -30,7 +50,7 @@ export async function authLogin(options: { email: string; code?: string; name?: 
 
   const name = options.name ?? (process.env.CLAUDECODE ? 'Claude Code' : 'CLI');
   const { data } = await client.post('/v0/auth/sign-in', { email, code: options.code, name });
-  const signedIn = data.data as { api_key: string; account_id: string; email: string; outcome: string };
+  const signedIn = data.data as SignedIn;
   if (!signedIn?.api_key || !signedIn.account_id) {
     throw new CliError('SIGN_IN_INVALID_RESPONSE', 'Unexpected sign-in response from the server.');
   }
@@ -47,9 +67,10 @@ export async function authLogin(options: { email: string; code?: string; name?: 
   config.currentAccount = signedIn.account_id;
   saveConfig(config);
 
-  const previousKey = existing?.apiKey && existing.apiKey !== signedIn.api_key
-    ? await retireKey(apiUrl, existing.apiKey)
+  const replaced = existing?.apiKey && existing.apiKey !== signedIn.api_key && !existing.apiKey.startsWith(RUN_KEY_PREFIX)
+    ? existing.apiKey
     : undefined;
+  const previousKey = signedIn.outcome !== 'run' && replaced ? await retireKey(apiUrl, replaced) : undefined;
   const overriddenBy = envOverride(signedIn.account_id);
 
   outputSuccess(
@@ -57,7 +78,14 @@ export async function authLogin(options: { email: string; code?: string; name?: 
       account_id: signedIn.account_id,
       email: signedIn.email,
       outcome: signedIn.outcome,
-      name,
+      ...(signedIn.outcome === 'run'
+        ? {
+            name: signedIn.agent.name,
+            ends_by: signedIn.ends_by,
+            idle_timeout_seconds: signedIn.idle_timeout_seconds,
+            renew_url: signedIn.renew_url,
+          }
+        : { name }),
       ...(previousKey ? { previous_key: previousKey.status } : {}),
       ...(previousKey?.id ? { previous_key_id: previousKey.id } : {}),
       ...(overriddenBy ? { overridden_by: overriddenBy } : {}),

@@ -1,5 +1,5 @@
 import { CliError, toCliError } from './errors.js';
-import type { Formatter } from './formatters.js';
+import { taskHolderLine, type Formatter } from './formatters.js';
 
 let forceJson = false;
 let configHuman = false;
@@ -49,6 +49,7 @@ export function outputError(err: CliError): never {
       if (err.code === 'INVALID_SCOPE' && details.field) console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'Use workspace audience to share content.'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
+      if (details.holder) console.error(`Held by: ${taskHolderLine(details.holder)}`);
     }
   }
 
@@ -91,6 +92,8 @@ export const ERROR_HINTS: Record<string, string> = {
   CODE_RECENTLY_SENT: 'A code was sent less than a minute ago. Check the inbox (and the spam folder) before asking again.',
   SIGN_IN_LOCKED: 'Too many wrong codes for this email. Wait until the time in the message, then request a new code.',
   NO_LOCAL_KEYPAIR: 'Email sign-in needs no keypair. To use this account elsewhere, sign in there or hand off with `rip auth code`.',
+  RUN_KEY_EXPIRED: 'Get a new code from your key sign-in page and sign in again.',
+  RUN_KEY_FORBIDDEN: 'Run keys cannot manage keys; ask the person to use the Agents page.',
   NO_OPERATOR: 'This account is not linked to a verified person. Sign in by email instead (`rip auth login --email <your email>`), or link this agent with `rip operator-link`.',
   INVALID_AGENT_ID: 'Agent IDs start with rip1. Example: rip1x9a2f...',
   INVALID_OUTPUT_FORMAT: 'Valid values are "json" and "human".',

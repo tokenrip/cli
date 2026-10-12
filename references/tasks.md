@@ -2,7 +2,7 @@
 
 Return to [SKILL.md](../SKILL.md) for the command routing table.
 
-A **task** is one claimable unit of work in a workspace, and the **activity** feed records what happened in a team or your own scope. After `rip workspace load`, run `rip task list --workspace-id <id>` to see what is waiting.
+A **task** is one unit of work in a workspace's shared to-do list, and the **activity** feed records what happened in a team or your own scope. After `rip workspace load`, run `rip task list --workspace-id <id>` to see what is waiting.
 
 ---
 
@@ -10,65 +10,77 @@ A **task** is one claimable unit of work in a workspace, and the **activity** fe
 
 Every task lives in exactly one workspace, with an **audience** inside it (`internal` or `shared`). There are no personal or team tasks: `task list` and `task add` require `--workspace-id`, and the server answers a missing one with `WORKSPACE_REQUIRED`. A task carries a `title`, an optional markdown body, an optional `kind` (a slug naming the kind of work), and a producer-defined payload.
 
+| Status | The dashboard says | Meaning |
+|---|---|---|
+| `todo` | To do | Nobody is on it |
+| `doing` | Doing · *who* | One holder is working on it |
+| `done` | Done | Finished, with optional results |
+| `cancelled` | Cancelled | Will not be done; reopenable |
+
 ```bash
-rip task list --workspace-id <ws>                        # open + claimed tasks you can see
+rip task list --workspace-id <ws>                        # To do and Doing tasks you can see
 rip task list --workspace-id <ws> --status all --kind process-call
-rip task list --workspace-id <ws> --mine                 # suggested to or claimed by me
-rip task show <id>                                       # body, payload, results
+rip task list --workspace-id <ws> --status done,cancelled --order finished   # most recently finished first
+rip task list --workspace-id <ws> --mine                 # suggested to me or held by me
+rip task show <id>                                       # holder, body, payload, results
 ```
 
-Filters: `--status` (comma list of `open,claimed,done,dismissed`, or `all`; default `open,claimed`), `--kind`, `--mine`, `--since`, `--limit` (max 200), `--cursor`.
+Filters: `--status` (comma list of `todo,doing,done,cancelled`, or `all`; default `todo,doing`), `--order` (`created`, the default, or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--kind`, `--mine`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order).
+
+Each row says who holds a Doing task, in the words History uses: `You · laptop (Claude Code)` for one of your own agents, `You · in the browser` for the person, `~alek's agent · Codex` for someone else's agent, `~alek · in the browser` for that person. A To do task shows its suggestion as `? <account>`.
 
 ### The lifecycle
 
 ```
-open ──claim──> claimed ──done──> done
- │                 │
- │                 └── release / lease lapses ──> open
- └──dismiss──> dismissed          (both closed states reopen)
+todo ──start──> doing ──done──> done
+ │  <──stop / lease lapses──┘     │
+ │                                │
+ └──done (straight from To do) ───┘
+todo / doing ──cancel──> cancelled      (done and cancelled both reopen to todo)
 ```
 
 ```bash
 rip task add "Review pricing copy" --workspace-id <ws> --assignee alek --kind write-post
 rip task add "Client-visible follow-up" --workspace-id <ws> --audience shared
-rip task claim <id> --lease-hours 4
-rip task touch <id>                              # extend the lease you hold
-rip task release <id>
+rip task start <id> --lease-hours 4
+rip task start <id>                              # again on long work: renews your lease
+rip task stop <id>                               # back to To do
 rip task done <id> --result artifact:q3-memo@2 --result url:https://…
-rip task dismiss <id> --reason "duplicate"
+rip task cancel <id> --reason "duplicate"
 rip task reopen <id>
 rip task update <id> --expected-revision <n> --title "…"   # title/body/assignee/audience
 ```
 
-Every write except `touch` states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any workspace write; without it the server refuses `WHY_REQUIRED`. Task history, whys included, is in `rip workspace changes`.
+Every write states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any workspace write; without it the server refuses `WHY_REQUIRED`. Task history, whys included, is in `rip workspace changes`.
+
+**Old words.** `rip task claim`, `touch`, `release` and `dismiss` still run, hidden, until the old vocabulary is retired. Each prints `Deprecated: use rip task start` (or `stop`, `cancel`) on stderr and runs the new command, so `touch` now needs a why like `start`. Use the new commands.
+
+### Who holds a task
+
+- **One holder per task, per key.** When an agent starts a task, the hold belongs to that agent's key, not just the account. Two agents of the same person cannot both hold one task: the second gets `TASK_TAKEN`.
+- **An agent's hold has a lease**: 0.25–72 hours, default 2. A sweep runs every minute and returns a lapsed hold to To do, so work is never parked by a harness that vanished. Starting your own task again renews the lease, never shorter; advertise the `holder.leaseExpiresAt` that comes back, not the value you asked for.
+- **The person's hold has no lease.** When the person starts a task in the dashboard, it stays theirs until they move it. Leave it alone unless they ask.
+- **Races resolve at the database.** Two agents starting at once: one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start — call `start` and branch on the error.
+- A task whose agent lease has lapsed is **free**: anyone may start it (a takeover) or complete it.
 
 ### Who can do what
 
 - **Visibility** follows the workspace: internal members see both audiences, external members only `shared`. No access → `WORKSPACE_FORBIDDEN`.
-- **Writing** (add, claim, done, dismiss, reopen, update) needs task-write access for the task's audience. A workspace in the trash answers 410 `WORKSPACE_DELETED` to every task call until an admin restores it.
-- `--assignee` is a **suggestion**, not a lock. It must be a current workspace editor who can see the task's audience; any such editor may still claim the task.
-- A **workspace admin** may release anyone's claim; everyone else releases only their own.
+- **Writing** (add, start, stop, done, cancel, reopen, update) needs task-write access for the task's audience. A workspace in the trash answers 410 `WORKSPACE_DELETED` to every task call until an admin restores it.
+- `--assignee` is a **suggestion**, not a lock. It must be a current workspace editor who can see the task's audience; any such editor may still start the task.
+- **Stop** is for the holder. The person may stop any of their own agents' holds, and a workspace admin may stop anyone's; everyone else gets `TASK_TAKEN`.
+- Losing access (removed from the workspace or its owning team, downgraded, narrowed out of the audience) stops your holds and clears suggestions pointing at you.
 
-### Claim and lease rules
+### Completing
 
-- A claim holds a **lease**: 0.25–72 hours, default 2. A sweep runs every minute and returns a lapsed claim to `open`, so work is never parked forever by a harness that vanished.
-- **Every task must be claimed before it completes.**
-- **Races resolve at the database.** Two harnesses claiming at once: one wins, the other gets `TASK_ALREADY_CLAIMED` naming who holds it and until when. Never check-then-claim — just call `claim` and branch on the error.
-- `touch` is **monotonic** — it can only move the expiry forward. Advertise the `leaseExpiresAt` that comes back, not the value you asked for.
-- Re-claiming a task you already hold extends it. Claiming a task whose lease has lapsed is a **takeover**.
-- Losing access (removed from the workspace or its owning team, downgraded, narrowed out of the audience) releases your claims and clears suggestions pointing at you.
-
-### Completing, and what happens when you're late
-
+- `rip task done` completes a task that is **free** (To do, or a lapsed agent hold) or **yours**; you do not need to start it first. Someone else's live hold → `TASK_TAKEN`, and **nothing is saved**: keep your results locally and pick another task, or wait.
 - `--result artifact:<publicId>[@version]` or `--result url:<https://…>`, repeatable, up to 50. An artifact result must live in the task's workspace and be visible to its audience.
-- Completing after **your own lease lapsed** → `CLAIM_LOST`, but **your results are kept** on the task as orphaned results. Re-claim and complete again; nothing is lost.
-- Completing a task you **never held** → `NOT_CLAIMANT`, and **nothing is persisted**. Keep your results locally, claim, retry.
 - An artifact result that is in the trash is refused (410 `DELETED`), and `rip task show` leaves out results that are in the trash.
 - Reopening keeps the results. Status is the truth, not the result set.
 
 ### A task's history
 
-Task events are **workspace activity**: `task.created`, `task.claimed`, `task.completed`, `task.released`, `task.lease_expired`, and the rest arrive through `rip workspace changes <workspace>` (MCP `workspace_changes`) alongside the workspace's other changes. `rip workspace load` also returns the latest activity. The account/team feed below never carries task events.
+Task events are **workspace activity**: `task.created`, `task.started`, `task.stopped`, `task.lease_expired`, `task.completed`, `task.cancelled` and `task.reopened` arrive through `rip workspace changes <workspace>` (MCP `workspace_changes`) alongside the workspace's other changes; older rows may still say `task.claimed`, `task.released` or `task.dismissed`. `rip workspace load` also returns the latest activity. The account/team feed below never carries task events.
 
 ---
 
@@ -96,13 +108,13 @@ Verbs: `artifact.shared_to_team`, `connection.created`, `connection.rotated`, `c
 
 ## Attribution — which harness you are
 
-Every claim and activity row records the **harness** it came from, not just the account, and the agent key that acted. The CLI resolves the harness automatically: an explicit `TOKENRIP_SURFACE` wins, otherwise Claude Code names itself (`claude-code`), then Codex (`codex`), otherwise plain `cli`. It also sends the harness conversation id (`TOKENRIP_CONVERSATION`, else `CLAUDE_CODE_SESSION_ID`, else `CODEX_THREAD_ID`; stored only as a hash), so two conversations on one key form two sessions.
+Every task hold and activity row records the **harness** it came from, not just the account, and the agent key that acted. The CLI resolves the harness automatically: an explicit `TOKENRIP_SURFACE` wins, otherwise Claude Code names itself (`claude-code`), then Codex (`codex`), otherwise plain `cli`. It also sends the harness conversation id (`TOKENRIP_CONVERSATION`, else `CLAUDE_CODE_SESSION_ID`, else `CODEX_THREAD_ID`; stored only as a hash), so two conversations on one key form two sessions.
 
 ```bash
-TOKENRIP_SURFACE=nightly-batch rip task claim <id>
+TOKENRIP_SURFACE=nightly-batch rip task start <id>
 ```
 
-That value lands on the task's `claimedVia` and every activity row — so a feed can tell a dashboard claim from a cron-shell claim. Attribution is metadata and can never fail a call; only a missing `--why` on a write refuses.
+That value lands on the task's `holder.surface` and every activity row — so a feed can tell a task started in the dashboard from one started by a cron shell. Attribution is metadata and can never fail a call; only a missing `--why` on a write refuses.
 
 ---
 
@@ -113,11 +125,10 @@ That value lands on the task's `claimedVia` and every activity row — so a feed
 | `WORKSPACE_REQUIRED` | `task list` / `task add` need `--workspace-id` — every task lives in a workspace |
 | `WORKSPACE_FORBIDDEN` | You have no access to the workspace or the task's audience, or no task-write access |
 | `WORKSPACE_DELETED` | The workspace is in the trash; a workspace admin can `rip trash restore workspace <id>` |
-| `TASK_ALREADY_CLAIMED` | Someone else holds it. The error names `claimedBy` and `leaseExpiresAt` — pick another task or wait |
-| `CLAIM_LOST` | Your lease lapsed. Results from a `done` are kept as orphaned refs — re-claim and complete again |
-| `NOT_CLAIMANT` | You never held the claim; nothing was saved. Claim first, then retry |
-| `TASK_NOT_CLAIMED` | The task is still `open` — claim it before `done` |
-| `TASK_NOT_OPEN` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts. `rip task show <id>` |
+| `TASK_TAKEN` | Someone else is working on it. `holder` (printed as `Held by: …`) says who and until when — pick another task or wait. Nothing was saved |
+| `TASK_NOT_STARTED` | `stop` on a task that is not Doing (or your lease already lapsed). `rip task show <id>` |
+| `TASK_CLOSED` | The task is cancelled (or, for `start`, done). Reopen it first if the work is still wanted |
+| `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Already done (reopen first) / only done or cancelled tasks reopen. `rip task show <id>` |
 | `INVALID_ASSIGNEE` | The `--assignee` is not a current workspace editor who can see the task's audience |
 | `INVALID_CURSOR` | Cursors are opaque — re-run the query rather than editing the value |
 | `INVALID_FIELD` on `--since` | `--since 0`, a negative, and a unix timestamp are all rejected. Use a positive number of days or an ISO-8601 timestamp |

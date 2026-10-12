@@ -15,11 +15,19 @@ rip auth whoami
 ```
 
 - Ask the person for the code, or read it from their inbox if you have access. It lasts 10 minutes and works once. If it does not arrive, suggest the spam folder; a new code can be requested after a minute.
-- The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. The key is named `Claude Code` under Claude Code, otherwise `CLI`; pass `--name <name>` to choose.
-- Signing in never disconnects the person's other agents. Signing in again on the same machine replaces this machine's key and revokes the old one.
+- The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. A new key is named `Claude Code` under Claude Code, otherwise `CLI`; pass `--name <name>` to choose. A run key keeps its agent's name and ignores `--name` (see [Run keys](#run-keys)).
+- Signing in never disconnects the person's other agents. Signing in again on the same machine replaces this machine's key and revokes the old one, best-effort. A run-key sign-in revokes no key, and a run key held before is never revoked: it ends on its own.
 - Wrong codes count against the email: after five, sign-in for that email locks for a while (`SIGN_IN_LOCKED`, with the time to retry).
-- If a command fails `UNAUTHORIZED`, `NO_API_KEY`, or `NO_IDENTITY`, sign in again. If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it (signing in does not change it).
+- If a command fails `UNAUTHORIZED`, `NO_API_KEY`, or `NO_IDENTITY`, sign in again. If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it (signing in does not change it). A run key that ended fails `RUN_KEY_EXPIRED` instead: get a new code at https://tokenrip.com/run. A run key whose saved key was revoked fails `UNAUTHORIZED`: the agent needs a new key from the person (sign in by email).
 - If `rip auth login` reports `overridden_by`, the named variable (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) will keep later commands off the new sign-in until it is unset.
+
+## Run keys
+
+Some agents keep their Tokenrip key in a vault that can only fill it into a web page, on a computer wiped after every task. Such an agent opens https://tokenrip.com/run at the start of each run, lets the vault fill the key, and runs the `rip auth login --email <email> --code <code>` command the page shows. The code works once, for 10 minutes. It signs in with a **run key**: a short-lived key that acts as the agent's saved key, so the agent keeps its name, workspaces, and what it has already seen. The output says `outcome: run`, names the agent, and gives `ends_by` and `renew_url`.
+
+- A run key ends after 12 hours without use, and 24 hours after it started at the latest. After that, commands fail `RUN_KEY_EXPIRED`: get a new code from the page.
+- A run key cannot manage keys: creating, revoking, or rotating keys and making codes (`rip auth code`) fail `RUN_KEY_FORBIDDEN`. Listing keys works. The person manages keys on the dashboard's Agents page.
+- Revoking the agent's saved key on the Agents page ends its run keys too.
 
 ## Transport troubleshooting
 

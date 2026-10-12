@@ -9,7 +9,7 @@ export async function search(
     limit?: string;
     offset?: string;
     artifactType?: string;
-    mode?: string;
+    workspaceId?: string;
     artifact?: string;
   },
 ): Promise<void> {
@@ -19,7 +19,7 @@ export async function search(
   if (options.limit) params.limit = options.limit;
   if (options.offset) params.offset = options.offset;
   if (options.artifactType) params.artifact_type = options.artifactType;
-  if (options.mode) params.mode = options.mode;
+  if (options.workspaceId) params.workspaceId = options.workspaceId;
   if (options.artifact) params.artifact = options.artifact;
 
   const { data } = await client.get('/v0/search', { params });

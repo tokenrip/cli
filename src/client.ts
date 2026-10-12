@@ -55,8 +55,8 @@ function normalizeSurface(raw: string): string | null {
 }
 
 /**
- * The harness name this process reports. The backend records it on task claims
- * (`claimed_via`) and agent sessions (`surface`).
+ * The harness name this process reports. The backend records it on task holds
+ * (`holder_surface`) and agent sessions (`surface`).
  *
  * An explicit `TOKENRIP_SURFACE` wins; otherwise Claude Code names itself (it
  * exports `CLAUDECODE=1` into every tool shell), then Codex (it exports
@@ -209,6 +209,8 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         currentRevision?: unknown;
         currentWorkspaceRevision?: unknown;
         reason?: unknown;
+        /** `TASK_TAKEN`: who holds the task. */
+        holder?: unknown;
         /** A trashed refusal's dates (`DELETED`, `WORKSPACE_DELETED`). */
         data?: unknown;
         errors?: Array<{ code?: string; message?: string }>;
@@ -245,7 +247,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
-          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason']
+          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
         });
         for (const issue of Array.isArray(safeDetails) ? safeDetails : []) {

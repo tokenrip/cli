@@ -12,6 +12,8 @@ export interface TaskListOptions {
   since?: string;
   limit?: string;
   cursor?: string;
+  /** `created` (default) or `finished` (done and cancelled only). */
+  order?: string;
 }
 
 export interface TaskAddOptions {
@@ -61,6 +63,7 @@ export async function taskList(options: TaskListOptions): Promise<void> {
   if (options.since) q.set('since', options.since);
   if (options.limit) q.set('limit', options.limit);
   if (options.cursor) q.set('cursor', options.cursor);
+  if (options.order) q.set('order', options.order);
   const qs = q.toString();
   const { data } = await client.get(`${path()}${qs ? `?${qs}` : ''}`);
   outputSuccess(data.data, formatTaskList);
@@ -105,23 +108,18 @@ export async function taskUpdate(id: string, options: TaskUpdateOptions): Promis
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskClaim(id: string, options: { leaseHours?: string } & TaskWriteOptions): Promise<void> {
+/** Start a free task, or renew your own hold (an agent's lease; never shorter). */
+export async function taskStart(id: string, options: { leaseHours?: string } & TaskWriteOptions): Promise<void> {
   const { client } = requireAuthClient();
   const body = { ...(options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {}), ...attribution(options) };
-  const { data } = await client.post(path(id, 'claim'), body);
+  const { data } = await client.post(path(id, 'start'), body);
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskTouch(id: string, options: { leaseHours?: string }): Promise<void> {
+/** Put a task you hold back in To do. */
+export async function taskStop(id: string, options: TaskWriteOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const body = options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {};
-  const { data } = await client.post(path(id, 'touch'), body);
-  outputSuccess(data.data, formatTask);
-}
-
-export async function taskRelease(id: string, options: TaskWriteOptions = {}): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(path(id, 'release'), attribution(options));
+  const { data } = await client.post(path(id, 'stop'), attribution(options));
   outputSuccess(data.data, formatTask);
 }
 
@@ -153,9 +151,10 @@ export async function taskDone(id: string, options: { result?: string[] } & Task
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskDismiss(id: string, options: { reason?: string } & TaskWriteOptions): Promise<void> {
+/** Won't do: To do or Doing → Cancelled (reopenable). */
+export async function taskCancel(id: string, options: { reason?: string } & TaskWriteOptions): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(path(id, 'dismiss'), { ...(options.reason ? { reason: options.reason } : {}), ...attribution(options) });
+  const { data } = await client.post(path(id, 'cancel'), { ...(options.reason ? { reason: options.reason } : {}), ...attribution(options) });
   outputSuccess(data.data, formatTask);
 }
 

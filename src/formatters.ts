@@ -315,11 +315,18 @@ export const formatSignInRequested: Formatter = (data) =>
     `Next: ${data.next}`,
   ].join('\n');
 
-/** `rip auth login` step 2 — signed in on the person's account. */
+/** `rip auth login` step 2 — signed in on the person's account (outcome `run`: as its agent, for one run). */
 export const formatSignedIn: Formatter = (data) => {
-  const lines = [`Connected to ${data.email}'s Tokenrip. Next: rip workspace list`];
+  const run = data.outcome === 'run';
+  const lines = [run
+    ? `Signed in as ${data.name} on ${data.email}'s Tokenrip for this run. Next: rip workspace list`
+    : `Connected to ${data.email}'s Tokenrip. Next: rip workspace list`];
   lines.push(`  Account: ${data.account_id}`);
-  if (data.name) lines.push(`  Key:     ${data.name}`);
+  if (run) {
+    lines.push(`  Ends after ${Number(data.idle_timeout_seconds) / 3600} hours without use, by ${data.ends_by} at the latest. Then get a new code at ${data.renew_url}.`);
+  } else if (data.name) {
+    lines.push(`  Key:     ${data.name}`);
+  }
   if (data.previous_key === 'not_revoked') lines.push(`  The key this one replaced could not be revoked; remove it with \`rip auth keys revoke ${data.previous_key_id ?? '<id>'}\`.`);
   if (data.overridden_by === 'TOKENRIP_API_KEY') lines.push('  Warning: TOKENRIP_API_KEY is set, so commands will keep using that key; unset it to use this sign-in.');
   if (data.overridden_by === 'TOKENRIP_AGENT') lines.push('  Warning: TOKENRIP_AGENT is set, so commands will keep using that agent; unset it to use this sign-in.');
@@ -413,11 +420,15 @@ export const formatRowsDeleted: Formatter = (data) => {
 export const formatSearchResults: Formatter = (data) => {
   const results = (data as any).results ?? [];
   const total = (data as any).total ?? results.length;
-  if (results.length === 0) return 'No results.';
+  const mode = (data as any).mode;
+  const pending = (data as any).pending;
+  const status: string[] = [];
+  if (mode === 'hybrid') status.push(`  mode: ${mode}`);
+  if (typeof pending === 'number' && pending > 0) status.push(`  pending: ${pending} chunk(s) not yet searchable by meaning`);
+  if (results.length === 0) return ['No results.', ...status].join('\n');
 
   const lines: string[] = [`${total} result(s):\n`];
-  const mode = (data as any).mode;
-  if (mode && mode !== 'keyword') lines.push(`  mode: ${mode}\n`);
+  if (status.length) lines.push(...status, '');
   for (const r of results) {
     const title = r.title || '(untitled)';
     const ago = formatTimeAgo(new Date(r.updated_at));
@@ -425,6 +436,14 @@ export const formatSearchResults: Formatter = (data) => {
     const versions = r.artifact?.version_count ? `v${r.artifact.version_count}` : '';
     lines.push(`  artifact   ${artifactType}  ${r.id}  ${title}  ${versions}  ${ago}`);
     if (r.url) lines.push(`          ${r.url}`);
+    const passages: Array<{ section: string | null; text: string }> = Array.isArray(r.passages) ? r.passages : [];
+    if (passages.length) {
+      for (const p of passages) {
+        lines.push(`          § ${p.section || '(no section)'}`);
+        for (const textLine of p.text.split('\n')) lines.push(`            ${textLine}`);
+      }
+      continue;
+    }
     if (r.match_section) lines.push(`          § ${r.match_section}`);
     if (r.snippet) lines.push(`          ${formatSnippet(r.snippet)}`);
   }
@@ -627,23 +646,48 @@ export const formatConnectionList: Formatter = (data) => {
     .join('\n');
 };
 
-/** `rip task list` — one row per task. */
+/** Who holds a task, as the server projects it (`holder`, plan D5). */
+export interface TaskHolderView {
+  account: { id: string; alias: string | null };
+  agent: { name: string } | null;
+  surface: string | null;
+  inBrowser: boolean;
+  since: string;
+  leaseExpiresAt: string | null;
+  mine: boolean;
+  heldByCaller: boolean;
+}
+
+/** The holder in History's who-words. */
+function holderWho(holder: TaskHolderView): string {
+  return whoWords({
+    mine: holder.mine, alias: holder.account.alias, accountId: holder.account.id,
+    agentName: holder.agent?.name, surface: holder.surface, inBrowser: holder.inBrowser,
+  });
+}
+
+/** The holder in who-words, with since and an agent hold's lease. */
+export function taskHolderLine(holder: TaskHolderView): string {
+  return `${holderWho(holder)} since ${holder.since}${holder.leaseExpiresAt ? `, lease until ${holder.leaseExpiresAt}` : ''}`;
+}
+
+/** `rip task list` — one row per task: status, kind, title, then who holds it or who it is suggested to. */
 export const formatTaskList: Formatter = (data) => {
   const tasks = ((data as any).tasks ?? []) as Array<Record<string, any>>;
   const nextCursor = (data as any).nextCursor as string | null;
   if (tasks.length === 0) return 'No tasks.';
   const lines = tasks.map((t) => {
-    const who = t.claimedById ? `→ ${t.claimedById}` : t.suggestedAssigneeId ? `? ${t.suggestedAssigneeId}` : '';
+    const who = t.holder ? holderWho(t.holder as TaskHolderView) : t.suggestedAssigneeId ? `? ${t.suggestedAssigneeId}` : '';
     const kind = t.kind ?? '-';
     return `${String(t.status).padEnd(9)} ${String(kind).padEnd(16)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]`;
   });
-  // The cursor only encodes (createdAt, id), so it has to be replayed against the
+  // The cursor only encodes the active order's key, so it has to be replayed against the
   // same filters — printing a bare command would silently paginate a different query.
   if (nextCursor) lines.push(`\nMore: re-run with the same filters plus --cursor ${nextCursor}`);
   return lines.join('\n');
 };
 
-/** `rip task show` — one task with results. */
+/** `rip task show` — one task with results. Reads the holder and cancel fields, never the window fields. */
 export const formatTask: Formatter = (data) => {
   const t = data as Record<string, any>;
   const lines = [
@@ -655,9 +699,11 @@ export const formatTask: Formatter = (data) => {
     `Kind:       ${t.kind ?? '-'}`,
   ];
   if (t.suggestedAssigneeId) lines.push(`Suggested:  ${t.suggestedAssigneeId}`);
-  if (t.claimedById) lines.push(`Claimed by: ${t.claimedById}${t.claimedVia ? ` (${t.claimedVia})` : ''}  lease until ${t.leaseExpiresAt}`);
+  if (t.holder) lines.push(`Doing:      ${taskHolderLine(t.holder as TaskHolderView)}`);
   if (t.completedById) lines.push(`Completed:  ${t.completedById} at ${t.completedAt}`);
-  if (t.dismissedById) lines.push(`Dismissed:  ${t.dismissedById}${t.dismissReason ? ` — ${t.dismissReason}` : ''}`);
+  if (t.status === 'cancelled' && t.cancelledAt) {
+    lines.push(`Cancelled:  ${t.cancelledById ?? '-'} at ${t.cancelledAt}${t.cancelReason ? ` — ${t.cancelReason}` : ''}`);
+  }
   if (t.dueAt) lines.push(`Due:        ${t.dueAt}`);
   lines.push(`Created:    ${t.createdAt} by ${t.createdById}`);
   if (t.body) lines.push('', t.body);
@@ -777,21 +823,111 @@ function workspaceShellArgument(value: unknown): string {
   return /^[A-Za-z0-9_./:-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\"'\"'")}'`;
 }
 
-/** Who worked and from which harness: the agent's key name only reaches its own account. */
-function sessionWho(session: Record<string, any>): string {
-  const who = session.account?.alias ? `~${session.account.alias}` : (session.account?.id ?? '-');
-  const tool = [session.agent?.name, session.surface].filter(Boolean).join(', ');
-  return tool ? `${who} (${tool})` : who;
+const HARNESS_NAMES: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex', cli: 'CLI', cowork: 'Cowork' };
+
+/** A harness slug as people say it; an unknown slug prints as is. */
+function harnessName(slug: string): string {
+  return HARNESS_NAMES[slug] ?? slug;
 }
 
-/** A computed session: who, when, the goals in order, what they touched, any handoff note. */
+/** A verb's action, the text after its last dot: `artifact.rows_changed` prints `rows_changed`. */
+function verbAction(type: unknown): string {
+  return typeof type === 'string' && type ? type.slice(type.lastIndexOf('.') + 1) : 'change';
+}
+
+/**
+ * Who worked, in words (session-log design §5.5). The reader's own work is "You"; another
+ * person's leads with their alias, or their full account id when they have none. Another
+ * person's agent name is never sent, so their agent reads by harness.
+ */
+function whoWords(who: { mine: boolean; alias?: string | null; accountId?: string; agentName?: string; surface?: string | null; inBrowser: boolean }): string {
+  if (who.mine) {
+    if (who.inBrowser) return 'You · in the browser';
+    if (who.agentName) return `You · ${who.agentName}${who.surface ? ` (${harnessName(who.surface)})` : ''}`;
+    return who.surface ? `You · ${harnessName(who.surface)}` : 'You';
+  }
+  const name = who.alias ? `~${who.alias}` : (who.accountId ?? '-');
+  if (who.inBrowser) return `${name} · in the browser`;
+  return who.surface ? `${name}'s agent · ${harnessName(who.surface)}` : name;
+}
+
+/** `type  title  [id]`, or `type:id` from a server that sends no title (before session-log M3). */
+function subjectWords(subject: Record<string, any> | undefined): string {
+  if (!subject || !('title' in subject)) return `${subject?.type ?? '-'}:${subject?.id ?? '-'}`;
+  let title = subject.title;
+  if (title == null) title = '(gone)';
+  else if (subject.gone) title = `${title} (gone)`;
+  return `${subject.type ?? '-'}  ${title}  [${subject.id}]`;
+}
+
+/**
+ * One change of a step: its actions, item, versions, rows and handoff, then one diff command for
+ * the whole change, from its first remaining version to its last (design §5.3). The command is
+ * printed only for an edit of a reachable file the step did not create, while a listed version
+ * still exists. A shortened list whose first version was deleted has no known range (the versions
+ * cut after it may still exist), so it gets none.
+ */
+function sessionChangeLines(change: Record<string, any>, indent: string): string[] {
+  const subject = change.subject ?? {};
+  const actions: string[] = Array.isArray(change.actions) ? change.actions : [];
+  const versions: Array<Record<string, any>> = Array.isArray(change.versions) ? change.versions : [];
+  let line = `${indent}${actions.length ? actions.map(verbAction).join(', ') : 'changed'}  ${subjectWords(subject)}`;
+  // A purged or out-of-reach item has no title and nothing left to read.
+  const reachable = subject.title != null;
+  if (reachable && versions.length) {
+    const words = versions.map((v) => (v.number == null ? '(deleted)' : `v${v.number}`));
+    // A truncated list keeps the first and the latest versions: the gap follows the first.
+    if (change.versionsTruncated) words.splice(1, 0, '…');
+    line += `  ${words.join(' ')}`;
+  }
+  const rows = change.rows;
+  if (rows) line += `  +${rows.added ?? 0} ~${rows.updated ?? 0} -${rows.deleted ?? 0} rows`;
+  if (change.handoff && reachable && !subject.gone) line += `  handoff  rip artifact cat ${subject.id}`;
+  const lines = [line];
+  // `artifact.updated` is the verb rows written before precise verbs carry. A created file is new: nothing to compare.
+  const edited = actions.includes('artifact.edited') || actions.includes('artifact.updated');
+  const remaining = versions.filter((v) => v.number != null);
+  const rangeKnown = !(change.versionsTruncated && versions[0]?.number == null);
+  if (edited && rangeKnown && !actions.includes('artifact.created') && subject.type === 'artifact' && reachable && !subject.gone && remaining.length) {
+    const first = remaining[0]!;
+    const last = remaining[remaining.length - 1]!;
+    lines.push(`${indent}  rip artifact diff ${subject.id}${first.id === last.id ? '' : ` --from ${first.id}`} --version-id ${last.id}`);
+  }
+  return lines;
+}
+
+/** A computed session: who and when, then each stated reason with the changes made for it. */
 function sessionLines(session: Record<string, any>, indent = ''): string[] {
+  if (!Array.isArray(session.steps)) return legacySessionLines(session, indent);
+  const who = whoWords({
+    mine: Boolean(session.mine), alias: session.account?.alias, accountId: session.account?.id,
+    agentName: session.agent?.name, surface: session.surface, inBrowser: Boolean(session.inBrowser),
+  });
+  const lines = [`${indent}${who}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}${session.unread ? '  unread' : ''}`];
+  if (session.stepsTruncated) lines.push(`${indent}  … earlier steps not shown`);
+  for (const step of session.steps as Array<Record<string, any>>) {
+    lines.push(`${indent}  ${step.why ?? (session.inBrowser ? 'in the browser' : 'no stated goal')}`);
+    if (step.changesTruncated) lines.push(`${indent}    … earlier changes in this step not shown`);
+    const changes: Array<Record<string, any>> = Array.isArray(step.changes) ? step.changes : [];
+    for (const change of changes) lines.push(...sessionChangeLines(change, `${indent}    `));
+  }
+  if (session.earlierActivityNotShown) lines.push(`${indent}  (earlier activity of this session not shown)`);
+  return lines;
+}
+
+/**
+ * A session from a server without `steps` (before session-log M2), printed as 2.5.0 did. Delete
+ * with the first CLI release after production serves `steps`.
+ */
+function legacySessionLines(session: Record<string, any>, indent: string): string[] {
   const goals: string[] = Array.isArray(session.goals) ? session.goals : [];
   const items: Array<Record<string, any>> = Array.isArray(session.items) ? session.items : [];
   const handoffs: Array<Record<string, any>> = Array.isArray(session.handoffs) ? session.handoffs : [];
   const goalText = goals.length ? goals.join(' → ') : session.inBrowser ? 'in the browser' : 'no stated goal';
+  const who = session.account?.alias ? `~${session.account.alias}` : (session.account?.id ?? '-');
+  const tool = [session.agent?.name, session.surface].filter(Boolean).join(', ');
   const lines = [
-    `${indent}${sessionWho(session)}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}  ${session.eventCount ?? 0} change${session.eventCount === 1 ? '' : 's'}`,
+    `${indent}${tool ? `${who} (${tool})` : who}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}  ${session.eventCount ?? 0} change${session.eventCount === 1 ? '' : 's'}`,
     `${indent}  Goals: ${session.goalsTruncated ? '… → ' : ''}${goalText}`,
   ];
   for (const item of items) {
@@ -865,7 +1001,10 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   const activityItems: Array<Record<string, any>> = Array.isArray(activity.items) ? activity.items : [];
   lines.push(...loadSection(
     `Recent changes (${activityItems.length}${activity.hasMore ? '+' : ''}):`,
-    activityItems.map((e) => `  ${e.createdAt ?? '-'}  ${e.type ?? 'change'}  ${e.subject?.type ?? '-'}:${e.subject?.id ?? '-'}`),
+    activityItems.flatMap((e) => [
+      `  ${e.createdAt ?? '-'}  ${e.mine ? 'You' : e.actor?.alias ? `~${e.actor.alias}` : (e.actor?.id ?? '-')}  ${verbAction(e.type)}  ${subjectWords(e.subject)}`,
+      ...('why' in e ? [`    ${changeGoal(e)}`] : []),
+    ]),
   ));
   if (activity.refresh === 'required') lines.push('  Access changed: re-read before continuing.');
   if (activity.historyGap) lines.push('  History gap: older changes were pruned.');
@@ -889,16 +1028,31 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** The why of a change item, or what stands in for it: a browser edit states none by design. */
+function changeGoal(item: Record<string, any>): string {
+  if (item.why != null) return item.why;
+  if (item.actor?.type === 'system') return 'system';
+  return changeInBrowser(item) ? 'in the browser' : 'no stated goal';
+}
+
+/** Change items carry no key, so a browser edit is read from its harness. */
+function changeInBrowser(item: Record<string, any>): boolean {
+  return !item.agent && item.actor?.surface === 'dashboard';
+}
+
 /**
- * Consecutive changes made by one actor toward one goal print under one heading. A browser edit
- * states no goal by design. Change items carry no key, so the browser is read from its harness.
+ * Consecutive changes made by one person (or agent) toward one goal print under one heading:
+ * who, in the words sessions use, then the why. A browser edit's heading is who alone.
  */
 function changeHeading(item: Record<string, any>): string {
   const actor = item.actor ?? {};
-  const tool = [item.agent?.name, actor.surface].filter(Boolean).join(', ');
-  const goal = item.why
-    ?? (actor.type === 'system' ? 'system' : !item.agent && actor.surface === 'dashboard' ? 'in the browser' : 'no stated goal');
-  return `${actor.id ?? '-'}${tool ? ` (${tool})` : ''}: ${goal}`;
+  if (actor.type === 'system') return `${actor.id ?? 'system'}: ${changeGoal(item)}`;
+  const inBrowser = changeInBrowser(item);
+  const who = whoWords({
+    mine: Boolean(item.mine), alias: actor.alias, accountId: actor.id,
+    agentName: item.agent?.name, surface: actor.surface, inBrowser,
+  });
+  return inBrowser && item.why == null ? who : `${who}: ${changeGoal(item)}`;
 }
 
 export const formatWorkspaceChanges: Formatter = (data) => {
@@ -916,7 +1070,7 @@ export const formatWorkspaceChanges: Formatter = (data) => {
     const next = changeHeading(item);
     if (next !== heading) lines.push(next);
     heading = next;
-    lines.push(`  ${item.createdAt ?? '-'}  ${item.type ?? 'change'}  ${item.subject?.type ?? '-'}:${item.subject?.id ?? '-'}`);
+    lines.push(`  ${item.createdAt ?? '-'}  ${verbAction(item.type)}  ${subjectWords(item.subject)}`);
   }
   lines.push(`Delivery token: ${value.deliveryToken ?? '-'}`);
   if (value.nextCursor != null) lines.push(`Next cursor: ${value.nextCursor}`);

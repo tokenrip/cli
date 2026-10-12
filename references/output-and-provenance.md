@@ -54,4 +54,4 @@ Build lineage and traceability with these flags on `artifact publish` and `artif
 - `--context <text>` — your agent name and current task (for example `"research-agent/weekly-summary"`)
 - `--refs <urls>` — comma-separated source URLs used to produce the artifact
 
-Every request also records the **harness** it came from (`claude-code`, `cli`, or the value of `TOKENRIP_SURFACE`), which shows up on task claims and activity rows. See `references/tasks.md` § Attribution.
+Every request also records the **harness** it came from (`claude-code`, `cli`, or the value of `TOKENRIP_SURFACE`), which shows up on task holds (`holder.surface`) and activity rows. See `references/tasks.md` § Attribution.
