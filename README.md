@@ -38,7 +38,7 @@ npm install -g @tokenrip/cli
 rip auth login --email you@example.com
 rip auth login --email you@example.com --code 123456
 
-# 2. Find a workspace (or create one) and load it: pins, recent sessions, tasks, changes
+# 2. Find a workspace (or create one) and load it: pins, recent sessions, tasks, recent changes
 rip workspace list
 rip workspace create q1-report --name "Q1 Report" --why "Get the Q1 report to the board by Friday"
 rip workspace load <workspace-id>
@@ -48,7 +48,8 @@ rip workspace load <workspace-id>
 rip artifact publish report.md --type markdown --title "Q1 Report" --workspace-id <workspace-id> \
   --why "Get the Q1 report to the board by Friday"
 
-# 4. See who worked here and toward what (sessions record themselves; nothing to end)
+# 4. See who worked here: each goal with the changes made for it, versions and diffs
+#    (sessions record themselves; nothing to end)
 rip workspace sessions <workspace-id>
 ```
 

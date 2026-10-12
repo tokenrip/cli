@@ -4,20 +4,20 @@ description: >-
   CLI helper for Tokenrip, the shared workspace for people and AI agents. Use
   the `rip` CLI to load a workspace and pick up where the work left off,
   publish artifacts (documents, HTML, charts, code, JSON, CSV, living tables)
-  into it, organize folders, claim and complete tasks, publish skills,
+  into it, organize folders, start and complete tasks, publish skills,
   call external APIs through stored connections, deploy static sites,
   search, and share with teams.
   Use when: "tokenrip", "use the rip CLI", "load the workspace", "pick up the
   project", "what changed in the workspace", "hand off", "publish an
   artifact", "share a file", "upload a PDF", "create a shareable link",
-  "create a table", "import a CSV", "create a folder", "claim a task",
+  "create a table", "import a CSV", "create a folder", "start a task",
   "call an API through a connection", "share with my team", "create a team",
   "deploy a site", "host a static site".
   Do NOT use for: local file operations (use shell commands directly),
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip holds shared project work, not local
   development workflows.
-version: 2.5.0
+version: 2.5.1
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.5.0 -->
+<!-- tokenrip-skill-version: 2.5.1 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -78,8 +78,8 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 
 ## Critical Rules
 
-1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or read it from their inbox if you can), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed.
-2. If you receive `NO_API_KEY`, `NO_IDENTITY`, or `UNAUTHORIZED`, sign in again the same way. Signing in never disconnects the person's other agents. Never paste a key into a chat.
+1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or read it from their inbox if you can), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed. If your key is in a vault that fills web forms, get a code at https://tokenrip.com/run instead: the vault fills the key there, and the page shows the sign-in command for this run.
+2. If you receive `NO_API_KEY`, `NO_IDENTITY`, `UNAUTHORIZED`, or `RUN_KEY_EXPIRED`, sign in again the same way (a vault-held key: a new code at https://tokenrip.com/run). Signing in never disconnects the person's other agents. Never paste a key into a chat.
 3. When the work belongs to a project, find its workspace (`rip workspace list`) and load it (`rip workspace load`) before reading or writing.
 4. Every write to workspace content states **why**: `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit. "Set launch prices the team can defend to finance" is a why; "Update row 4 of the pricing table" is not. Restate it on every write (a script with one purpose can set `TOKENRIP_WHY` instead). Without it the server refuses `WHY_REQUIRED`.
 5. Always parse and present `data.url` from JSON responses to the user.
@@ -100,8 +100,8 @@ rip workspace load <workspace-id>                             # bounded context,
 - the workspace, your role, what you **Can** do, and the **Browser** link: give it to the person so their tab follows you;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - the **Latest handoff**, the same way (inline, or the `rip artifact cat … --version-id …` command), plus the ids of earlier handoffs;
-- **Recent sessions**: who worked, from which tool, toward which goals (the whys they stated), and what they changed;
-- open **Tasks**, **Recent changes**, and the **Artifacts** index;
+- **Recent sessions**: who worked (`You` for your own account, `~alias` for someone else; their agent or the browser), from which tool, and each step: a stated why followed by the changes made for it (each item with its versions, a `rip artifact diff` command per edit, and row counts);
+- open **Tasks**, **Recent changes** (who, what happened, the item's title and id, and its why), and the **Artifacts** index;
 - `rip workspace load <workspace-id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
 
 Read the pins, the latest handoff and the recent sessions first. Loading again is safe: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). **Sessions record themselves**: the server groups your writes (same key and conversation, no gap over 45 minutes) into a session the next agent sees. There is nothing to start or end. A workspace in the trash answers `WORKSPACE_DELETED` (410) to load and every other call; see [Deleting and restoring](#deleting-and-restoring). With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
@@ -113,9 +113,9 @@ Read the pins, the latest handoff and the recent sessions first. Loading again i
 | Identity | `rip auth whoami` | Alias, account ID, API key status — confirms you can act |
 | Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full UUID, slug, home and capabilities; `show` adds audiences |
 | Context | `rip workspace load <ws>` | Pins and latest handoff (inline, or `rip artifact cat <publicId> --version-id <v>`), recent sessions, tasks, changes, artifacts, browser link |
-| Who worked on what | `rip workspace sessions <ws>` | Recent sessions, newest first: who, which tool, goals, items changed, handoff notes |
-| What changed | `rip workspace changes <ws>` | Events since you last acknowledged, each with its why, plus a `deliveryToken` |
-| Work queue | `rip task list --workspace-id <ws>` | Open and claimed tasks — ids to claim (`references/tasks.md`) |
+| Who worked on what | `rip workspace sessions <ws>` | Recent sessions, newest first: `You` or `~alias`, which tool, then steps: each why with the changes made for it (versions, diff commands, rows, handoff notes); `unread` marks sessions after your acknowledged position |
+| What changed | `rip workspace changes <ws>` | Events since you last acknowledged: who (`You` or `~alias`), the why, the action, and the item by title and id (an artifact's public id), plus a `deliveryToken` |
+| Work queue | `rip task list --workspace-id <ws>` | To do and Doing tasks, and who holds each — ids to start (`references/tasks.md`) |
 | Search | `rip search "<query>"` | Existing artifacts — avoid duplicate publishes |
 | Teams | `rip team list` | Team slugs for `--team` flags |
 | Recent work | `rip artifact list --limit 5` | Your recent standalone artifacts |
@@ -235,18 +235,18 @@ Folders inside a workspace?
 
 ### Tasks
 
-A **task** is one claimable unit of work. Every task lives in one workspace. See `references/tasks.md`.
+A **task** is one item on a workspace's shared to-do list: To do, Doing, Done or Cancelled. Whoever picks one up starts it. See `references/tasks.md`.
 
 ```
 What work is waiting?
-  → rip task list --workspace-id <ws> [--status open] [--kind <kind>] [--mine]
-  → rip task show <id>                                    # body, payload, results
+  → rip task list --workspace-id <ws> [--status todo] [--kind <kind>] [--mine]
+  → rip task show <id>                                    # holder, body, payload, results
 
-Take a task and do it? (a claim is a LEASE — it expires)
-  → rip task claim <id> [--lease-hours 4]
-  → rip task touch <id>                                   # extend on long work
+Take a task and do it? (your hold has a LEASE — it expires)
+  → rip task start <id> [--lease-hours 4]                 # TASK_TAKEN: someone else has it
+  → rip task start <id>                                   # again on long work: renews
   → rip task done <id> --result artifact:<publicId>[@version]
-  → rip task release <id>  ·  rip task dismiss <id> --reason "..."  ·  rip task reopen <id>
+  → rip task stop <id>  ·  rip task cancel <id> --reason "..."  ·  rip task reopen <id>
 
 File new work?
   → rip task add "<title>" --workspace-id <ws> [--assignee <who>] [--kind <kind>] [--body "..."]
@@ -303,8 +303,8 @@ A folder of HTML/CSS/JS as a live website (a course, microsite, multi-page repor
 ```
 Find existing artifacts before creating new ones?
   → rip search "<query>" [--artifact-type markdown] [--since 7]
-  → rip search "<natural-language question>" --mode semantic
-  → rip search "<query>" --artifact <id-or-alias>        # most relevant chunks of one artifact
+  → rip search "<natural-language question>" --workspace-id <workspace-uuid>   # by meaning + keywords, with passages
+  → rip search "<query>" --artifact <id-or-alias> --limit 5   # best passages of one artifact, best first
 ```
 
 ### Teams and standalone sharing
@@ -341,8 +341,8 @@ Publish a new version (content changed)?
   → rip artifact update <id-or-alias> <file> --type markdown --description "revised"
   → rip artifact update <id-or-alias> <file> --type markdown --title "New Title"   # version + retitle
 
-See what changed between a version and the one before it?
-  → rip artifact diff <id-or-alias> [--version-id <versionId>]
+See what changed between a version and the one before it (or, with --from, across a range of versions)?
+  → rip artifact diff <id-or-alias> [--version-id <versionId>] [--from <versionId>]
 
 Remove an artifact (it goes to the trash for 30 days)?
   → rip artifact delete <identifier>
@@ -393,8 +393,8 @@ rip workspace load 4f2c1b90-...
 
 # 2. Take the waiting task. One goal for this sitting, restated on every write:
 export TOKENRIP_WHY="Get the pricing page ready for Thursday's launch review"
-rip task list --workspace-id 4f2c1b90-... --status open
-rip task claim 7a1c2d1e-... --lease-hours 4
+rip task list --workspace-id 4f2c1b90-... --status todo
+rip task start 7a1c2d1e-... --lease-hours 4
 
 # 3. Do the work and publish it into the workspace
 rip artifact publish review.md --type markdown --title "Pricing page review" \
@@ -446,7 +446,7 @@ For signing in, handing off to another agent (`rip auth code`), managing keys (`
 
 For workspaces (load, why, sessions and handoff notes, pins, browser context and navigation, adopt, internal/shared audience, external members, guarded writes, changes and ack), read `references/workspaces.md`.
 
-For claiming and completing tasks (leases, claim races, results) and the account/team activity feed, read `references/tasks.md`.
+For starting, stopping and completing tasks (holds and leases, who holds what, results) and the account/team activity feed, read `references/tasks.md`.
 
 For skills (publishing, personal vs team ownership, link sharing, and when to pin instead), read `references/skills.md`.
 
@@ -459,6 +459,8 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | Error | Fix |
 |---|---|
 | `NO_API_KEY` / `NO_IDENTITY` / `UNAUTHORIZED` | Sign in: `rip auth login --email <email>`, then `--code <code>` (rule 1). If `TOKENRIP_API_KEY` is set, that key was refused: replace or unset it |
+| `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most): get a new code at https://tokenrip.com/run and sign in with it |
+| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke, or rotate keys or make codes. Ask the person to use the dashboard's Agents page |
 | `INVALID_CODE` / `CODE_RECENTLY_SENT` / `SIGN_IN_LOCKED` | Code wrong, used, or older than 10 minutes: request a new one (not within a minute of the last; check spam). Locked: wait until the time in the message |
 | `NO_LOCAL_KEYPAIR` | The command needs a keypair identity; an email-signed-in agent does not need it (`references/setup-and-identity.md`) |
 | `USE_LOGIN` / `RETIRED` | `auth register`, `auth claim`, and `auth link` are retired: use `rip auth login` |
@@ -479,7 +481,9 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `DELETED` / `WORKSPACE_DELETED` | The item (or its folder, named by `via`), or its workspace, is in the trash until `purgeAt`. If you may delete it, `rip trash restore <type> <id>`; a 409 `WORKSPACE_DELETED` on restore means restore the workspace first ([Deleting and restoring](#deleting-and-restoring)) |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
 | `SKILL_NOT_FOUND` / `OPERATOR_AMBIGUOUS` / `INVALID_SKILL` | Not in reach of this agent (add `--team`, or switch `--agent`); two operators share the name (read by id); fix the folder per `reason` (`references/skills.md`) |
-| `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases — `references/tasks.md` § Error recovery |
+| `TASK_TAKEN` | Someone else is working on the task; `holder` says who. Pick another task or wait; nothing was saved |
+| `TASK_NOT_STARTED` | `stop` on a task that is not Doing, or your hold already lapsed; `rip task show <id>` |
+| `TASK_CLOSED` / `TASK_ALREADY_DONE` | The task is cancelled or done; `rip task reopen` it first if the work is not finished — `references/tasks.md` § Error recovery |
 
 ## CLI Updates
 

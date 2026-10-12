@@ -1,6 +1,6 @@
 # @tokenrip/cli — Agent Guide
 
-Tokenrip is a shared workspace for people and AI agents. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, claim and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
+Tokenrip is a shared workspace for people and AI agents. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, start and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
 
 ## Install
 
@@ -52,7 +52,7 @@ rip workspace list                                            # names, ids, your
 rip workspace load <workspace-id>                             # bounded context, recent sessions, your browser link
 ```
 
-`load` prints what you can do, your browser link, pinned read-on-load documents, the latest handoff note, recent sessions (who worked, from which tool, toward which goals, what they changed), open tasks, recent changes, and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks, recent changes (who, the action, the item's title and id, and the why), and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
 
 **Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
@@ -61,7 +61,7 @@ rip workspace load <workspace-id>                             # bounded context,
 rip workspace changes <workspace-id> [--limit <n>]
 rip workspace ack <workspace-id> --delivery-token <token>
 
-# Who worked here recently, toward what (newest first)
+# Who worked here recently (newest first): each goal with the changes made for it
 rip workspace sessions <workspace-id> [--cursor <nextCursor>]
 
 # Leave a handoff note for the next agent (optional; the session is recorded anyway)
@@ -91,7 +91,7 @@ rip workspace view open <workspace-id> <artifact-id> --operation-id <id> --expec
 Every item in a workspace has an **audience**: `internal` (owner or owning team) or `shared` (external members too). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags, and existing-item changes carry the applicable precondition the read reported:
 
 ```bash
-rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> [--audience internal|shared] --why "<the goal>"
+rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"
 rip artifact update <id> report-v2.md --type markdown --expected-version-id <version-id>
 rip artifact patch <id> --audience shared --expected-workspace-revision <n>
 rip table update <table-id> <row-id> --data '{...}' --expected-revision <row-rev>
@@ -151,7 +151,7 @@ rip artifact patch <id> --title "Better Title"                                  
 rip artifact patch <id> --alias my-report --description "One-line summary"
 rip artifact patch <id> --visibility private
 rip artifact versions <id>
-rip artifact diff <id> [--version-id <versionId>]                               # vs. the previous version
+rip artifact diff <id> [--version-id <versionId>] [--from <versionId>]          # vs. the previous version; --from for a range
 rip artifact delete-version <id> <versionId>
 ```
 
@@ -244,27 +244,28 @@ rip artifact move <id> --folder-id <folder-uuid> --expected-workspace-revision <
 
 ## Task Commands
 
-A **task** is one claimable unit of work in a workspace; every task lives in one. Deep dive: `references/tasks.md`.
+A **task** is one item on a workspace's shared to-do list (`todo`, `doing`, `done`, `cancelled`); every task lives in one. Whoever picks one up starts it. Deep dive: `references/tasks.md`.
 
 ```bash
-rip task list --workspace-id <ws>                    # open + claimed tasks you can see
-rip task list --workspace-id <ws> --status open --kind process-call --mine
-rip task show <id>                                   # body, payload, results
+rip task list --workspace-id <ws>                    # To do + Doing tasks you can see, with who holds each
+rip task list --workspace-id <ws> --status todo --kind process-call --mine
+rip task list --workspace-id <ws> --status done,cancelled --order finished
+rip task show <id>                                   # holder, body, payload, results
 rip task add "<title>" --workspace-id <ws> --assignee <who> --kind <kind> --payload '<json>'
 rip task update <id> --expected-revision <n> --title "…"
 
-rip task claim <id> --lease-hours 4                  # a LEASE, not an assignment
-rip task touch <id>                                  # extend it on a long run (forward-only)
-rip task release <id>
+rip task start <id> --lease-hours 4                  # your key's hold under a LEASE
+rip task start <id>                                  # again on a long run: renews (never shorter)
+rip task stop <id>                                   # back to To do
 rip task done <id> --result artifact:<publicId>@2 --result url:https://…
-rip task dismiss <id> --reason "duplicate"
+rip task cancel <id> --reason "duplicate"
 rip task reopen <id>
 rip workspace changes <ws>                           # task history is workspace activity
 ```
 
-Claims hold a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to `open` when it lapses. Two harnesses claiming at once resolve at the database — one wins, the other gets `TASK_ALREADY_CLAIMED` naming who holds it. Never check-then-claim.
+An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; the person's hold in the dashboard has none. Two agents starting at once resolve at the database — one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start. The old `claim`, `touch`, `release` and `dismiss` commands run hidden with a deprecation note.
 
-Completing after **your own** lease lapsed answers `CLAIM_LOST` but **keeps your results** on the task as orphaned refs; completing a task you never held answers `NOT_CLAIMANT` and persists nothing. Every task must be claimed before it completes. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
+`task done` completes a task that is free or yours, from To do as well as Doing; someone else's live hold answers `TASK_TAKEN` and persists nothing. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
 
 ## Activity
 
@@ -348,16 +349,16 @@ rip bundle delete <id-or-slug> --yes                              # to the trash
 
 ## Search
 
-Search across artifact content. Results are ranked by relevance and include snippets.
+Search across artifact content. Results are ranked by relevance and include snippets. Inside a workspace (`--workspace-id`, or `--artifact` of a workspace document) the ranking blends keywords with meaning and each result lists its best passages; `pending: N` counts chunks not yet searchable by meaning. Elsewhere the ranking is by keyword.
 
 ```bash
 rip search "quarterly report"
 rip search "chart" --artifact-type chart --since 7
-rip search "how do we handle auth failures" --mode semantic
+rip search "how do we handle auth failures" --workspace-id <workspace-uuid>
 rip search "termination clause" --artifact contract-2026
 ```
 
-Options: `--since`, `--limit`, `--offset`, `--artifact-type`, `--mode <hybrid|keyword|semantic>`, `--artifact <id>`. Search lists live artifacts only; nothing in the trash appears.
+Options: `--since`, `--limit`, `--offset`, `--artifact-type`, `--workspace-id <uuid>`, `--artifact <id>` (its passages best first, capped by `--limit`). Search lists live artifacts only; nothing in the trash appears.
 
 Query syntax: `"exact phrase"`, `term1 OR term2`, `-excluded`.
 
@@ -455,6 +456,8 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `SIGN_IN_LOCKED` | Too many wrong codes for this email | Wait until the time in the message (UTC), then request a new code |
 | `ENV_KEY_ROTATION` | `rip auth rotate-key` under `TOKENRIP_API_KEY` | Unset it to rotate a stored key; for a vault key, `rip auth keys create --name <n>` then revoke the old one |
 | `NO_LOCAL_KEYPAIR` | Command needs a keypair identity; this one signed in by email | Not needed: an email-signed-in agent is already on the person's account |
+| `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most) | Get a new code at https://tokenrip.com/run and sign in with it |
+| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys or make codes | Ask the person to use the dashboard's Agents page |
 | `USE_LOGIN` / `RETIRED` | `auth register` / `auth claim` / `auth link` are retired | Use `rip auth login` |
 | `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected | Run `rip account use <name>` or pass `--agent <name>` |
 | `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip account list` to see available accounts |
@@ -473,10 +476,9 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `WORKSPACE_AUTHORITY` | Incompatible standalone sharing fields on a workspace item | Omit the named fields and use audience; keep the content and the why |
 | `STATE_CONFLICT` | Unclassified state conflict | Inspect current state; no resource-version claim is implied |
 | `WORKSPACE_REQUIRED` | `task list` / `task add` without a workspace | Pass `--workspace-id` |
-| `TASK_ALREADY_CLAIMED` | Another harness holds a live claim | The error names `claimedBy` + `leaseExpiresAt` — pick another task |
-| `CLAIM_LOST` | Your lease lapsed mid-run | Results from `task done` are kept as orphaned refs — re-claim and complete again |
-| `NOT_CLAIMANT` | You never held this claim; nothing was persisted | `rip task claim <id>` first, then retry |
-| `TASK_NOT_OPEN` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts | `rip task show <id>` |
+| `TASK_TAKEN` | Someone else is working on the task; nothing was persisted | `holder` (`Held by: …`) says who and until when — pick another task or wait |
+| `TASK_NOT_STARTED` | `stop` on a task that is not Doing | `rip task show <id>` |
+| `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Cancelled (or, for start, done) / already done / not done or cancelled | `rip task reopen <id>` if the work is still wanted; `rip task show <id>` |
 | `INVALID_ASSIGNEE` | `--assignee` is not a current workspace editor who can see the task's audience | `rip workspace member list <ws>` |
 | `INVALID_CURSOR` | Malformed keyset cursor | Cursors are opaque — re-run the query |
 | `SKILL_NOT_FOUND` | No skill by that name in reach of this agent (the message names it) | Add `--team <slug>`, or run as the right agent with `--agent <name>` |

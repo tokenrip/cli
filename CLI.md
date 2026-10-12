@@ -41,7 +41,7 @@ Every command in `@tokenrip/cli` 2.5, grouped by area. `rip --help` and `rip <co
 
 `rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and explicit external members. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
-**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|claim|release|done|dismiss|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads, `task touch` and pins take none.
+**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads and pins take none.
 
 ### `rip workspace create <slug>`
 
@@ -105,7 +105,7 @@ rip workspace pin remove <workspace> <artifact-id>
 
 ### `rip workspace load <workspace>`
 
-Load bounded context: the workspace and your capabilities, pins, artifacts (50), open tasks (20), recent changes (50, each with its `why`), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: `Can:` (capabilities), the browser link, each pin and the latest handoff (inline bodies are printed), recent sessions, open tasks, recent changes, the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
+Load bounded context: the workspace and your capabilities, pins, artifacts (50), open tasks (20), recent changes (50, each with its `why`), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: `Can:` (capabilities), the browser link, each pin and the latest handoff (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks, recent changes (when, `You` or `~alias`, the action, the item's title and id, and its why), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
 rip workspace load <workspace>
@@ -116,7 +116,7 @@ Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cur
 
 ### `rip workspace sessions <workspace>`
 
-Recent sessions, newest first, 20 per page. A session is a run of writes in the workspace by one account, agent key and conversation, each within 45 minutes of the previous one; the server computes it from activity, so nothing is started or ended. Each prints who worked (the agent's key name only for your own account), the tool (`claude-code`, `codex`, `cli`, `dashboard`, …), the time range and change count, the goals in order (the stated whys; "no stated goal" for older writes, "in the browser" for a person's edits), each item changed with its change count and resulting version, and any handoff note. External members see sessions built from shared work only.
+Recent sessions, newest first, 20 per page. A session is a run of writes in the workspace by one account, agent key and conversation, each within 45 minutes of the previous one; the server computes it from activity, so nothing is started or ended. Each prints who worked (`You · <agent> (<tool>)`, `You · <tool>` without a key, plain `You`, or `You · in the browser` for your own account; `~<alias>'s agent · <tool>`, `~<alias> · in the browser` or `~<alias>` for someone else, whose key names are never shown), the time range, `unread` when it holds changes after your acknowledged position, then its **steps**: each stated why ("no stated goal" for older writes, "in the browser" for a person's edits) followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, …; older writes read `updated`), the item's type, title and id, the versions it created (`v6`, or `(deleted)`; past five, the first and the latest four with `…` between), row counts (`+12 ~3 -0 rows`), and for a handoff note `rip artifact cat <id>`. An edit is followed by one diff command for the whole change, `rip artifact diff <id> --from <first> --version-id <last>` (just `--version-id` when the step saved one version); a file the step created gets none. External members see sessions built from shared work only. With `--json`, sessions carry `steps`, `mine` and `unread`; `goals`, `items` and `handoffs` are deprecated.
 
 ```bash
 rip workspace sessions <workspace> [--cursor <nextCursor>]
@@ -154,15 +154,15 @@ rip workspace changes <workspace> [--limit <n>] [--delivery-token <token>]
 rip workspace ack <workspace> --delivery-token <token>
 ```
 
-`changes` returns up to 100 events (default 50), each with its `why` and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
+`changes` returns up to 100 events (default 50), each with its `why`, `actor.alias`, `mine`, `subject { type, id, title }` (an artifact's public id; `title` null when the item is gone or out of reach) and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Human output groups consecutive changes under `You` or `~alias` and the why, one line each with the action, title and id. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
 
 ### Workspace flags on other commands
 
 Workspace content is written with the ordinary commands. Existing-item writes need the applicable precondition the read reported (`PRECONDITION_REQUIRED` when missing, `CONFLICT` with the current value when stale):
 
 ```bash
-rip artifact publish|upload … --workspace-id <ws> [--audience internal|shared] --why "<the goal>"
-rip artifact update <id> <file> --expected-version-id <version-id> [--audience …] [--expected-workspace-revision <n>]
+rip artifact publish|upload … --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"
+rip artifact update <id> <file> --expected-version-id <version-id>   # keeps the audience; change it with patch
 rip artifact patch|move|delete|delete-version … --expected-workspace-revision <n>
 rip artifact bulk … --expected-workspace-revisions '{"<id>": <n>}'
 rip artifact move <id> --folder-id <workspace-folder-uuid> --expected-workspace-revision <n>
@@ -268,7 +268,7 @@ rip artifact update my-doc report-v2.md --type markdown --title "Report (v2)"
 rip artifact update <id> report-v2.md --type markdown --expected-version-id <version-id>   # workspace content
 ```
 
-Options: `--type` (omit for a binary upload), `--description`, `--context`, `--title`, `--alias`, `--expected-version-id <id>`, `--audience <internal|shared>`, `--expected-workspace-revision <n>`, `--why <text>`, `--dry-run`.
+Options: `--type` (omit for a binary upload), `--description`, `--context`, `--title`, `--alias`, `--expected-version-id <id>`, `--why <text>`, `--dry-run`. A new version keeps the artifact's audience; change it with `rip artifact patch --audience`.
 
 ### `rip artifact patch <identifier>`
 
@@ -293,11 +293,14 @@ List versions, or fetch metadata for one with `--version-id <versionId>`.
 
 What changed in a version compared to the one before it. Word-level for text types (markdown, html, code, text, json), row-level for CSV. Defaults to the current version; the earliest version and non-diffable types (chart, file, table) report no diff.
 
+With `--from <versionId>`, one diff of everything the versions from `--from` up to `--version-id` changed, compared with the version before `--from` (the header names that base version). A range diff is computed on each read, not cached. `--from` must be a version of the same artifact (else `NOT_FOUND`) and not later than the version (else `INVALID_FIELD`); `--from` equal to the version is the plain diff.
+
 ```bash
 rip artifact diff my-alias --version-id abc123
+rip artifact diff my-alias --from <firstVersionId> --version-id <lastVersionId>
 ```
 
-Options: `--version-id <versionId>`.
+Options: `--version-id <versionId>`, `--from <versionId>`.
 
 ### `rip artifact delete-version <uuid> <versionId>`
 
@@ -472,7 +475,7 @@ rip artifact list --unfiled
 
 ## Task commands
 
-A **task** is a claimable unit of work in a workspace — every task lives in exactly one, with an `internal` or `shared` audience. Claiming holds a lease so two agents never work the same thing in parallel; completing attaches what the work produced. Task ids are UUIDs; a non-UUID is a `400`. Guide: [`references/tasks.md`](./references/tasks.md).
+A **task** is one item on a workspace's shared to-do list — every task lives in exactly one, with an `internal` or `shared` audience. Its status is `todo`, `doing`, `done` or `cancelled`. Whoever picks one up starts it: the hold belongs to that agent's key (under a lease) or to the person in the browser (no lease), so two agents never work the same thing in parallel; completing attaches what the work produced. Task ids are UUIDs; a non-UUID is a `400`. Guide: [`references/tasks.md`](./references/tasks.md).
 
 ### `rip task list`
 
@@ -482,13 +485,14 @@ List one workspace's tasks, filtered to the audiences you may see.
 rip task list --workspace-id 7a1c2d1e-…
 rip task list --workspace-id 7a1c2d1e-… --status all --limit 20
 rip task list --workspace-id 7a1c2d1e-… --kind process-call --mine --since 7
+rip task list --workspace-id 7a1c2d1e-… --status done,cancelled --order finished
 ```
 
-Required: `--workspace-id <id>`; the CLI rejects omission before sending a request. Options: `--status <list>` (comma list of `open,claimed,done,dismissed` or `all`; default `open,claimed`), `--kind <kind>`, `--mine` (suggested to or claimed by you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>`.
+Required: `--workspace-id <id>`; the CLI rejects omission before sending a request. Options: `--status <list>` (comma list of `todo,doing,done,cancelled` or `all`; default `todo,doing`), `--order <created|finished>` (`created`, newest first, is the default; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--kind <kind>`, `--mine` (suggested to you or held by you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row names who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`) or the suggestion (`? <account>`).
 
 ### `rip task show <id>`
 
-One task with its body, payload, and results.
+One task with its holder (`Doing:` who, since, and an agent hold's lease), body, payload, and results; a cancelled task shows `Cancelled:` with who and the reason.
 
 ### `rip task add <title>`
 
@@ -511,33 +515,33 @@ rip task update 4f2c1b90-… --expected-revision 3 --title "Review pricing copy 
 
 Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--audience`, `--why <text>`.
 
-### `rip task claim <id>`
+### `rip task start <id>`
 
-Claim a task. Holds a lease; re-claiming your own extends it. Every task must be claimed before it completes.
+Start a free task (To do, or an agent hold whose lease lapsed): it becomes your key's hold under a lease. Starting a task you already hold renews the lease, never shorter.
 
-Options: `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. `TASK_ALREADY_CLAIMED` names the claimant and the lease expiry.
+Options: `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. Someone else's live hold is `TASK_TAKEN`, which names the holder (`Held by: …`); a done or cancelled task is `TASK_CLOSED`.
 
-### `rip task touch <id>`
+### `rip task stop <id>`
 
-Extend the lease on a task you hold. Forward-only. Option: `--lease-hours <n>`. Takes no why.
-
-### `rip task release <id>`
-
-Give up your claim. A workspace admin may release anyone's. Option: `--why <text>`.
+Put a task you hold back in To do. The person may stop their own agents' holds and a workspace admin anyone's; anyone else gets `TASK_TAKEN`. A task that is not Doing is `TASK_NOT_STARTED`. Option: `--why <text>`.
 
 ### `rip task done <id>`
 
-Complete a task you hold, recording what it produced.
+Complete a task that is free or yours, from To do as well as Doing, recording what it produced.
 
 ```bash
 rip task done 4f2c1b90-… --result artifact:a1b2c3d4-…@2 --result url:https://example.com/report
 ```
 
-Options: `--result <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50), `--why <text>`. If your lease lapsed but nobody took over, results are kept (flagged `orphaned`) and you get `CLAIM_LOST`; if you never held the claim, nothing is written and you get `NOT_CLAIMANT`.
+Options: `--result <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`. Older results kept after a lost lease still show, flagged `orphaned`.
 
-### `rip task dismiss <id>` / `rip task reopen <id>`
+### `rip task cancel <id>` / `rip task reopen <id>`
 
-Dismiss a task (reopenable), or reopen a done or dismissed one. `dismiss` takes `--reason <text>`; both take `--why <text>`.
+Cancel a task that will not be done (from To do or Doing; reopenable), or reopen a done or cancelled one. `cancel` takes `--reason <text>`; both take `--why <text>`.
+
+### Deprecated: `rip task claim`, `touch`, `release`, `dismiss`
+
+Hidden aliases kept until the old task vocabulary is retired. Each prints `Deprecated: use rip task start` (or `stop`, `cancel`) on stderr and runs the new command: `claim` and `touch` run `start` (so `touch` now needs a why), `release` runs `stop`, `dismiss` runs `cancel`.
 
 A task's history is workspace activity: read it with `rip workspace changes <workspace>`.
 
@@ -583,25 +587,26 @@ rip activity --subject connection:4f2c1b90-…
 
 Options: `--team <slug>` (default: your own scope), `--type <list>` (e.g. `connection.created,team.member_removed`), `--actor <who>` (account id or alias, or `system`), `--subject <type>:<id>`, `--since <iso-or-days>`, `--limit <n>` (max 200), `--cursor <cursor>`.
 
-Claims, activity rows and sessions record the harness you ran from: `claude-code` under Claude Code, `codex` under Codex, else `cli`. Set `TOKENRIP_SURFACE=<harness>` to override; the CLI sends it as the `X-Tokenrip-Surface` header on every request. It also sends your harness conversation in `X-Tokenrip-Conversation` (`TOKENRIP_CONVERSATION`, else Claude Code's `CLAUDE_CODE_SESSION_ID`, else Codex's `CODEX_THREAD_ID`; the server stores only a hash), so parallel conversations on one key form separate sessions, and identifies itself as `User-Agent: tokenrip-cli/<version>`.
+Task holds, activity rows and sessions record the harness you ran from: `claude-code` under Claude Code, `codex` under Codex, else `cli`. Set `TOKENRIP_SURFACE=<harness>` to override; the CLI sends it as the `X-Tokenrip-Surface` header on every request. It also sends your harness conversation in `X-Tokenrip-Conversation` (`TOKENRIP_CONVERSATION`, else Claude Code's `CLAUDE_CODE_SESSION_ID`, else Codex's `CODEX_THREAD_ID`; the server stores only a hash), so parallel conversations on one key form separate sessions, and identifies itself as `User-Agent: tokenrip-cli/<version>`.
 
 ## Search
 
 ### `rip search <query>`
 
-Search across artifact content — hybrid keyword + semantic when enabled. Results are ranked by relevance with highlighted snippets. Supports `"exact phrase"`, `term1 OR term2`, and `-excluded`.
+Search across artifact content. Results are ranked by relevance with highlighted snippets. Supports `"exact phrase"`, `term1 OR term2`, and `-excluded`.
 
 ```bash
 rip search "quarterly report"
 rip search "deploy" --artifact-type code --since 7
-rip search "how do we handle auth failures" --mode semantic
-rip search "termination clause" --artifact contract-2026
+rip search "how do we handle auth failures" --workspace-id <workspace-uuid>
+rip search "termination clause" --artifact contract-2026 --limit 5
 ```
 
-Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200), `--offset <n>`, `--artifact-type <type>`, `--mode <hybrid|keyword|semantic>`, `--artifact <id>`. Search finds live artifacts only.
+Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200), `--offset <n>`, `--artifact-type <type>`, `--workspace-id <uuid>`, `--artifact <id>`. Search finds live artifacts only.
 
-- `--mode hybrid` (default) fuses keyword and semantic similarity and falls back to keyword when semantic search isn't enabled for the account; `keyword` is exact/stemmed only; `semantic` is meaning-based only and errors if not enabled.
-- `--artifact` scopes the search to one artifact and returns its most relevant chunks (hybrid or semantic mode).
+- `--workspace-id` searches one workspace, named by its UUID (a slug is a 400 `INVALID_FIELD`; a workspace you cannot read is a 404 `WORKSPACE_NOT_FOUND`). Every workspace document is indexed by meaning, so a plain-language question works: the ranking blends keywords with meaning (`mode: hybrid`) and each result lists its best passages (section heading and full text, up to 3). `pending: N` means N chunks are not yet searchable by meaning (just written); they still match by keyword. If the server has no embedding provider, or it is unavailable, the search ranks by keyword (`mode: keyword`).
+- `--artifact` scopes the search to one artifact and returns one result with up to `--limit` passages (default 50), ranked best first; pass a small `--limit` for just the best few. It ranks hybrid when the artifact lives in a workspace, keyword otherwise. Combined with a `--workspace-id` other than the artifact's own, it is a 400 `INVALID_FIELD`.
+- Outside a workspace, search ranks by keyword only.
 
 ## Connection commands
 
@@ -801,7 +806,7 @@ Refresh the local team cache from the server — run it after another agent adds
 
 ### `rip auth login`
 
-Sign in with the person's email. Without `--code`, Tokenrip emails a six-digit code (10 minutes, single use; a new one can be requested after a minute). With `--code` (emailed, or made by a connected agent or the dashboard), the CLI gets a key of its own on the person's account, saves it as a keypair-less identity in `identities.json`, and makes it the current account. No other agent's key is touched. Signing in again on an account this machine holds revokes the key it replaces (best-effort; `previous_key` in the output says `revoked`, `already_invalid`, or `not_revoked`, and a key that was found but not revoked is named in `previous_key_id` so you can run `rip auth keys revoke <id>`). If `TOKENRIP_API_KEY` is set, or `TOKENRIP_AGENT` names another identity, later commands keep using that instead of this sign-in: the output carries `overridden_by` (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) and the human output warns; unset the variable to use the sign-in.
+Sign in with the person's email. Without `--code`, Tokenrip emails a six-digit code (10 minutes, single use; a new one can be requested after a minute). With `--code` (emailed, or made by a connected agent or the dashboard), the CLI gets a key of its own on the person's account, saves it as a keypair-less identity in `identities.json`, and makes it the current account. No other agent's key is touched. Signing in again on an account this machine holds revokes the key it replaces (best-effort; `previous_key` in the output says `revoked`, `already_invalid`, or `not_revoked`, and a key that was found but not revoked is named in `previous_key_id` so you can run `rip auth keys revoke <id>`). A run code (from the key sign-in page, https://tokenrip.com/run) returns a run key instead (`outcome: run`): it acts as the agent's saved key, ends after 12 hours without use and 24 hours at most, cannot manage keys, and revokes no key; the output names the agent and carries `ends_by`, `idle_timeout_seconds` and `renew_url`. If `TOKENRIP_API_KEY` is set, or `TOKENRIP_AGENT` names another identity, later commands keep using that instead of this sign-in: the output carries `overridden_by` (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) and the human output warns; unset the variable to use the sign-in.
 
 ```bash
 rip auth login --email ana@example.com                  # emails a code
@@ -903,7 +908,7 @@ Check for a newer CLI and install it via npm, then print how to refresh the skil
 
 ## Several agents, one account
 
-Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Hand off with `rip auth code`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_claim`, `connection_call`, `key_list`, `sign_in_code_create`, …).
+Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Hand off with `rip auth code`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_call`, `key_list`, `sign_in_code_create`, …).
 
 ## Library usage
 
@@ -980,7 +985,7 @@ Environment variables take precedence over the config file:
 | `TOKENRIP_AGENT` | Active account (alias or account ID) |
 | `TOKENRIP_OUTPUT` | Output format (`human` or `json`) |
 | `TOKENRIP_CONFIG_DIR` | Config directory |
-| `TOKENRIP_SURFACE` | Harness name recorded on claims and activity (default `claude-code`, `codex` or `cli`) |
+| `TOKENRIP_SURFACE` | Harness name recorded on task holds and activity (default `claude-code`, `codex` or `cli`) |
 | `TOKENRIP_WHY` | The `--why` for every writing command that does not pass one |
 | `TOKENRIP_CONVERSATION` | Conversation id sent as `X-Tokenrip-Conversation` (default: `CLAUDE_CODE_SESSION_ID`, then `CODEX_THREAD_ID`) |
 
@@ -1008,6 +1013,8 @@ Client-side codes:
 | `INVALID_TYPE` | Publish type not one of: markdown, html, chart, code, text, json, csv, table |
 | `UNAUTHORIZED` | API key not valid (revoked, or a bodiless 401). If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it. Otherwise sign in again: `rip auth login --email <email>` |
 | `NO_LOCAL_KEYPAIR` | The command signs with a local keypair; this identity signed in by email |
+| `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most). Get a new code at https://tokenrip.com/run and sign in with it |
+| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys or make codes. Ask the person to use the dashboard's Agents page |
 | `USE_LOGIN` / `RETIRED` | A retired setup command (`auth register` / `auth claim`, `auth link`); use `rip auth login` |
 | `TIMEOUT` | Transport expiry; compare local elapsed and configured timeout |
 | `NETWORK_ERROR` | Transport or local processing failure; a response may have arrived |
@@ -1030,7 +1037,8 @@ Common server codes:
 | `SESSION_END_RETIRED` | `rip workspace session end`: sessions record themselves; leave a note with `rip artifact publish … --handoff` |
 | `ALREADY_IN_WORKSPACE` / `CROSS_WORKSPACE_MOVE` | Adoption or move refused |
 | `TEAM_OWNS_WORKSPACES` | The team still owns workspaces |
-| `TASK_ALREADY_CLAIMED` / `CLAIM_LOST` / `NOT_CLAIMANT` | Claim races and lapsed leases |
+| `TASK_TAKEN` | Someone else holds the task; the details carry `holder` (printed as `Held by: …`). Nothing was written |
+| `TASK_NOT_STARTED` / `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts (`stop` needs Doing; a cancelled task must be reopened first) |
 | `CONNECTION_FORBIDDEN` / `CONNECTION_NOT_FOUND` | Not allowed to use, or no such enabled, connection |
 | `SKILL_NOT_FOUND` / `SKILL_FORBIDDEN` | Skill not in reach (or missing); in reach but you may not share or delete it |
 | `INVALID_SKILL` | The folder breaks a skill rule; `reason` says which (`references/skills.md`) |
