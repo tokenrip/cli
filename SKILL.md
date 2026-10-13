@@ -17,7 +17,7 @@ description: >-
   web browsing or scraping (use browser tools), database queries,
   or git operations. Tokenrip holds shared project work, not local
   development workflows.
-version: 2.5.1
+version: 2.5.2
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.5.1 -->
+<!-- tokenrip-skill-version: 2.5.2 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -128,7 +128,7 @@ Duplicate workspace names require selection by UUID, slug, home and capabilities
 
 Creation audience and a handoff require an explicit workspace identity. Omit `--visibility`, `--team`, `--folder`, and `--public-asset` when creating workspace content. `private` is standalone owner-private access; it does not mean workspace internal. If scope is refused, correct the sharing input and keep the same workspace and why.
 
-Every item in a workspace has an **audience**: `internal` (the owner or owning team) or `shared` (external members too). New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
+Every item in a workspace has an **audience**: `internal` (the owner, the owning team and internal members) or `shared` (external members too). New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
 
 Activity sequences are positions, not counts or content versions; `load` can show current content with an older fixed history window. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
 
@@ -153,6 +153,9 @@ Replace a workspace document's content?
 
 Bring a standalone artifact or folder into the workspace?
   → rip workspace adopt <workspace-id> <artifact-or-folder-id> --audience internal|shared
+
+Bring someone in (by email, even with no Tokenrip account)?
+  → rip workspace member add <workspace-id> <email> --why "<the person's goal>"   # internal by default; --membership external for shared items only
 
 Change what external members can see?
   → rip artifact patch <id> --audience shared --expected-workspace-revision <n>
@@ -444,7 +447,7 @@ rip table update 660f9500-... <row-id> --data '{"status":"contacted"}'
 
 For signing in, handing off to another agent (`rip auth code`), managing keys (`rip auth keys`), keys for vault hosts, multiple accounts, or keypair identities, read `references/setup-and-identity.md`.
 
-For workspaces (load, why, sessions and handoff notes, pins, browser context and navigation, adopt, internal/shared audience, external members, guarded writes, changes and ack), read `references/workspaces.md`.
+For workspaces (load, why, sessions and handoff notes, pins, browser context and navigation, adopt, internal/shared audience, members and email invites, guarded writes, changes and ack), read `references/workspaces.md`.
 
 For starting, stopping and completing tasks (holds and leases, who holds what, results) and the account/team activity feed, read `references/tasks.md`.
 

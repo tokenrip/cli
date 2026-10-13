@@ -1642,20 +1642,24 @@ withWhy(workspace
   }));
 
 // workspace member subgroup
-const workspaceMember = workspace.command('member').description('Manage workspace members');
+const workspaceMember = workspace.command('member').description('Invite people to a workspace and manage their access');
+const memberTargetHelp = 'Member row id (from `member list`), account id, or email address (its person\'s primary-account row, or the row an add or invite by it made)';
 withWhy(workspaceMember
   .command('set-role'))
   .argument('<workspace>', 'Workspace UUID')
-  .argument('<account-id>', 'External account UUID')
+  .argument('<member>', memberTargetHelp)
   .requiredOption('--role <role>', 'viewer | editor')
-  .description('Change an external member role')
-  .action(wrapCommand(async (ws, accountId, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(ws, accountId, options.role, options); }));
+  .option('--membership <membership>', 'internal (sees everything) | external (shared items only); kept when omitted')
+  .description('Change a member\'s or invite\'s access (workspace admins only)')
+  .action(wrapCommand(async (ws, member, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(ws, member, options.role, options); }));
 withWhy(workspaceMember
   .command('add'))
   .argument('<workspace>', 'Workspace id (UUID)')
-  .argument('<account>', 'Account id or alias to add')
+  .argument('<account>', 'Email, alias or account id. An email with no Tokenrip account becomes an invite')
+  .option('--membership <membership>', 'internal (sees everything) | external (shared items only) (default internal)')
   .option('--role <role>', 'viewer | editor (default editor)')
-  .description('Add a member to a workspace')
+  .option('--note <text>', 'A short note for the invite email (at most 280 characters)')
+  .description('Add or invite someone (internal admins and editors). Tokenrip emails invites and adds by address, naming your verified address; an add by alias or id is emailed only when both accounts have one verified person')
   .action(wrapCommand(async (ws, account, options) => {
     const { workspaceMemberAdd } = await import('./commands/workspace.js');
     await workspaceMemberAdd(ws, account, options);
@@ -1663,16 +1667,16 @@ withWhy(workspaceMember
 withWhy(workspaceMember
   .command('remove'))
   .argument('<workspace>', 'Workspace id (UUID)')
-  .argument('<account>', 'Account id to remove')
-  .description('Remove a member from a workspace')
-  .action(wrapCommand(async (ws, account, options) => {
+  .argument('<member>', memberTargetHelp)
+  .description('Remove a member or cancel an invite (workspace admins only)')
+  .action(wrapCommand(async (ws, member, options) => {
     const { workspaceMemberRemove } = await import('./commands/workspace.js');
-    await workspaceMemberRemove(ws, account, options);
+    await workspaceMemberRemove(ws, member, options);
   }));
 workspaceMember
   .command('list')
   .argument('<workspace>', 'Workspace id (UUID)')
-  .description('List workspace members')
+  .description('List members and pending invites (each invite has a shareable inviteUrl)')
   .action(wrapCommand(async (ws) => {
     const { workspaceMemberList } = await import('./commands/workspace.js');
     await workspaceMemberList(ws);

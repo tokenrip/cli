@@ -1,6 +1,6 @@
 # Workspaces
 
-A workspace is the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an internal/shared audience per item and explicit external members. Commands: `rip workspace …` (alias `rip ws`). Identifier: the workspace **UUID** (these commands do not resolve slugs). API: `/v0/workspaces`; MCP: the `workspace_*` tools (`workspace_list`, `workspace_load`, `workspace_changes`, …). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
+A workspace is the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an internal/shared audience per item and members you add or invite by email. Commands: `rip workspace …` (alias `rip ws`). Identifier: the workspace **UUID** (these commands do not resolve slugs). API: `/v0/workspaces`; MCP: the `workspace_*` tools (`workspace_list`, `workspace_load`, `workspace_changes`, …). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
 
 ## Membership and audience
 
@@ -8,9 +8,9 @@ Membership is resolved live:
 
 - The personal owner, or the owning team's owner and admins, are internal **admins**.
 - Other members of the owning team are internal **editors**.
-- An admin may add outside accounts as external **viewers** or **editors**.
+- People added to the workspace are members with the access they were given: **internal** (they see everything) or **external** (shared items only), each as an **editor** or a **viewer**. Internal editors may invite; only admins change or remove access.
 
-Every item has an `audience`: `internal` (owner or team only) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full UUID, slug, personal/team home, `membership/role`, and permitted capabilities; `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
+Every item has an `audience`: `internal` (the owner, the team and internal members) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full UUID, slug, personal/team home, `membership/role`, and permitted capabilities; `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
 
 ## When to use
 
@@ -20,7 +20,8 @@ Every item has an `audience`: `internal` (owner or team only) or `shared` (exter
 - "this document the operator is looking at" → `rip workspace view context <workspace-id>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
 - "open that document in their browser" → `rip workspace view open …` and read the receipt (`queued` / `deferred` / `applied` / `disconnected`)
 - "share this with the client" → `rip workspace adopt … --audience shared` for standalone content, `rip artifact patch <id> --audience shared --expected-workspace-revision <n>` for a workspace artifact, `rip folder share-contents` for a folder and everything in it
-- "give the client access" → `rip workspace member add <workspace-id> <account> --role viewer|editor`
+- "invite bob@example.com to this" → `rip workspace member add <workspace-id> bob@example.com --why "<the goal>"`, then read the row's `status`: `invited` (no account holds the address) → tell the person "invited" and give the `inviteUrl`; `member` (a verified address, alias or id) → they are in, and `inviteUrl` is null ([Members and invites](#members-and-invites))
+- "give the client read access to what we share" → `rip workspace member add <workspace-id> <email> --membership external --role viewer --why "<the goal>"`
 - "bring an existing artifact or folder into the workspace" → `rip workspace adopt`
 - "hand off" → nothing to end: your session is recorded. For decisions and loose ends, `rip artifact publish <file> --type markdown --title "Handoff: ..." --workspace-id <ws> --handoff --why "<the goal>"`
 
@@ -34,10 +35,10 @@ rip workspace update <workspace-id> [--name <name>] [--description <text>]
 rip workspace delete <workspace-id>                  # admins; moves it and everything in it to the trash for 30 days
 rip trash restore workspace <workspace-id>           # bring it back, as it was, until its purge date
 
-rip workspace member list <workspace-id>             # external members only; internal access is derived, never listed
-rip workspace member add <workspace-id> <account> [--role viewer|editor]   # account id or alias; default editor
-rip workspace member set-role <workspace-id> <account-id> --role viewer|editor
-rip workspace member remove <workspace-id> <account>
+rip workspace member list <workspace-id>             # members and pending invites; owner and team access are not listed
+rip workspace member add <workspace-id> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]
+rip workspace member set-role <workspace-id> <member> --role viewer|editor [--membership internal|external]
+rip workspace member remove <workspace-id> <member>
 ```
 
 `--team-id` takes the team's UUID (`rip team list` prints it); only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`).
@@ -46,7 +47,19 @@ Every write here (create, update, delete, member add/set-role/remove, adopt) tak
 
 Deleting a workspace needs `deleteWorkspace` (internal admins) and nothing else: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore workspace <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. Agents cannot purge early; a person can choose Delete forever in the dashboard.
 
-Adding someone who is already internal (the owner or a team member) is refused (`WORKSPACE_MEMBER_INTERNAL`). When an external member later joins the owning team, their external grant is consumed, so leaving the team ends access. Removals and downgrades take effect on the next request and stop any task holds the new role does not allow (the tasks go back to To do).
+## Members and invites
+
+Bring someone in by their email address, whether or not they use Tokenrip. `member add` also takes an alias or account id. The defaults are `--membership internal` (they see everything, as you do) and `--role editor`; pass `--membership external` for a guest who sees shared items only, and `--role viewer` for read-only. Internal admins and editors may add and invite; only admins change someone's access or remove them.
+
+- **An address with no Tokenrip account** becomes an invite: the row comes back with `status: "invited"`, the address in `email`, and an `inviteUrl`. Tokenrip emails the person, naming the inviter (the verified address of the person who owns your account), the workspace and the access, quoting your `--note` (plain text, at most 280 characters), with a button to the invite page and a line they can paste into an AI assistant. Nothing in the email or the link signs anyone in, so the `inviteUrl` is safe to share in a chat as well.
+- **The invite is claimed by signing in.** When the person signs in with the six-digit code Tokenrip emails to that address (in the browser, or through an agent following `https://tokenrip.com/setup`), every invite waiting on the address becomes their membership. There is no accept step. The row then reads `status: "member"` with their `accountId`.
+- **Someone who already uses Tokenrip** (their verified address, alias or account id) is added at once: the row comes back with `status: "member"` and `inviteUrl: null`. An add by address emails them that they were added; an add by alias or id emails them only when their account has one verified person and yours has one to send from. Their agents see the workspace on their next `rip workspace list`.
+
+Adding the same person again with the same access changes nothing, except that it resends a pending invite. Adding them with different access needs an admin. `set-role` and `remove` take the member row's `id` from `member list`, an account id, or an email address. An address finds the row of the person who holds it, on their primary account, or the row an add or invite by that address made; for a member on another of their accounts, use the row `id`. Removing an invite cancels it.
+
+An add by email needs a verified person behind your account to send from: without one it is refused `NO_OPERATOR` (or `OPERATOR_AMBIGUOUS` when several people share the account). An add by alias or id then goes ahead with no email, and a `--note` is refused, since nothing carries it. Invite emails are limited per person: by default 20 an hour across all your accounts, one per invite an hour, and one per address an hour; past them the add is refused `RATE_LIMITED`, except that an add of an existing account by alias or id without a note goes ahead without the email.
+
+Adding someone who is already internal (the owner or a member of the owning team) is refused (`WORKSPACE_MEMBER_INTERNAL`). When a member later joins the owning team, their stored membership is consumed, so leaving the team ends access. Removals and downgrades take effect on the next request and stop any task holds the new role does not allow (the tasks go back to To do).
 
 ## Adopt existing content
 
@@ -225,6 +238,9 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 | `WORKSPACE_AUTHORITY` | The item is governed by a workspace; use the workspace write path (with its precondition) instead of the standalone one |
 | `PRECONDITION_REQUIRED` / `CONFLICT` | Missing or stale version id / revision — re-read and retry |
 | `WORKSPACE_MEMBER_INTERNAL` | The account already has internal access |
+| `WORKSPACE_MEMBER_NOT_FOUND` | `set-role` named no member or invite in this workspace; use an `id` from `member list` |
+| `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` | An invite by email needs one verified person behind your account to send it from; have the person invite from the dashboard |
+| `RATE_LIMITED` | Too many invite emails in the last hour; share a pending invite's `inviteUrl` instead, or try later |
 | `ALREADY_IN_WORKSPACE` / `MIXED_OWNERSHIP` / `INELIGIBLE_STORAGE` / `WORKSPACE_BULK_LIMIT` | Adoption refused before any effect |
 | `CROSS_WORKSPACE_MOVE` | The folder and the artifact belong to different workspaces |
 | `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed with Delete forever in the dashboard |

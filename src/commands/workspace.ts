@@ -2,6 +2,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { formatTrashed, formatWorkspace, formatWorkspaceList, formatWorkspaceChanges, formatWorkspaceLoad, formatWorkspaceSessions, formatWorkspaceViewReceipt } from '../formatters.js';
 import { parseNonNegativeInteger } from '../input.js';
+import { CliError } from '../errors.js';
 
 export interface WorkspaceSummary {
   id: string; slug: string; name: string; description: string | null;
@@ -28,8 +29,16 @@ export async function workspaceShow(workspace: string): Promise<void> { const { 
 export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.patch(workspacePath(workspace), { name: options.name, description: options.description, why: options.why }); outputSuccess(data.data, formatWorkspace); }
 export async function workspaceDelete(workspace: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.delete(workspacePath(workspace), deleteBody(options)); outputSuccess(data.data, formatTrashed); }
 
-export async function workspaceMemberAdd(workspace: string, account: string, options: { role?: string } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { account, role: options.role, why: options.why }); outputSuccess(data.data); }
-export async function workspaceMemberSetRole(workspace: string, accountId: string, role: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.patch(`${workspacePath(workspace)}/members/${encodeURIComponent(accountId)}`, { role, why: options.why }); outputSuccess(data.data); }
+const WORKSPACE_MEMBERSHIPS = ['internal', 'external'] as const;
+/** `--membership`: checked before any request. Omitted, nothing is sent (add defaults to internal; set-role keeps it). */
+function parseMembership(value: string | undefined): string | undefined {
+  if (value === undefined || (WORKSPACE_MEMBERSHIPS as readonly string[]).includes(value)) return value;
+  throw new CliError('INVALID_ARGUMENT', `--membership must be ${WORKSPACE_MEMBERSHIPS.join(' or ')}`);
+}
+/** Add or invite by email, alias or account id. `note` goes in the invite email. */
+export async function workspaceMemberAdd(workspace: string, account: string, options: { role?: string; membership?: string; note?: string } & WhyOption): Promise<void> { const membership = parseMembership(options.membership); const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { account, role: options.role, membership, note: options.note, why: options.why }); outputSuccess(data.data); }
+/** `member` is the member row id, an account id, or an email address (resolved by the server). */
+export async function workspaceMemberSetRole(workspace: string, member: string, role: string, options: { membership?: string } & WhyOption = {}): Promise<void> { const membership = parseMembership(options.membership); const { client } = requireAuthClient(); const { data } = await client.patch(`${workspacePath(workspace)}/members/${encodeURIComponent(member)}`, { role, membership, why: options.why }); outputSuccess(data.data); }
 export async function workspaceMemberRemove(workspace: string, account: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); await client.delete(`${workspacePath(workspace)}/members/${encodeURIComponent(account)}`, deleteBody(options)); outputSuccess({ ok: true }); }
 export async function workspaceMemberList(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/members`); outputSuccess(data.data); }
 

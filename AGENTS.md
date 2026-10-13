@@ -73,9 +73,9 @@ rip workspace show <workspace-id>
 rip workspace update <workspace-id> --name <name>
 rip workspace delete <workspace-id>                    # to the trash with everything in it, for 30 days
 rip trash restore workspace <workspace-id>
-rip workspace member add <workspace-id> <account> --role viewer|editor
-rip workspace member set-role <workspace-id> <account-id> --role viewer|editor
-rip workspace member list <workspace-id>  ·  rip workspace member remove <workspace-id> <account>
+rip workspace member add <workspace-id> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]   # invite by email; internal editor by default
+rip workspace member set-role <workspace-id> <member> --role viewer|editor [--membership internal|external]
+rip workspace member list <workspace-id>  ·  rip workspace member remove <workspace-id> <member>   # <member>: row id, account id, or the invited email
 
 # Bring standalone content in; pin read-on-load context
 rip workspace adopt <workspace-id> <artifact-id> --audience internal|shared
@@ -88,7 +88,7 @@ rip workspace view context <workspace-id>
 rip workspace view open <workspace-id> <artifact-id> --operation-id <id> --expected-context-generation <n>
 ```
 
-Every item in a workspace has an **audience**: `internal` (owner or owning team) or `shared` (external members too). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags, and existing-item changes carry the applicable precondition the read reported:
+Every item in a workspace has an **audience**: `internal` (owner, owning team, and internal members) or `shared` (external members too). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags, and existing-item changes carry the applicable precondition the read reported:
 
 ```bash
 rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"

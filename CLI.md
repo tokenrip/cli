@@ -39,7 +39,7 @@ Every command in `@tokenrip/cli` 2.5, grouped by area. `rip --help` and `rip <co
 
 ## Workspace commands
 
-`rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and explicit external members. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
+`rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and members you add or invite by email. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
 **Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads and pins take none.
 
@@ -72,16 +72,22 @@ Move a workspace and everything in it to the trash, restorable for 30 days. Admi
 
 ### `rip workspace member …`
 
-External members only; internal access is derived live from the owner or owning team and is never listed.
+Invite people by email, or add existing users by alias or account id. The owner and the owning team's access is derived live and never listed; `list` shows everyone added, and pending invites.
 
 ```bash
 rip workspace member list <workspace>
-rip workspace member add <workspace> <account> [--role viewer|editor]      # account id or alias; default editor
-rip workspace member set-role <workspace> <account-id> --role viewer|editor
-rip workspace member remove <workspace> <account>
+rip workspace member add <workspace> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]
+rip workspace member set-role <workspace> <member> --role viewer|editor [--membership internal|external]
+rip workspace member remove <workspace> <member>
 ```
 
-Each member write takes `--why <text>`. Adding an account that already has internal access is refused (`WORKSPACE_MEMBER_INTERNAL`).
+- **Access.** `--membership internal` (the default) sees everything; `external` sees shared items only, for a guest. `--role` defaults to `editor`; `viewer` is read-only. Internal admins and editors may add and invite (`inviteMembers`); only admins change access or remove (`manageWorkspace`).
+- **Invite by email.** An address with no Tokenrip account becomes an invite: the row has `status: "invited"`, `email`, and an `inviteUrl` that is safe to share (it signs no one in). Tokenrip emails the person, naming the inviter (the verified address of the person behind your account), the workspace and the access, with your `--note` (plain text, at most 280 characters), a link to the invite page and a line to paste into an AI assistant. Signing in with the six-digit code emailed to that address, in the browser or through an agent, claims every invite waiting on it; there is no accept step.
+- **Existing users** (a verified address, an alias or an account id) are added at once. An add by address emails them that they were added; an add by alias or account id emails them only when their account has one verified person and yours has one to send from.
+- **Targets.** `set-role` and `remove` take the row `id` from `list`, an account id, or an email address. An address finds the row of the person who holds it, on their primary account, or the row an add or invite by that address made; for a member on another of their accounts, use the row `id`. `remove` on an invite cancels it.
+- **Refusals.** An add by email with no single verified person behind your account is `NO_OPERATOR` / `OPERATOR_AMBIGUOUS`; an add by alias or id then sends no email, and `--note` is `INVALID_FIELD`. Invite emails are limited per person (by default 20 an hour, one per invite an hour, one per address an hour): past them an add is `RATE_LIMITED`, except an add of an existing account by alias or id without a note, which goes ahead without the email. Adding an account that already has internal access through ownership or the team is refused (`WORKSPACE_MEMBER_INTERNAL`).
+
+Each member write takes `--why <text>`.
 
 ### `rip workspace adopt <workspace> <item>`
 
