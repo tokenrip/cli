@@ -24,6 +24,27 @@ export interface DomainErrorDetails {
   workspaceRevision?: number;
   /** `TASK_TAKEN`: who holds the task, as the server projects it (never a key id). */
   holder?: TaskHolderDetails;
+  /** `REVIEW_NOT_YOURS` / `INVALID_REVIEWER`: whom the review is addressed to; null: any person who can edit tasks. */
+  reviewer?: TaskPrincipalDetails | null;
+  /** `TASK_NOT_IN_REVIEW`: where the task is now. */
+  status?: string;
+  /** `TASK_NOT_IN_REVIEW`: who decided it, when it was decided. */
+  decision?: TaskDecisionDetails | null;
+}
+/** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
+export interface TaskPrincipalDetails {
+  account: { id: string; alias: string | null };
+  agent: { id: string | null; name: string | null; harness: string | null } | null;
+  mine: boolean;
+  isCaller: boolean;
+}
+/** The server's task decision projection (plan D4), copied field by field. */
+export interface TaskDecisionDetails {
+  outcome: 'approved' | 'skipped';
+  at: string;
+  by: TaskPrincipalDetails | null;
+  byInstructions: { version: number; agent: TaskPrincipalDetails } | null;
+  edited: boolean;
 }
 /** The server's task `holder` projection (workspace tasks plan D5), copied field by field. */
 export interface TaskHolderDetails {
@@ -109,8 +130,59 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   else if (code === 'TASK_TAKEN') {
     const holder = taskHolderDetails(body.holder);
     if (holder) details.holder = holder;
+  } else if (code === 'REVIEW_NOT_YOURS' || code === 'INVALID_REVIEWER') {
+    if (body.reviewer === null) details.reviewer = null;
+    else {
+      const reviewer = taskPrincipalDetails(body.reviewer);
+      if (reviewer) details.reviewer = reviewer;
+    }
+  } else if (code === 'TASK_NOT_IN_REVIEW') {
+    if (typeof body.status === 'string' && TASK_STATUSES.has(body.status)) details.status = body.status;
+    if (body.decision === null) details.decision = null;
+    else {
+      const decision = taskDecisionDetails(body.decision);
+      if (decision) details.decision = decision;
+    }
   }
   return Object.keys(details).length ? details : undefined;
+}
+
+/** The server's `TASK_STATUSES` (apps/backend/src/db/models/task-vocabulary.ts). */
+const TASK_STATUSES: ReadonlySet<string> = new Set(['todo', 'doing', 'review', 'done', 'cancelled']);
+const nullableShortString = (value: unknown): value is string | null => value === null || shortString(value);
+
+/** A task principal, every field checked; anything malformed drops the whole principal. */
+function taskPrincipalDetails(value: unknown): TaskPrincipalDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const p = value as Record<string, unknown>;
+  const account = p.account as Record<string, unknown> | undefined;
+  const agent = p.agent as Record<string, unknown> | null | undefined;
+  if (!account || typeof account !== 'object' || !shortString(account.id) || !nullableShortString(account.alias)) return undefined;
+  if (agent !== null && !(agent && typeof agent === 'object' && nullableShortString(agent.id) && nullableShortString(agent.name) && nullableShortString(agent.harness))) return undefined;
+  if (typeof p.mine !== 'boolean' || typeof p.isCaller !== 'boolean') return undefined;
+  return {
+    account: { id: account.id, alias: account.alias as string | null },
+    agent: agent ? { id: agent.id as string | null, name: agent.name as string | null, harness: agent.harness as string | null } : null,
+    mine: p.mine, isCaller: p.isCaller,
+  };
+}
+
+/** A task decision, every field checked; anything malformed drops the whole decision. */
+function taskDecisionDetails(value: unknown): TaskDecisionDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const d = value as Record<string, unknown>;
+  if (d.outcome !== 'approved' && d.outcome !== 'skipped') return undefined;
+  if (typeof d.at !== 'string' || !ISO_DATE.test(d.at) || typeof d.edited !== 'boolean') return undefined;
+  const by = d.by === null ? null : taskPrincipalDetails(d.by);
+  if (by === undefined) return undefined;
+  let byInstructions: TaskDecisionDetails['byInstructions'] = null;
+  if (d.byInstructions !== null) {
+    const cited = d.byInstructions as Record<string, unknown> | undefined;
+    const agent = cited && typeof cited === 'object' ? taskPrincipalDetails(cited.agent) : undefined;
+    if (!cited || !agent || typeof cited.version !== 'number' || !Number.isSafeInteger(cited.version) || cited.version < 1) return undefined;
+    byInstructions = { version: cited.version, agent };
+  }
+  return { outcome: d.outcome, at: d.at, by, byInstructions, edited: d.edited };
 }
 
 const NAME_MAX = 255;
@@ -170,6 +242,8 @@ function trashedDetails(body: Record<string, unknown>): DomainErrorDetails {
 
 export class CliError extends Error {
   public readonly details?: CliErrorDetails;
+  /** The terminal hint for this failure when the command knows better than `ERROR_HINTS[code]`. */
+  public hint?: string;
   constructor(
     public readonly code: string,
     message: string,

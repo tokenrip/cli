@@ -343,6 +343,14 @@ export const formatSignInCode: Formatter = (data) =>
     `Valid until ${data.expires_at}, once.`,
   ].join('\n');
 
+/** `rip auth link` — the sign-in link, alone on its line so it is copied whole. */
+export const formatSignInLink: Formatter = (data) =>
+  [
+    `Give this link only to the person in this conversation; never post or store it, and never open it yourself. It signs their browser in as ${data.email}, once, until ${data.expires_at}.`,
+    '',
+    String(data.url),
+  ].join('\n');
+
 /** `rip auth keys` — every key on the account; ids in full for `rip auth keys revoke <id>`. */
 export const formatKeyList: Formatter = (data) => {
   const keys = ((data as any).keys ?? []) as Array<{
@@ -352,6 +360,8 @@ export const formatKeyList: Formatter = (data) => {
     last_used_at: string | null;
     current: boolean;
     connector: { client_id: string; label: string } | null;
+    /** Live browser sessions this key's sign-in links created. */
+    browser_sessions?: number;
   }>;
   if (keys.length === 0) return 'No keys.';
   const lines: string[] = [];
@@ -360,6 +370,7 @@ export const formatKeyList: Formatter = (data) => {
     lines.push(`  id:        ${k.id}`);
     lines.push(`  connected: ${k.created_at}`);
     lines.push(`  last used: ${k.last_used_at ?? 'never'}`);
+    if ((k.browser_sessions ?? 0) > 0) lines.push(`  browsers:  ${k.browser_sessions} signed in`);
   }
   return lines.join('\n');
 };
@@ -624,11 +635,23 @@ export const formatConnection: Formatter = (data) => {
     `  base_url: ${c.baseUrl}`,
     `  auth:     ${c.authType}${c.authHeaderName ? ` (${c.authHeaderName})` : ''}`,
   ];
-  if (Array.isArray(c.allowedPaths) && c.allowedPaths.length) lines.push(`  allowed:  ${c.allowedPaths.join(', ')}`);
+  if (c.credential) {
+    const restricted = c.credential.restricted ? ', restricted' : '';
+    lines.push(`  credential: ${c.credential.name} (${c.credential.kind}${restricted})  [${c.credential.id}]`);
+  }
+  lines.push(
+    Array.isArray(c.allowedPaths) && c.allowedPaths.length
+      ? `  rules:    ${c.allowedPaths.join(', ')}`
+      : '  rules:    any method, any path',
+  );
   if (c.defaultHeaders && Object.keys(c.defaultHeaders).length) {
     lines.push(`  headers:  ${Object.keys(c.defaultHeaders).join(', ')}`);
   }
   lines.push(`  limits:   ${c.rateLimitPerMin}/min, ${c.dailyQuota}/day`);
+  if (typeof c.canCall === 'boolean') lines.push(`  can call: ${c.canCall ? 'yes' : 'no'}`);
+  if (Array.isArray(c.sharedWith) && c.sharedWith.length) {
+    lines.push(`  also rotated for: ${c.sharedWith.map((x: Record<string, any>) => `${x.name} [${x.id}]`).join(', ')}`);
+  }
   if (c.disabledAt) lines.push(`  disabled: ${c.disabledAt}`);
   return lines.join('\n');
 };
@@ -642,6 +665,46 @@ export const formatConnectionList: Formatter = (data) => {
       const scope = c.ownerType === 'team' ? 'team' : 'personal';
       const dis = c.disabledAt ? '  (disabled)' : '';
       return `${String(c.name).padEnd(20)} ${scope.padEnd(8)} ${c.baseUrl}  [${c.id}]${dis}`;
+    })
+    .join('\n');
+};
+
+/** `rip credential create|get|update|rotate` — one credential; never its key. */
+export const formatCredential: Formatter = (data) => {
+  const c = data as Record<string, any>;
+  const scope = c.ownerType === 'team' ? `team (${c.teamId})` : 'personal';
+  const lines = [
+    `${c.name}  [${c.id}]`,
+    `  scope:    ${scope}`,
+    `  kind:     ${c.kind}`,
+  ];
+  if (Array.isArray(c.scopes) && c.scopes.length) lines.push(`  scopes:   ${c.scopes.join(', ')}`);
+  if (c.restricted) {
+    const users = Array.isArray(c.users) ? c.users : [];
+    const named = users.map((u: Record<string, any>) => (u.alias ? `${u.alias} (${u.accountId})` : u.accountId));
+    lines.push(`  users:    ${named.length ? named.join(', ') : 'nobody (restricted, no named users)'}`);
+  } else if (c.ownerType === 'team') {
+    lines.push('  users:    every team member');
+  }
+  const connections = Array.isArray(c.connections) ? c.connections : [];
+  lines.push(
+    `  used by:  ${connections.length ? connections.map((x: Record<string, any>) => `${x.name} [${x.id}]`).join(', ') : 'no connections'}`,
+  );
+  lines.push(`  created:  ${c.createdAt}`);
+  if (c.rotatedAt) lines.push(`  rotated:  ${c.rotatedAt}`);
+  return lines.join('\n');
+};
+
+/** `rip credential list` — one row per credential. */
+export const formatCredentialList: Formatter = (data) => {
+  const rows = data as unknown as Array<Record<string, any>>;
+  if (!Array.isArray(rows) || rows.length === 0) return 'No credentials.';
+  return rows
+    .map((c) => {
+      const scope = c.ownerType === 'team' ? 'team' : 'personal';
+      const used = Array.isArray(c.connections) ? c.connections.length : 0;
+      const restricted = c.restricted ? '  (restricted)' : '';
+      return `${String(c.name).padEnd(20)} ${scope.padEnd(8)} ${String(c.kind).padEnd(22)} ${used} connection${used === 1 ? '' : 's'}  [${c.id}]${restricted}`;
     })
     .join('\n');
 };
@@ -671,13 +734,75 @@ export function taskHolderLine(holder: TaskHolderView): string {
   return `${holderWho(holder)} since ${holder.since}${holder.leaseExpiresAt ? `, lease until ${holder.leaseExpiresAt}` : ''}`;
 }
 
-/** `rip task list` — one row per task: status, kind, title, then who holds it or who it is suggested to. */
+/**
+ * A person or one agent in a task role, as the server projects it (feed, review and instructions plan
+ * D3). `agent.id` is the handle anyone names as `agent:<handle>`; `agent.name` comes only for a key on
+ * the reader's own account.
+ */
+export interface TaskPrincipalView {
+  account: { id: string; alias: string | null };
+  agent: { id: string | null; name: string | null; harness: string | null } | null;
+  mine: boolean;
+  isCaller: boolean;
+}
+
+/**
+ * A principal in History's words, as holders read: `You` (your person), `You · Grok (Claude Code)`
+ * (one of your agents; `· this agent` when it is the caller), `~alek`, `~alek's agent · Codex`.
+ */
+export function principalWho(p: TaskPrincipalView): string {
+  const harness = p.agent?.harness ? harnessName(p.agent.harness) : null;
+  if (p.mine) {
+    if (!p.agent) return 'You';
+    const words = p.agent.name ? `You · ${p.agent.name}${harness ? ` (${harness})` : ''}` : `You · ${harness ?? 'an agent'}`;
+    return p.isCaller ? `${words} · this agent` : words;
+  }
+  const person = p.account.alias ? `~${p.account.alias}` : p.account.id;
+  if (!p.agent) return person;
+  return `${person}'s agent${harness ? ` · ${harness}` : ''}`;
+}
+
+/** The principal's words, then the handle to name an agent by. */
+function principalLine(p: TaskPrincipalView): string {
+  return p.agent?.id ? `${principalWho(p)}  [agent:${p.agent.id}]` : principalWho(p);
+}
+
+/** Whose instructions approved a task on its own: "Grok's", "your" (the caller's own), "~alek's agent's". */
+function instructionsOwner(p: TaskPrincipalView): string {
+  if (p.mine && p.isCaller) return 'your';
+  if (p.mine) return p.agent?.name ? `${p.agent.name}'s` : "your agent's";
+  return `${p.account.alias ? `~${p.account.alias}` : p.account.id}'s agent's`;
+}
+
+/** A decision in words: "approved by ~ana at …, with an edit", "approved on its own: Grok's instructions v4 at …". */
+function decisionWords(decision: Record<string, any>): string {
+  const by = decision.byInstructions
+    ? `on its own: ${instructionsOwner(decision.byInstructions.agent as TaskPrincipalView)} instructions v${decision.byInstructions.version}`
+    : `by ${decision.by ? principalWho(decision.by as TaskPrincipalView) : 'someone no longer named'}`;
+  return `${decision.outcome} ${by} at ${decision.at}${decision.edited ? ', with an edit' : ''}`;
+}
+
+/** Who a listed task is with: its holder, who an In review task waits on, or who it is for. */
+function taskWho(t: Record<string, any>): string {
+  if (t.holder) return holderWho(t.holder as TaskHolderView);
+  if (t.status === 'review') return `waiting on ${t.reviewer ? principalWho(t.reviewer as TaskPrincipalView) : 'anyone'}`;
+  if (!t.assignee) return '';
+  const forWho = `for ${principalWho(t.assignee as TaskPrincipalView)}`;
+  return t.decision?.outcome === 'approved' && (t.status === 'todo' || t.status === 'doing') ? `approved · ${forWho}` : forWho;
+}
+
+/** Multi-line text indented under its label, whole. */
+function indented(text: string, indent = '  '): string[] {
+  return String(text).split('\n').map((line) => (line ? `${indent}${line}` : ''));
+}
+
+/** `rip task list` — one row per task: status, kind, title, then who holds it, who it waits on, or who it is for. */
 export const formatTaskList: Formatter = (data) => {
   const tasks = ((data as any).tasks ?? []) as Array<Record<string, any>>;
   const nextCursor = (data as any).nextCursor as string | null;
   if (tasks.length === 0) return 'No tasks.';
   const lines = tasks.map((t) => {
-    const who = t.holder ? holderWho(t.holder as TaskHolderView) : t.suggestedAssigneeId ? `? ${t.suggestedAssigneeId}` : '';
+    const who = taskWho(t);
     const kind = t.kind ?? '-';
     return `${String(t.status).padEnd(9)} ${String(kind).padEnd(16)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]`;
   });
@@ -687,7 +812,33 @@ export const formatTaskList: Formatter = (data) => {
   return lines.join('\n');
 };
 
-/** `rip task show` — one task with results. Reads the holder and cancel fields, never the window fields. */
+/**
+ * The approved text's label follows the status: still to carry out (To do, Doing), carried out
+ * (Done), or neither (Cancelled). The exact characters are `approvedText` in `--json`; this prints
+ * them indented.
+ */
+function approvedTextLabel(status: unknown): string {
+  if (status === 'todo' || status === 'doing') return 'Approved text (carry out exactly this):';
+  if (status === 'done') return 'Approved text (carried out):';
+  return 'Approved text:';
+}
+
+/** A history step: when, the action, who, and the why (a browser step states none by design). */
+function historyLine(step: Record<string, any>): string {
+  const actor = step.actor as TaskPrincipalView | null;
+  let who: string;
+  if (!actor) who = 'system';
+  else if (step.viaBrowser) who = whoWords({ mine: actor.mine, alias: actor.account.alias, accountId: actor.account.id, inBrowser: true });
+  else who = principalWho(actor);
+  const why = step.why ?? (step.viaBrowser || !actor ? null : 'no stated goal');
+  return `  ${step.at}  ${verbAction(step.type)}  ${who}${why ? `: ${why}` : ''}`;
+}
+
+/**
+ * `rip task show` — one task: who it is for and who reviews it, the decision, the text to carry out
+ * (the approved text, with the draft beside it when edited), the result and links, children and
+ * history. Reads principals, never the deprecated window fields.
+ */
 export const formatTask: Formatter = (data) => {
   const t = data as Record<string, any>;
   const lines = [
@@ -695,17 +846,24 @@ export const formatTask: Formatter = (data) => {
     `ID:         ${t.id}`,
     `Workspace:  ${t.workspaceId} (${t.audience})`,
     `Revision:   ${t.revision ?? '-'}`,
-    `Status:     ${t.status}`,
+    `Status:     ${t.status === 'review' ? 'review (In review: waiting for a decision)' : t.status}`,
     `Kind:       ${t.kind ?? '-'}`,
   ];
-  if (t.suggestedAssigneeId) lines.push(`Suggested:  ${t.suggestedAssigneeId}`);
+  if (t.assignee) lines.push(`For:        ${principalLine(t.assignee as TaskPrincipalView)}`);
+  if ('reviewer' in t) lines.push(`Reviewer:   ${t.reviewer ? principalLine(t.reviewer as TaskPrincipalView) : 'any person who can edit tasks'}`);
   if (t.holder) lines.push(`Doing:      ${taskHolderLine(t.holder as TaskHolderView)}`);
-  if (t.completedById) lines.push(`Completed:  ${t.completedById} at ${t.completedAt}`);
+  if (t.decision) lines.push(`Decision:   ${decisionWords(t.decision)}`);
+  if (t.approveVerb) lines.push(`Approve:    ${t.approveVerb}`);
+  if (t.parentId) lines.push(`Parent:     ${t.parentId}`);
+  if (t.completedAt) lines.push(`Completed:  ${t.completedBy ? principalWho(t.completedBy as TaskPrincipalView) : (t.completedById ?? '-')} at ${t.completedAt}`);
   if (t.status === 'cancelled' && t.cancelledAt) {
     lines.push(`Cancelled:  ${t.cancelledById ?? '-'} at ${t.cancelledAt}${t.cancelReason ? ` — ${t.cancelReason}` : ''}`);
   }
   if (t.dueAt) lines.push(`Due:        ${t.dueAt}`);
-  lines.push(`Created:    ${t.createdAt} by ${t.createdById}`);
+  lines.push(`Created:    ${t.createdAt} by ${t.createdBy ? principalLine(t.createdBy as TaskPrincipalView) : t.createdById}`);
+  if (t.result) lines.push(`Result:     ${t.result}`);
+  if (t.approvedText != null) lines.push('', approvedTextLabel(t.status), ...indented(t.approvedText));
+  if (t.draft != null && (t.approvedText == null || t.editedDraft != null)) lines.push('', 'Draft:', ...indented(t.draft));
   if (t.body) lines.push('', t.body);
   if (t.payload && Object.keys(t.payload).length) lines.push('', 'Payload:', JSON.stringify(t.payload, null, 2));
   const results = (t.results ?? []) as Array<Record<string, any>>;
@@ -714,6 +872,19 @@ export const formatTask: Formatter = (data) => {
     for (const r of results) {
       lines.push(`  ${r.type} ${r.targetId}${r.version != null ? ` v${r.version}` : ''}${r.orphaned ? '  (orphaned)' : ''}`);
     }
+  }
+  const children = (t.children ?? []) as Array<Record<string, any>>;
+  if (children.length) {
+    lines.push('', `Children (${children.length}):`);
+    for (const child of children) {
+      const who = taskWho(child);
+      lines.push(`  ${child.status}  ${child.title}  [${child.id}]${who ? `  ${who}` : ''}`);
+    }
+  }
+  const history = (t.history ?? []) as Array<Record<string, any>>;
+  if (history.length) {
+    lines.push('', 'History (newest first):', ...history.map(historyLine));
+    if (t.historyComplete === false) lines.push('  (earlier history not shown)');
   }
   return lines.join('\n');
 };
@@ -789,10 +960,11 @@ export const formatWorkspace: Formatter = (data) => {
   ].join('\n');
 };
 
+/** One row per workspace; `needsYou` is how many decisions wait on you (this key) there. */
 export const formatWorkspaceList: Formatter = (data) => {
   const rows = data as unknown as Array<Record<string, any>>;
   if (!rows.length) return 'No workspaces.';
-  return rows.map(w => `${w.name}  ${w.membership}/${w.role}  [${w.id}]  slug=${w.slug}  home=${w.ownerAccountId ?? (w.teamId ? `team ${w.teamId}` : '-')}  can=${capabilityList(w.capabilities) || '-'}`).join('\n');
+  return rows.map(w => `${w.name}  ${w.membership}/${w.role}  [${w.id}]  slug=${w.slug}  home=${w.ownerAccountId ?? (w.teamId ? `team ${w.teamId}` : '-')}  can=${capabilityList(w.capabilities) || '-'}${typeof w.needsYou === 'number' ? `  needsYou=${w.needsYou}` : ''}`).join('\n');
 };
 
 /**
@@ -838,11 +1010,12 @@ function verbAction(type: unknown): string {
 /**
  * Who worked, in words (session-log design §5.5). The reader's own work is "You"; another
  * person's leads with their alias, or their full account id when they have none. Another
- * person's agent name is never sent, so their agent reads by harness.
+ * person's agent name is never sent, so their agent reads by harness. Your browser that an
+ * agent's sign-in link signed in names that agent.
  */
 function whoWords(who: { mine: boolean; alias?: string | null; accountId?: string; agentName?: string; surface?: string | null; inBrowser: boolean }): string {
   if (who.mine) {
-    if (who.inBrowser) return 'You · in the browser';
+    if (who.inBrowser) return who.agentName ? `You · ${who.agentName} · in the browser` : 'You · in the browser';
     if (who.agentName) return `You · ${who.agentName}${who.surface ? ` (${harnessName(who.surface)})` : ''}`;
     return who.surface ? `You · ${harnessName(who.surface)}` : 'You';
   }
@@ -905,8 +1078,10 @@ function sessionLines(session: Record<string, any>, indent = ''): string[] {
   });
   const lines = [`${indent}${who}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}${session.unread ? '  unread' : ''}`];
   if (session.stepsTruncated) lines.push(`${indent}  … earlier steps not shown`);
+  // A browser session that named another harness reads by it, and still states no goal by design.
+  const viaBrowser = Boolean(session.viaBrowser ?? session.inBrowser);
   for (const step of session.steps as Array<Record<string, any>>) {
-    lines.push(`${indent}  ${step.why ?? (session.inBrowser ? 'in the browser' : 'no stated goal')}`);
+    lines.push(`${indent}  ${step.why ?? (viaBrowser ? 'in the browser' : 'no stated goal')}`);
     if (step.changesTruncated) lines.push(`${indent}    … earlier changes in this step not shown`);
     const changes: Array<Record<string, any>> = Array.isArray(step.changes) ? step.changes : [];
     for (const change of changes) lines.push(...sessionChangeLines(change, `${indent}    `));
@@ -975,6 +1150,21 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   if (value.browserLink) lines.push(`Browser:   ${value.browserLink}`);
   if (workspace.description) lines.push('', String(workspace.description));
 
+  // What the agent reads first (plan D16): its instructions, what waits on it, then the agents here.
+  // A server from before instructions sends none of these keys, and nothing is printed for them.
+  if ('instructions' in value) lines.push(...instructionsLines(value.instructions));
+  const waiting = value.waiting ?? null;
+  const waitingItems: Array<Record<string, any>> = Array.isArray(waiting?.items) ? waiting.items : [];
+  if (waiting) lines.push(...waitingLines(waitingItems, Boolean(waiting.hasMore), workspaceId));
+  if (value.proposals && Number(value.proposals.inReview) > 0) lines.push(`  Your proposals In review: ${value.proposals.inReview}`);
+  if (value.agents) {
+    const agentItems: TaskPrincipalView[] = Array.isArray(value.agents.items) ? value.agents.items : [];
+    lines.push(...loadSection(
+      `Agents (${agentItems.length}${value.agents.hasMore ? '+' : ''}):`,
+      agentItems.map((agent) => `  ${principalWho(agent)}${agent.agent?.id ? `  agent:${agent.agent.id}` : ''}`),
+    ));
+  }
+
   const pins: Array<Record<string, any>> = Array.isArray(value.pins) ? value.pins : [];
   lines.push(...loadSection(`Pinned (${pins.length}):`, pins.flatMap((pin) => loadDocumentLines(pin))));
 
@@ -991,10 +1181,15 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   }
 
   const tasks = value.tasks ?? {};
-  const taskItems: Array<Record<string, any>> = Array.isArray(tasks.items) ? tasks.items : [];
+  // A task waiting on you is also an open task (plan D16): it is printed once, under Waiting on you.
+  const waitingIds = new Set(waitingItems.map((t) => t.id));
+  const taskItems: Array<Record<string, any>> = (Array.isArray(tasks.items) ? tasks.items : []).filter((t: Record<string, any>) => !waitingIds.has(t.id));
   lines.push(...loadSection(
     `Tasks (${taskItems.length}${tasks.hasMore ? '+' : ''}):`,
-    taskItems.map((t) => `  ${t.status ?? '-'}  ${t.title ?? '(untitled)'}  [${t.id}]`),
+    taskItems.map((t) => {
+      const who = taskWho(t);
+      return `  ${t.status ?? '-'}  ${t.title ?? '(untitled)'}  [${t.id}]${who ? `  ${who}` : ''}`;
+    }),
   ));
 
   const activity = value.activity ?? {};
@@ -1028,6 +1223,41 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** The agent's instructions here, whole, with its on-its-own kinds; or who writes them when there are none. */
+function instructionsLines(instructions: Record<string, any> | null): string[] {
+  if (!instructions) return ['', 'No instructions here yet: your person writes them in the dashboard, Members & settings.'];
+  const kinds: string[] = Array.isArray(instructions.onItsOwn) ? instructions.onItsOwn : [];
+  return [
+    '', `Instructions (v${instructions.version}):`,
+    ...indented(instructions.text ?? ''),
+    `  On its own: ${kinds.length ? kinds.join(', ') : 'nothing (every proposal waits for a decision)'}`,
+  ];
+}
+
+const WAITING_WORDS: Record<string, string> = { carry_out: 'carry out', decide: 'decide', do: 'do' };
+const WAITING_NEXT: Record<string, string> = {
+  carry_out: 'carry out: the exact approved text is approvedText in rip task show <id> --json; carry out exactly that, then rip task done <id> --result-text "…"',
+  decide: 'decide: rip task show <id>, then rip task decide <id> --approve|--skip --expected-revision <revision>',
+  do: 'do: read it with rip task show <id>; if it acts outside the workspace, propose first (rip task propose <id>)',
+};
+
+/** What waits on this key, each with its reason, then the next step for each reason shown. */
+function waitingLines(items: Array<Record<string, any>>, hasMore: boolean, workspaceId: string): string[] {
+  const rows = items.map((t) => {
+    const reason = String(WAITING_WORDS[t.waiting] ?? t.waiting).padEnd(9);
+    return `  ${reason}  ${t.title ?? '(untitled)'}  [${t.id}]${t.waiting === 'decide' && t.revision != null ? `  revision ${t.revision}` : ''}`;
+  });
+  const lines = loadSection(`Waiting on you (${items.length}${hasMore ? '+' : ''}):`, rows);
+  for (const reason of Object.keys(WAITING_NEXT)) {
+    if (items.some((t) => t.waiting === reason)) lines.push(`  ${WAITING_NEXT[reason]}`);
+  }
+  if (hasMore) {
+    const ws = workspaceShellArgument(workspaceId);
+    lines.push(`  More: rip task list --workspace-id ${ws} --mine · rip task list --workspace-id ${ws} --reviewer me`);
+  }
+  return lines;
+}
+
 /** The why of a change item, or what stands in for it: a browser edit states none by design. */
 function changeGoal(item: Record<string, any>): string {
   if (item.why != null) return item.why;
@@ -1035,9 +1265,9 @@ function changeGoal(item: Record<string, any>): string {
   return changeInBrowser(item) ? 'in the browser' : 'no stated goal';
 }
 
-/** Change items carry no key, so a browser edit is read from its harness. */
+/** The server marks a browser change (`viaBrowser`); an item from an older server without it is read from its harness. */
 function changeInBrowser(item: Record<string, any>): boolean {
-  return !item.agent && item.actor?.surface === 'dashboard';
+  return item.viaBrowser ?? (!item.agent && item.actor?.surface === 'dashboard');
 }
 
 /**

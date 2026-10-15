@@ -15,7 +15,10 @@ export interface ConnectionCreateOptions extends ConnectionSecretOptions {
   team?: string;
   name: string;
   baseUrl: string;
-  authType: string;
+  /** An existing credential of the same owner, by name or id; the server then defaults `authType` to bearer. */
+  credential?: string;
+  /** Required without `credential`: the placement of an inline secret. */
+  authType?: string;
   authHeaderName?: string;
   allowedPaths?: string;
   header?: string[];
@@ -30,7 +33,7 @@ function connectionsBase(team?: string): string {
 }
 
 /** Resolve the secret from a literal, an env var, or stdin (never from argv history). */
-function resolveSecret(o: ConnectionSecretOptions): string {
+export function resolveSecret(o: ConnectionSecretOptions): string {
   if (o.secret) return o.secret;
   if (o.secretEnv) {
     const v = process.env[o.secretEnv];
@@ -60,15 +63,32 @@ function parseKvList(items: string[] | undefined, flag: string): Record<string, 
   return out;
 }
 
+/**
+ * Attach an existing credential (`--credential`; the placement is optional and defaults to bearer
+ * on the server) or create one inline from `--auth-type` and a secret, named after the connection.
+ */
 export async function connectionCreate(options: ConnectionCreateOptions): Promise<void> {
+  const body: Record<string, unknown> = { name: options.name, baseUrl: options.baseUrl };
+  if (options.credential !== undefined) {
+    if (options.secret !== undefined || options.secretEnv !== undefined || options.secretStdin) {
+      throw new CliError(
+        'INVALID_ARGS',
+        '--credential uses that credential\'s key; drop the secret flags (rotate the key with `rip credential rotate`).',
+      );
+    }
+    body.credential = options.credential;
+    if (options.authType) body.authType = options.authType;
+  } else {
+    if (!options.authType) {
+      throw new CliError(
+        'MISSING_OPTION',
+        'Provide --credential <name|id> to use an existing credential, or --auth-type with a secret to create one.',
+      );
+    }
+    body.authType = options.authType;
+    body.secret = resolveSecret(options);
+  }
   const { client } = requireAuthClient();
-  const secret = resolveSecret(options);
-  const body: Record<string, unknown> = {
-    name: options.name,
-    baseUrl: options.baseUrl,
-    authType: options.authType,
-    secret,
-  };
   if (options.authHeaderName) body.authHeaderName = options.authHeaderName;
   if (options.allowedPaths) {
     body.allowedPaths = options.allowedPaths.split(',').map((s) => s.trim()).filter(Boolean);
@@ -96,7 +116,9 @@ export async function connectionGet(id: string, options: { team?: string }): Pro
   outputSuccess(data.data, formatConnection);
 }
 
+/** Deprecated: rotates the connection's credential, which every connection using it then sends. */
 export async function connectionRotate(id: string, options: ConnectionSecretOptions & { team?: string }): Promise<void> {
+  console.error('rip connection rotate-secret is deprecated; use rip credential rotate <credential>');
   const { client } = requireAuthClient();
   const secret = resolveSecret(options);
   const { data } = await client.post(

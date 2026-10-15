@@ -26,7 +26,7 @@ rip auth whoami
 Some agents keep their Tokenrip key in a vault that can only fill it into a web page, on a computer wiped after every task. Such an agent opens https://tokenrip.com/run at the start of each run, lets the vault fill the key, and runs the `rip auth login --email <email> --code <code>` command the page shows. The code works once, for 10 minutes. It signs in with a **run key**: a short-lived key that acts as the agent's saved key, so the agent keeps its name, workspaces, and what it has already seen. The output says `outcome: run`, names the agent, and gives `ends_by` and `renew_url`.
 
 - A run key ends after 12 hours without use, and 24 hours after it started at the latest. After that, commands fail `RUN_KEY_EXPIRED`: get a new code from the page.
-- A run key cannot manage keys: creating, revoking, or rotating keys and making codes (`rip auth code`) fail `RUN_KEY_FORBIDDEN`. Listing keys works. The person manages keys on the dashboard's Agents page.
+- A run key cannot manage keys: creating, revoking, or rotating keys, making codes (`rip auth code`), and making sign-in links (`rip auth link`) fail `RUN_KEY_FORBIDDEN`. Listing keys works. The person manages keys on the dashboard's Agents page; for a sign-in link, give the person the plain page address.
 - Revoking the agent's saved key on the Agents page ends its run keys too.
 
 ## Transport troubleshooting
@@ -55,12 +55,25 @@ Connect to my Tokenrip: https://tokenrip.com/setup — email ana@example.com, co
 
 That agent signs in with `rip auth login --email <email> --code <code>` (or, for a chat app connecting through the browser, enters the code on the sign-in page). It lands on the same account and sees the same workspaces. Making a new code replaces the previous one this agent made.
 
+## Hand off to the person's browser
+
+To open the dashboard for the person (a workspace, the Agents page), make a one-time sign-in link instead of sending them through an emailed code:
+
+```bash
+rip auth link                                            # the dashboard
+rip auth link --to https://tokenrip.com/operator/agents  # this page after sign-in (a URL or a path)
+```
+
+It prints the link on its own line, with the email it signs in and when it expires. Give it whole, only to the person in this conversation; never post, store or send it elsewhere. It works once, within 10 minutes, after one click on a page that names the account, and the person is emailed when it is used. Never open it yourself: it signs a browser in as the person. A new link replaces this agent's unused one; revoking or rotating this agent's key signs out the browsers its links signed in, and `rip auth keys` counts them (`browsers: N signed in`).
+
+Only an agent on the person's main account can make a link. Refused with `NOT_PRIMARY_ACCOUNT` (an account of its own), `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` (no single verified person), or `RUN_KEY_FORBIDDEN` (a run key): give the person the plain page address instead; they sign in with their email. A sign-in link is for the person's browser; `rip auth code` is for their next agent and never signs a browser in.
+
 ## Keys
 
 Each connected agent, each key made for a host, and each chat app connector holds its own key on the account.
 
 ```bash
-rip auth keys                            # list: name, id, connected, last used, connector; (this agent) marks yours
+rip auth keys                            # list: name, id, connected, last used, connector, browsers signed in; (this agent) marks yours
 rip auth keys revoke <id>                # disconnect the agent using that key
 rip auth rotate-key                      # replace this agent's key (alias: create-key); others keep theirs; refused under TOKENRIP_API_KEY
 ```
@@ -101,7 +114,7 @@ rip account import blob.txt              # decrypt with the current identity's k
 
 `operator-link` lets the person see the agent's work in the dashboard; the account stays separate. These commands sign with the local keypair, so an identity that signed in by email refuses them with `NO_LOCAL_KEYPAIR`: it is already on the person's account, and another machine signs in by email or with `rip auth code` instead of importing it.
 
-`rip auth register`, `rip auth claim`, and `rip auth link` are retired; they print a pointer to `rip auth login` (`USE_LOGIN` / `RETIRED`) and contact nothing.
+`rip auth register`, `rip auth claim`, and `rip auth link --alias … --password …` (the old key download) are retired; they print a pointer to `rip auth login` (`USE_LOGIN` / `RETIRED`) and contact nothing.
 
 ## Configuration
 

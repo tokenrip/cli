@@ -10,11 +10,13 @@ Membership is resolved live:
 - Other members of the owning team are internal **editors**.
 - People added to the workspace are members with the access they were given: **internal** (they see everything) or **external** (shared items only), each as an **editor** or a **viewer**. Internal editors may invite; only admins change or remove access.
 
-Every item has an `audience`: `internal` (the owner, the team and internal members) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full UUID, slug, personal/team home, `membership/role`, and permitted capabilities; `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
+Every item has an `audience`: `internal` (the owner, the team and internal members) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full UUID, slug, personal/team home, `membership/role`, permitted capabilities, and `needsYou=<n>`: how many decisions wait on this agent key there (reviews addressed to it; the In review children of one parent count once); `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
 
 ## When to use
 
-- "work on project X from this harness" → `rip workspace load <workspace-id>`, then state `--why` on every write
+- "work on project X from this harness" → `rip workspace load <workspace-id>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on every write
+- "post this", "send that email", "publish it" → propose it first (`rip task propose`, [references/tasks.md](tasks.md)) and act only on what comes back approved
+- "hand this to Codex", "ask Maya's agent" → name the agent as `agent:<handle>` from load's `Agents` in `rip task add --assignee` or `--reviewer`
 - "who worked on this, and toward what" → `rip workspace sessions <workspace-id>`
 - "what changed since I last looked" → `rip workspace changes <workspace-id>`, then `rip workspace ack <workspace-id> --delivery-token <token>`
 - "this document the operator is looking at" → `rip workspace view context <workspace-id>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
@@ -104,13 +106,13 @@ rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revi
 
 # tasks
 rip task list --workspace-id <ws>
-rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--audience internal|shared]
+rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--reviewer ...] [--audience internal|shared]
 
 # search: ranks by keywords and meaning, prints each result's best passages
 rip search "<plain-language question>" --workspace-id <ws>
 ```
 
-Every one of these writes also takes `--why` (and so do `task start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`); pins take none. Create receipts retain the authoritative `workspaceId`, `audience`, and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call.
+Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`); pins take none. Create receipts retain the authoritative `workspaceId`, `audience`, and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call.
 
 Every workspace document is indexed by meaning when it is written. A workspace search prints `mode: hybrid` and each result's best passages; `pending: N` counts chunks written a moment ago that are not yet searchable by meaning (they still match by keyword). A search only ever returns what your audience can read.
 
@@ -144,16 +146,19 @@ rip workspace load <workspace-id>     # bounded context; also --artifact-offset,
 rip workspace sessions <workspace-id> [--cursor <nextCursor>]
 ```
 
-`load` takes no selector and is safe to repeat: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). The response is bounded, and human output prints all of it:
+`load` takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position, and every load records this agent in the workspace's Agents with the harness it used; only `rip workspace ack` moves the position). The response is bounded, and human output prints all of it, in the order an agent should read it:
 
 - `Workspace:` name, id, `membership/role`, and `Can:` — the capabilities you hold now; `Browser:` — the link the person opens to pair a browser tab to your agent key
+- `Instructions (v<n>):` — what your person wrote for this agent in this workspace, **whole and never trimmed**, then `On its own:` the kinds of proposal your person lets run without asking (applied for you by `rip task propose`). Follow them. Without any: "No instructions here yet: your person writes them in the dashboard, Members & settings". Only your person edits them, in the dashboard; no agent writes instructions, and a change reaches you on your next load
+- `Waiting on you` — up to 20 tasks for exactly this agent, in this order: `carry out` (approved: read the approved text with `rip task show <id>` and carry out exactly that), `decide` (a review addressed to you: `rip task decide`), `do` (To do, for you), each with the next command; a task listed here is not printed again under `Tasks`. Then `Your proposals In review: <n>`
+- `Agents` — the workspace's agents as you may see them (internal members see every agent, an external member only their own), each in History's words with its handle, `agent:<handle>`: name an agent that way in a task's `--assignee` or `--reviewer` ([references/tasks.md](tasks.md))
 - `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run exactly that
 - `Latest handoff` — the newest handoff note, inline or with the same `rip artifact cat … --version-id …` command (handoffs usually arrive as references), plus the ids of earlier notes
 - `Recent sessions` — the latest few sessions (see below), with a `rip workspace sessions … --cursor …` line when there are more
 - `Tasks` (To do and Doing, 20), `Recent changes` (up to 50, each with when, `You` or `~alias`, the action, the item's title and id, and its why on the next line; a `refresh`/`historyGap` warning when set), and the `Artifacts` index (50)
 - `More` — one `rip workspace load <ws> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset <value>` line per list that continues
 
-With `--json`, the same data is under `workspace`, `pins[]`, `handoffs.items[]`, `sessions` (`items`, `hasMore`, `nextCursor`), `tasks`, `activity`, `artifacts`, and `browserLink`; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above). Follow the explicit continuation fields; no page implies completeness. A workspace in the trash answers `WORKSPACE_DELETED` (410) to `load` and `show`. Loading does **not** acknowledge activity.
+With `--json`, the keys come in this order: `workspace`, `instructions` (`{ version, text, onItsOwn, savedAt }` or null), `waiting` (`items[]`, each a task with `waiting: carry_out | decide | do`, and `hasMore`; the `carry_out` and `do` items, To do or Doing, also appear in `tasks`), `tasks`, `proposals` (`{ inReview }`), `agents` (`items[]`, principals whose `agent.id` is the handle, and `hasMore`), `pins[]`, `artifacts`, `activity`, `handoffs.items[]`, `sessions` (`items`, `hasMore`, `nextCursor`), and `browserLink`. When the reply would exceed its budget, the lists are cut in a fixed order and `waiting` last, to one item; the instructions are never cut; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above). Follow the explicit continuation fields; no page implies completeness. A workspace in the trash answers `WORKSPACE_DELETED` (410) to `load` and `show`. Loading does **not** acknowledge activity.
 
 **Sessions record themselves.** A session is a run of writes in one workspace by one account, agent key and conversation, each within 45 minutes of the previous one. Nothing is started, ended or expired; the server groups activity when you read it. Each session reads like a git log:
 
@@ -249,6 +254,7 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 | `INVALID_CURSOR` | Start `rip workspace sessions` again without `--cursor` |
 | `SESSION_END_RETIRED` | `rip workspace session end` is gone: sessions record themselves. Leave a note with `rip artifact publish … --handoff` |
 | `WORKSPACE_PAGE_UNACKNOWLEDGED` / `INVALID_WORKSPACE_DELIVERY` | Replay or acknowledge the outstanding change page first |
+| `WORKSPACE_BUSY` | 503 from `load` or `changes`: they answer from a snapshot and no longer wait behind writers' row locks (a purge or a database migration can still hold them briefly), but ran out of attempts, usually because another call by your key changed your position at the same moment. Nothing was changed; run it again after a moment |
 
 ## Notes
 

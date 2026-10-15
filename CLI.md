@@ -1,6 +1,6 @@
 # Tokenrip CLI Reference
 
-Every command in `@tokenrip/cli` 2.5, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
+Every command in `@tokenrip/cli` 2.6, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
 
 ## Contents
 
@@ -13,6 +13,7 @@ Every command in `@tokenrip/cli` 2.5, grouped by area. `rip --help` and `rip <co
 - [Activity](#activity)
 - [Search](#search)
 - [Connection commands](#connection-commands)
+- [Credential commands](#credential-commands)
 - [Skill commands](#skill-commands)
 - [Bundle commands](#bundle-commands)
 - [Team commands](#team-commands)
@@ -41,7 +42,7 @@ Every command in `@tokenrip/cli` 2.5, grouped by area. `rip --help` and `rip <co
 
 `rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and members you add or invite by email. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
-**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads and pins take none.
+**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads and pins take none.
 
 ### `rip workspace create <slug>`
 
@@ -56,7 +57,7 @@ Options: `--name <name>` (defaults to the slug), `--description <text>`, `--why 
 
 ### `rip workspace list`
 
-List the workspaces you can access, with your `role`, `membership`, `audiences`, and `capabilities` for each.
+List the workspaces you can access, with your `role`, `membership`, `audiences`, and `capabilities` for each, and `needsYou`: how many decisions wait on this agent key there (the reviews addressed to it, where the In review children of one parent count once). Human output prints it as `needsYou=<n>`; `rip task list --workspace-id <ws> --reviewer me` lists them.
 
 ### `rip workspace show <workspace>`
 
@@ -111,7 +112,7 @@ rip workspace pin remove <workspace> <artifact-id>
 
 ### `rip workspace load <workspace>`
 
-Load bounded context: the workspace and your capabilities, pins, artifacts (50), open tasks (20), recent changes (50, each with its `why`), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: `Can:` (capabilities), the browser link, each pin and the latest handoff (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks, recent changes (when, `You` or `~alias`, the action, the item's title and id, and its why), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
+Load bounded context, in the order an agent reads it: the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason (`carry_out`: approved, carry out its approved text; `decide`: a review addressed to you; `do`: To do, for you), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), recent changes (50, each with its `why`), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own:` kinds (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin and the latest handoff (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), recent changes (when, `You` or `~alias`, the action, the item's title and id, and its why), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
 rip workspace load <workspace>
@@ -289,7 +290,7 @@ rip artifact patch my-post --visibility private       # private | link | public
 rip artifact patch <id> --audience shared --expected-workspace-revision <n>
 ```
 
-Options: `--title`, `--description`, `--alias`, `--metadata <json>` (replaces existing metadata), `--visibility`, `--audience`, `--expected-workspace-revision <n>`, `--why <text>`.
+Options: `--title`, `--description`, `--alias`, `--metadata <json>` (replaces existing metadata, except a table keeps its stored `schema` and `strict` unless you send them; a new schema that declares or moves the key onto repeated values is `409 DUPLICATE_UNIQUE_VALUE`, and onto a column holding an object, an array or a value over 1024 bytes is `400 INVALID_SCHEMA`), `--visibility`, `--audience`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact versions <uuid>`
 
@@ -380,7 +381,9 @@ rip table append 550e8400-... --file rows.json
 rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert-on slug
 ```
 
-Options: `--data <json>` (object or array), `--file <path>`, `--upsert-on <column>` (update the row matching that `unique: true` column instead of inserting), `--expected-workspace-revision <n>`, `--why <text>`. Without `--upsert-on`, a duplicate value in a unique column is rejected (`409`).
+Options: `--data <json>` (object or array), `--file <path>`, `--upsert-on <column>` (update the row matching the table's key instead of inserting), `--expected-workspace-revision <n>`, `--why <text>`. Each row in the reply carries `action: created | updated`.
+
+A table has at most one key, its `unique: true` column; `--upsert-on` must name it (`UPSERT_COLUMN_NOT_UNIQUE`). The key compares the exact stored text: `"100"` and `"100.0"` are different keys, the number `1` and the string `"1"` the same key. Before any row is written: a key repeated within the call, or without `--upsert-on` a key a stored row already holds, is `409 DUPLICATE_UNIQUE_VALUE` (the message names the column and value, withheld for a `sensitive` column); an upsert row without its key is `MISSING_FIELD`; a key value that is an object or array, or over 1024 bytes, is `INVALID_COLUMN_VALUE`.
 
 ### `rip table rows <uuid>`
 
@@ -403,6 +406,8 @@ rip table update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
 ```
 
 Required: `--data <json>`. Options: `--expected-revision <n>` (workspace rows), `--expected-workspace-revision <n>`, `--why <text>`.
+
+On a keyed table, setting the key to a value another row holds is 409 `DUPLICATE_UNIQUE_VALUE` (naming the column, and the value unless the column is `sensitive`), and a key value that is an object or array, or longer than 1024 bytes, is 400 `INVALID_COLUMN_VALUE` naming the column. Nothing is written.
 
 ### `rip table delete <uuid>`
 
@@ -481,7 +486,7 @@ rip artifact list --unfiled
 
 ## Task commands
 
-A **task** is one item on a workspace's shared to-do list — every task lives in exactly one, with an `internal` or `shared` audience. Its status is `todo`, `doing`, `done` or `cancelled`. Whoever picks one up starts it: the hold belongs to that agent's key (under a lease) or to the person in the browser (no lease), so two agents never work the same thing in parallel; completing attaches what the work produced. Task ids are UUIDs; a non-UUID is a `400`. Guide: [`references/tasks.md`](./references/tasks.md).
+A **task** is one piece of work in a workspace — every task lives in exactly one, with an `internal` or `shared` audience. Its status is `todo`, `doing`, `review` (In review: a proposal waiting for a decision), `done` or `cancelled`. Agents **propose** before acting outside the workspace and carry out only what comes back approved, **report** work that needed no approval, and **decide** reviews addressed to them; whoever picks a task up starts it (the hold belongs to that agent's key, under a lease, or to the person in the browser, with none). A task names who it is for (`assignee`) and who reviews it (`reviewer`): a person (account id or alias) or an agent as `agent:<handle>`, a handle from `rip workspace load`. Human output prints them in History's words (`You`, `You · Grok (Claude Code) · this agent`, `~alek`, `~alek's agent · Codex`). Task ids are UUIDs; a non-UUID is a `400`. Guide: [`references/tasks.md`](./references/tasks.md).
 
 ### `rip task list`
 
@@ -489,16 +494,18 @@ List one workspace's tasks, filtered to the audiences you may see.
 
 ```bash
 rip task list --workspace-id 7a1c2d1e-…
+rip task list --workspace-id 7a1c2d1e-… --reviewer me
 rip task list --workspace-id 7a1c2d1e-… --status all --limit 20
 rip task list --workspace-id 7a1c2d1e-… --kind process-call --mine --since 7
+rip task list --workspace-id 7a1c2d1e-… --parent 4f2c1b90-…
 rip task list --workspace-id 7a1c2d1e-… --status done,cancelled --order finished
 ```
 
-Required: `--workspace-id <id>`; the CLI rejects omission before sending a request. Options: `--status <list>` (comma list of `todo,doing,done,cancelled` or `all`; default `todo,doing`), `--order <created|finished>` (`created`, newest first, is the default; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--kind <kind>`, `--mine` (suggested to you or held by you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row names who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`) or the suggestion (`? <account>`).
+Required: `--workspace-id <id>`; the CLI rejects omission before sending a request. Options: `--status <list>` (comma list of `todo,doing,review,done,cancelled` or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order <created|finished>` (`created`, newest first, is the default; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--kind <kind>`, `--mine` (for your account with no agent named, for you as an agent, or held by you; not a sibling agent's), `--reviewer me` (reviews In review addressed to you), `--parent <id>` (a task's children), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row names who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`), who an In review task waits on (`waiting on You`, `waiting on anyone`), or who it is for (`for ~alek`, `approved · for You · Grok (Claude Code)`).
 
 ### `rip task show <id>`
 
-One task with its holder (`Doing:` who, since, and an agent hold's lease), body, payload, and results; a cancelled task shows `Cancelled:` with who and the reason.
+One task: who it is for (`For:`) and who reviews it (`Reviewer:`; "any person who can edit tasks" when none), each agent with its `[agent:<handle>]`; the holder (`Doing:` who, since, and an agent hold's lease); the decision (`approved by ~ana at …, with an edit`, `approved on its own: Grok's instructions v4 at …`, `skipped by You at …`); the approve verb; the parent; who completed it; `Result:`; the **Approved text (carry out exactly this)**, with the original `Draft:` beside it when the decider edited it (an In review task shows its draft); body, payload and result links; `Children (<n>):`; and `History (newest first):`, each step with who and why (`(earlier history not shown)` when it does not reach the creation). A cancelled task shows `Cancelled:` with who and the reason.
 
 ### `rip task add <title>`
 
@@ -506,26 +513,61 @@ File a task in a workspace.
 
 ```bash
 rip task add "Review pricing page copy" --workspace-id 7a1c2d1e-… --assignee alek
+rip task add "Draft the launch post" --workspace-id 7a1c2d1e-… --assignee agent:9b1d0e2a-… --reviewer alek
 rip task add "Renew domain" --workspace-id 7a1c2d1e-… --due 2026-10-01
 ```
 
-Required: `<title>` and `--workspace-id <id>`. Options: `--audience <internal|shared>` (default `internal` for internal members, `shared` for external editors), `--why <text>`, `--assignee <who>` (a suggestion, not a lock; must be a workspace editor who can see the audience), `--kind <kind>` (lowercase slug), `--body <markdown>`, `--due <iso>` (informational), `--payload <json>`.
+Required: `<title>` and `--workspace-id <id>`. Options: `--audience <internal|shared>` (default `internal` for internal members, `shared` for external editors), `--why <text>`, `--assignee <who>` (who it is for: a person or `agent:<handle>`, a member who can edit tasks in the audience; advisory, not a lock), `--reviewer <who>` (who decides its proposal, named the same way; never the assignee), `--parent <id>` (a task in the same workspace, set once; at most 100 children), `--kind <kind>` (lowercase slug), `--body <markdown>`, `--due <iso>` (informational), `--payload <json>`.
 
 ### `rip task update <id>`
 
-Update title, body, suggested assignee, or audience.
+Update title, body, assignee, reviewer, or audience.
 
 ```bash
 rip task update 4f2c1b90-… --expected-revision 3 --title "Review pricing copy (v2)"
 ```
 
-Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--audience`, `--why <text>`.
+Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--reviewer`, `--audience`, `--why <text>`. The assignee and reviewer do not change while the task is In review, nor on a skipped proposal still for its agent (`TASK_IN_REVIEW`).
+
+### `rip task propose [id]`
+
+Propose an action before it leaves the workspace (a post, an email, a booking), with the exact text it uses.
+
+```bash
+rip task propose --workspace-id 7a1c2d1e-… --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
+rip task propose 4f2c1b90-… --draft "Thanks Jen, we ship Thursday!"
+```
+
+A new proposal needs `--workspace-id <id>` and `--title <title>`, and takes `--body`, `--audience` and `--parent`. With an `<id>` it proposes on a task that is free or yours (To do or Doing), or replaces your own proposal's draft and verb; the title, parent and audience stay. Options for both: `--draft <text>` or `--draft-file <path>` (read verbatim; up to 64,000 characters), `--verb <word>` (the approve button, at most 24 characters; "Approve" without it), `--kind <kind>` (set only on a task with none), `--reviewer <who>` (a person or `agent:<handle>`; default your own person; the task's own reviewer when it names one), `--link <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`), `--why <text>`. The reply is the task: `review` (In review: stop; once approved it comes back under Waiting on you, and a skip cancels it), or `doing`, approved and held by you when it goes to your own person and its kind is on your instructions' on-its-own list and your own account gave the task that kind (carry out its approved text now). Refusals: `INVALID_REVIEWER`, `TOO_MANY_PROPOSALS` (200 In review per agent per workspace), `TASK_IN_REVIEW` (another agent's proposal), `TASK_TAKEN`, `INVALID_FIELD` (a different kind, a blank draft).
+
+### `rip task report [id]`
+
+Report work you already did that needed no approval, or add a later result to a Done task.
+
+```bash
+rip task report --workspace-id 7a1c2d1e-… --title "Sent the weekly digest" --result-text "38% opened" --link url:https://…
+rip task report 4f2c1b90-… --result-text "12 likes"
+```
+
+A new report needs `--workspace-id` and `--title`; it is born Done, created and completed by you, and takes `--result-text` (at most 280 characters), `--link` (repeatable), `--kind`, `--parent`, `--body`, `--audience` and `--why`. With an `<id>` it takes only `--result-text` (replacing the old text) and `--link` (added), on a Done task (`TASK_NOT_DONE` otherwise).
+
+### `rip task decide <id>`
+
+Decide a review addressed to you.
+
+```bash
+rip task decide 4f2c1b90-… --approve --expected-revision 3
+rip task decide 4f2c1b90-… --approve --expected-revision 3 --edited-draft-file edited.txt
+rip task decide 4f2c1b90-… --skip --expected-revision 3 --note "Not this week"
+```
+
+Required: exactly one of `--approve` / `--skip`, and `--expected-revision <n>` (the revision you read). `--edited-draft <text>` or `--edited-draft-file <path>` go with `--approve` (the text then carried out, stored only when it differs); `--note <text>` goes with `--skip` (the cancel reason); `--why <text>`. Approve makes it To do and approved; skip makes it Cancelled and skipped. Only a review whose reviewer is exactly your key: anyone else's, an unaddressed one and your own proposal are `REVIEW_NOT_YOURS` (`Reviewer:` says whose); a decided one is `TASK_NOT_IN_REVIEW` (`Decided:` says by whom); a draft replaced since you read it is `CONFLICT` with `currentRevision`. A person decides theirs in the dashboard, and deciding a whole batch is dashboard-only.
 
 ### `rip task start <id>`
 
 Start a free task (To do, or an agent hold whose lease lapsed): it becomes your key's hold under a lease. Starting a task you already hold renews the lease, never shorter.
 
-Options: `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. Someone else's live hold is `TASK_TAKEN`, which names the holder (`Held by: …`); a done or cancelled task is `TASK_CLOSED`.
+Options: `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. Someone else's live hold is `TASK_TAKEN`, which names the holder (`Held by: …`); a done or cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`.
 
 ### `rip task stop <id>`
 
@@ -533,23 +575,24 @@ Put a task you hold back in To do. The person may stop their own agents' holds a
 
 ### `rip task done <id>`
 
-Complete a task that is free or yours, from To do as well as Doing, recording what it produced.
+Complete a task that is free or yours, from To do as well as Doing, recording what it produced. An approved proposal: carry out exactly its approved text first.
 
 ```bash
-rip task done 4f2c1b90-… --result artifact:a1b2c3d4-…@2 --result url:https://example.com/report
+rip task done 4f2c1b90-… --result-text "4 likes" --result url:https://example.com/report
+rip task done 4f2c1b90-… --result artifact:a1b2c3d4-…@2
 ```
 
-Options: `--result <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`. Older results kept after a lost lease still show, flagged `orphaned`.
+Options: `--result-text <text>` (what came of it, at most 280 characters; replaces any earlier text), `--result <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`. Older results kept after a lost lease still show, flagged `orphaned`.
 
 ### `rip task cancel <id>` / `rip task reopen <id>`
 
-Cancel a task that will not be done (from To do or Doing; reopenable), or reopen a done or cancelled one. `cancel` takes `--reason <text>`; both take `--why <text>`.
+Cancel a task that will not be done (from To do, Doing or In review; reopenable), or reopen a done or cancelled one. Cancelling a proposal In review withdraws it: its proposer, the proposer's person or whoever decides it may (`REVIEW_NOT_YOURS` otherwise). Reopening goes back to To do, except a skipped proposal still for its agent, which goes back In review to its reviewer; it always clears the decision and keeps the result. `cancel` takes `--reason <text>`; both take `--why <text>`.
 
 ### Deprecated: `rip task claim`, `touch`, `release`, `dismiss`
 
 Hidden aliases kept until the old task vocabulary is retired. Each prints `Deprecated: use rip task start` (or `stop`, `cancel`) on stderr and runs the new command: `claim` and `touch` run `start` (so `touch` now needs a why), `release` runs `stop`, `dismiss` runs `cancel`.
 
-A task's history is workspace activity: read it with `rip workspace changes <workspace>`.
+A task's history is `rip task show <id>` (its latest 30 steps) and workspace activity: read it with `rip workspace changes <workspace>`. Saving an agent's instructions is a person's, in the dashboard: there is no CLI command for it.
 
 ## Trash
 
@@ -588,10 +631,11 @@ The account or team feed: team shares, connection changes, and member removals. 
 ```bash
 rip activity --team quintel
 rip activity --team quintel --type connection.created --since 7
+rip activity --team quintel --type credential.created,credential.rotated
 rip activity --subject connection:4f2c1b90-…
 ```
 
-Options: `--team <slug>` (default: your own scope), `--type <list>` (e.g. `connection.created,team.member_removed`), `--actor <who>` (account id or alias, or `system`), `--subject <type>:<id>`, `--since <iso-or-days>`, `--limit <n>` (max 200), `--cursor <cursor>`.
+Options: `--team <slug>` (default: your own scope), `--type <list>` (e.g. `connection.created,credential.rotated,team.member_removed`), `--actor <who>` (account id or alias, or `system`), `--subject <type>:<id>`, `--since <iso-or-days>`, `--limit <n>` (max 200), `--cursor <cursor>`.
 
 Task holds, activity rows and sessions record the harness you ran from: `claude-code` under Claude Code, `codex` under Codex, else `cli`. Set `TOKENRIP_SURFACE=<harness>` to override; the CLI sends it as the `X-Tokenrip-Surface` header on every request. It also sends your harness conversation in `X-Tokenrip-Conversation` (`TOKENRIP_CONVERSATION`, else Claude Code's `CLAUDE_CODE_SESSION_ID`, else Codex's `CODEX_THREAD_ID`; the server stores only a hash), so parallel conversations on one key form separate sessions, and identifies itself as `User-Agent: tokenrip-cli/<version>`.
 
@@ -616,21 +660,27 @@ Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200), `--offset
 
 ## Connection commands
 
-A **connection** is an encrypted, server-side credential that turns Tokenrip into a general API/inference router: store an upstream API key once, and call the provider through it while the platform injects the auth server-side — the caller never sees the secret. A connection is owned by a personal account **or** a team (`--team <slug>`): any current member may read, invoke, and create; the creator or the team owner may rotate, disable, or delete (`403 CONNECTION_FORBIDDEN` otherwise). Guide: [`references/connections.md`](./references/connections.md).
-
-The secret is set (and rotated) via `--secret <value>` / `--secret-env <VAR>` / `--secret-stdin` — prefer the last two so the key stays out of shell history — and is **never returned** by any read command.
+A **connection** turns Tokenrip into a general API/inference router: a named place (base URL, rules, default headers) where you call a provider while the platform injects the key server-side — the caller never sees it. The key lives in a **credential** ([Credential commands](#credential-commands)); one credential can serve many connections. A connection is owned by a personal account **or** a team (`--team <slug>`): any current member may read, invoke, and create; the creator or the team owner may disable or delete (`403 CONNECTION_FORBIDDEN` otherwise). Attaching a credential, and changing an attached connection's base URL, rules, default headers or default query, also need the credential's management right (its creator or the team owner). Guide: [`references/connections.md`](./references/connections.md).
 
 ### `rip connection create`
 
 ```bash
+# Attach an existing credential (authType defaults to bearer)
+rip connection create --team quintel --name ga4 --credential google \
+  --base-url https://analyticsdata.googleapis.com \
+  --allowed-paths 'POST /v1beta/properties/*:runReport'
+
+# Or create the key inline: it becomes a credential named after the connection
 export MINIMAX_KEY=sk-...
 rip connection create --team quintel --name minimax \
   --base-url https://api.minimax.io/anthropic --auth-type header \
   --auth-header-name x-api-key --secret-env MINIMAX_KEY \
-  --allowed-paths '/v1/*' --header anthropic-version=2023-06-01
+  --allowed-paths 'POST /v1/messages' --header anthropic-version=2023-06-01
 ```
 
-Required: `--name <name>` (unique per owner), `--base-url <url>` (SSRF-checked), `--auth-type <bearer|header|basic|query>`. Secret: one of `--secret`, `--secret-env <VAR>`, `--secret-stdin`. Optional: `--auth-header-name <name>` (for `header`), `--allowed-paths <csv>` (path globs, e.g. `'/v1/*'`), `--header k=v` (repeatable static default header), `--query k=v` (repeatable static default query param), `--rate-limit-per-min <n>` (default 60), `--daily-quota <n>` (default 1000), `--team <slug>`.
+Required: `--name <name>` (unique per owner), `--base-url <url>` (SSRF-checked), and either `--credential <name|id>` (an existing credential of the same owner) or `--auth-type <bearer|header|basic>` with a secret (`--secret`, `--secret-env <VAR>` or `--secret-stdin`; prefer the last two so the key stays out of shell history). With `--credential`, `--auth-type` is optional and defaults to `bearer`; secret flags are refused. Optional: `--auth-header-name <name>` (for `header`), `--allowed-paths <csv>` (rules, below), `--header k=v` (repeatable static default header), `--query k=v` (repeatable static default query param), `--rate-limit-per-min <n>` (default 60), `--daily-quota <n>` (default 1000), `--team <slug>`.
+
+Rules: each is `[METHOD[|METHOD…] ]/path`, e.g. `POST /v1/messages`, `GET|POST /api/**`. No method means any method; `*` matches within one path segment, `**` any run including `/`. Rules judge the path as sent (percent-encoded, without the query); a call no rule allows is `403 PATH_NOT_ALLOWED`, and a path with dot segments or bad encoding is `400 PATH_NOT_CANONICAL`. No rules means any method and path.
 
 ### `rip connection list`
 
@@ -643,15 +693,15 @@ Options: `--team <slug>`, `--include-disabled`.
 
 ### `rip connection get <id>`
 
-One connection's config (no secret). Option: `--team <slug>`.
+One connection's config: its credential (name, kind, id), its rules and `can call: yes|no` for you (no key). Option: `--team <slug>`.
 
-### `rip connection rotate-secret <id>`
+### `rip connection rotate-secret <id>` (deprecated)
 
-Replace the encrypted secret. Options: `--secret`, `--secret-env <VAR>`, `--secret-stdin`, `--team <slug>`.
+Rotates the key of the connection's credential, so every connection using it changes; prints a deprecation notice on stderr. Use `rip credential rotate <credential-id>`. Options: `--secret`, `--secret-env <VAR>`, `--secret-stdin`, `--team <slug>`.
 
 ### `rip connection disable <id>` / `rip connection rm <id>`
 
-`disable` soft-disables the connection and frees its name; `rm` hard-deletes it. Option: `--team <slug>`.
+`disable` soft-disables the connection and frees its name; `rm` hard-deletes it. Either way its credential stays. Option: `--team <slug>`.
 
 There is no CLI update for non-secret fields — disable and recreate, or use `PATCH /v0/connections/:id`.
 
@@ -666,9 +716,48 @@ rip connection call --team quintel --connection minimax \
 rip connection call --connection my-posthog --method GET --path /api/projects
 ```
 
-Required: `--connection <name>`, `--method <GET|POST|PUT|PATCH|DELETE>`, `--path <path>` (must pass `--allowed-paths`). Optional: `--team <slug>` (a non-member gets `CONNECTION_FORBIDDEN`), `--body <json>`, `--query <json>` (merged with defaults; caller wins), `--header k=v` (repeatable; only `Content-Type` / `Accept` / `Accept-Language` / `User-Agent` are forwarded).
+Required: `--connection <name>`, `--method <GET|POST|PUT|PATCH|DELETE>`, `--path <path>` (the method and path must pass the connection's rules). Optional: `--team <slug>` (a non-member, or a member not named on a restricted credential, gets `CONNECTION_FORBIDDEN`), `--body <json>`, `--query <json>` (merged with defaults; caller wins), `--header k=v` (repeatable; only `Content-Type` / `Accept` / `Accept-Language` / `User-Agent` are forwarded).
 
 In human mode the command prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON on stdout; `--json` wraps it in the standard `{ ok, data }` envelope. Non-streaming only; 30 s timeout and 5 MB response cap.
+
+## Credential commands
+
+A **credential** is an outside service's key, kept encrypted on the server and used by connections; no read returns it. Owned by a personal account **or** a team (`--team <slug>`): any current member may list, read and create; its creator or the team owner may rename, rotate, restrict, delete and attach it (`403 CONNECTION_FORBIDDEN` otherwise). Commands take the credential's id. Guide: [`references/connections.md`](./references/connections.md).
+
+The key is given with exactly one of `--secret <value>`, `--secret-env <VAR>`, `--secret-stdin` or `--key-file <path>` (the file's text, verbatim).
+
+### `rip credential create`
+
+```bash
+POSTHOG_KEY=phx_... rip credential create --team quintel --name posthog --secret-env POSTHOG_KEY
+rip credential create --team quintel --name google --kind google_service_account \
+  --key-file ./service-account.json \
+  --scope https://www.googleapis.com/auth/analytics.readonly
+```
+
+Required: `--name <name>` (lowercase, unique per owner) and the key. Optional: `--kind <secret|google_service_account>` (default `secret`), `--scope <url>` (repeatable, 1 to 20 Google scope URLs; required for and only for `google_service_account`), `--team <slug>`. A Google credential mints short-lived tokens itself; its connections must use `bearer` and an `https` base URL on `googleapis.com` (`400 INVALID_CONNECTION_FOR_CREDENTIAL` otherwise).
+
+### `rip credential list` / `rip credential get <id>`
+
+Each credential with its kind, scopes, named users and the connections using it. Option: `--team <slug>`.
+
+### `rip credential update <id>`
+
+```bash
+rip credential update <id> --team quintel --name posthog-prod
+rip credential update <id> --team quintel --restrict --user simon --user alek
+rip credential update <id> --team quintel --unrestrict
+```
+
+Options: `--name <name>`, `--scope <url>` (repeatable; replaces a Google credential's scopes), `--restrict` / `--unrestrict`, `--user <alias|id>` (repeatable; replaces the named users), `--team <slug>`. Restriction is for team credentials only: once restricted, only the named users (each a current member) may call through it, and an empty list refuses everyone, the team owner included. `--user` needs the credential to be restricted after the update (`400 INVALID_CREDENTIAL_USERS` names an entry that is not a member). `--unrestrict` clears the list. Never changes the key.
+
+### `rip credential rotate <id>`
+
+Replace the key (same kind, validated as on create); every connection using it sends the new key from its next call. Options: the key flags above, `--team <slug>`. Rotating a Google key does not revoke the old one at Google.
+
+### `rip credential rm <id>`
+
+Delete a credential. Refused with `409 CREDENTIAL_IN_USE` while any connection, disabled ones included, uses it; delete those connections first. Option: `--team <slug>`.
 
 ## Skill commands
 
@@ -825,6 +914,15 @@ Required: `--email`. Options: `--code`, `--name` (the key's name; default `Claud
 
 Make a six-digit sign-in code for the person's next agent and print the line to paste into it (`Connect to my Tokenrip: …/setup — email …, code … (valid 10 minutes)`). Making a new code replaces the previous one this agent made. Refusals: `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` (409) when the account has no single verified person, `RATE_LIMITED`.
 
+### `rip auth link`
+
+```bash
+rip auth link                                            # a sign-in link to the dashboard
+rip auth link --to https://tokenrip.com/operator/agents  # open this page after sign-in (a URL or a path)
+```
+
+Make a one-time sign-in link for the person who owns this account and print it on its own line, with the email it signs in and its expiry (`url`, `email`, `expires_at` in JSON). Give it whole, only to the person in this conversation; never post or store it. It signs their browser in once, within 10 minutes, after one click on a page that names the account; the person is emailed each time a link is used. Never open it yourself: it signs a browser in as the person. A new link replaces this agent's unused one. Revoking or rotating this agent's key signs out the browsers its links signed in, and such a browser cannot use Delete forever. `rip auth code` is for the person's next agent and never signs a browser in. Refusals: `NOT_PRIMARY_ACCOUNT` (409) when this account is not the person's main one (give the plain page address instead), `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` (409), `INVALID_FIELD` for a `--to` page off Tokenrip's site, `RUN_KEY_FORBIDDEN`, `RATE_LIMITED`. The old password form (`--alias`, `--password`, `--force`) is retired (below).
+
 ### `rip auth keys`
 
 ```bash
@@ -833,11 +931,11 @@ rip auth keys create --name "Hermes"     # a key for a host that takes a pasted 
 rip auth keys revoke <id>                # disconnect the agent using that key
 ```
 
-Every key on the account: connected agents, keys made for hosts, connector grants (with the connector's name). `(this agent)` marks the key this CLI uses. Revoking that key yourself adds `own_key: true` to the output and a warning: this CLI's key no longer works, so sign in again (or, under `TOKENRIP_API_KEY`, replace or unset the variable). Paste a created key into the host's key vault or settings, never into a chat. `default`, `mcp-oauth`, and `mcp-oauth-grant` are reserved names.
+Every key on the account: connected agents, keys made for hosts, connector grants (with the connector's name). `(this agent)` marks the key this CLI uses; `browsers: N signed in` counts the browsers that key's sign-in links signed in (`browser_sessions` in JSON). Revoking that key yourself adds `own_key: true` to the output and a warning: this CLI's key no longer works, so sign in again (or, under `TOKENRIP_API_KEY`, replace or unset the variable). Paste a created key into the host's key vault or settings, never into a chat. `default`, `mcp-oauth`, and `mcp-oauth-grant` are reserved names.
 
 ### `rip auth rotate-key` (alias `create-key`)
 
-Replace this agent's key and save the new one. Every other key on the account keeps working. Refused with `ENV_KEY_ROTATION` (no request made) while `TOKENRIP_API_KEY` is set: unset it to rotate a stored identity's key, or, for a key kept in a host's vault, make a new one with `rip auth keys create --name <name>` and revoke the old one.
+Replace this agent's key and save the new one. Every other key on the account keeps working. Browsers this key's sign-in links signed in are signed out. Refused with `ENV_KEY_ROTATION` (no request made) while `TOKENRIP_API_KEY` is set: unset it to rotate a stored identity's key, or, for a key kept in a host's vault, make a new one with `rip auth keys create --name <name>` and revoke the old one.
 
 ### `rip auth whoami`
 
@@ -853,9 +951,9 @@ rip auth update --description "Research agent" --website "https://example.com" -
 
 Options: `--alias`, `--metadata <json>`, `--tag`, `--description`, `--website`, `--email`, `--public <true|false>`. Pass an empty string to clear a field. A public profile is at `https://tokenrip.com/a/<alias>` and `GET /v0/accounts/<alias>`.
 
-### Retired: `rip auth register`, `rip auth claim`, `rip auth link`
+### Retired: `rip auth register`, `rip auth claim`, `rip auth link --alias … --password …`
 
-Each prints a pointer to `rip auth login` and the setup guide and exits 1 without contacting the server (`USE_LOGIN` for `register`, `RETIRED` for the others). `register` still accepts `--alias` and `--force`.
+Each prints a pointer to `rip auth login` and the setup guide and exits 1 without contacting the server (`USE_LOGIN` for `register`, `RETIRED` for the others). `register` still accepts `--alias` and `--force`. `rip auth link` with any of its old options (`--alias`, `--password`, `--force`), the retired key download, answers `RETIRED`; without them it makes a sign-in link (above).
 
 ## Account commands
 
@@ -914,7 +1012,7 @@ Check for a newer CLI and install it via npm, then print how to refresh the skil
 
 ## Several agents, one account
 
-Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Hand off with `rip auth code`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_call`, `key_list`, `sign_in_code_create`, …).
+Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Hand off with `rip auth code`; sign the person's browser in with `rip auth link`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_call`, `key_list`, `sign_in_code_create`, `sign_in_link_create`, …).
 
 ## Library usage
 
@@ -1020,8 +1118,8 @@ Client-side codes:
 | `UNAUTHORIZED` | API key not valid (revoked, or a bodiless 401). If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it. Otherwise sign in again: `rip auth login --email <email>` |
 | `NO_LOCAL_KEYPAIR` | The command signs with a local keypair; this identity signed in by email |
 | `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most). Get a new code at https://tokenrip.com/run and sign in with it |
-| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys or make codes. Ask the person to use the dashboard's Agents page |
-| `USE_LOGIN` / `RETIRED` | A retired setup command (`auth register` / `auth claim`, `auth link`); use `rip auth login` |
+| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys, make codes, or make sign-in links. For a sign-in link, give the person the plain page address; otherwise ask them to use the dashboard's Agents page |
+| `USE_LOGIN` / `RETIRED` | A retired setup command (`auth register` / `auth claim`, or `rip auth link --alias … --password …`, the retired key download); use `rip auth login`. An older CLI answers `RETIRED` to `rip auth link`, or `unknown option '--to'` with `--to`: update it to make sign-in links |
 | `TIMEOUT` | Transport expiry; compare local elapsed and configured timeout |
 | `NETWORK_ERROR` | Transport or local processing failure; a response may have arrived |
 | `AUTH_FAILED` | Could not create API key |
@@ -1044,8 +1142,20 @@ Common server codes:
 | `ALREADY_IN_WORKSPACE` / `CROSS_WORKSPACE_MOVE` | Adoption or move refused |
 | `TEAM_OWNS_WORKSPACES` | The team still owns workspaces |
 | `TASK_TAKEN` | Someone else holds the task; the details carry `holder` (printed as `Held by: …`). Nothing was written |
+| `DUPLICATE_UNIQUE_VALUE` / `UPSERT_COLUMN_NOT_UNIQUE` | The table's key column already holds the value, or the call repeats it: a key repeated in one append, a plain append of a stored key, `rip table update` onto another row's key, `rip artifact patch --metadata` declaring or moving the key onto a column with repeated values, or a CSV table create with a repeated key. Nothing was written: change or remove the repeated value; to update a stored row instead, append with `--upsert-on <key>` / `--upsert-on` names a column that is not the key |
+| `WORKSPACE_BUSY` | 503 from `workspace load` or `workspace changes`: it ran out of attempts, usually because another call by your key changed your position at the same moment. Nothing was changed; run it again after a moment |
 | `TASK_NOT_STARTED` / `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts (`stop` needs Doing; a cancelled task must be reopened first) |
-| `CONNECTION_FORBIDDEN` / `CONNECTION_NOT_FOUND` | Not allowed to use, or no such enabled, connection |
+| `TASK_IN_REVIEW` | The task is In review: start, stop and complete are refused, and its assignee and reviewer stay as they are until someone decides it |
+| `TASK_NOT_IN_REVIEW` | `decide` on a task with nothing to decide; the details carry `status` and `decision` (printed as `Decided: …`) |
+| `REVIEW_NOT_YOURS` | The review is addressed to someone else; the details carry `reviewer` (printed as `Reviewer: …`). Nothing was written |
+| `INVALID_REVIEWER` | The reviewer is not a member who can edit tasks in the audience, is the assignee or you, or differs from the one the task names (`reviewer` in the details) |
+| `TOO_MANY_PROPOSALS` | 200 of your proposals are In review in this workspace |
+| `TASK_NOT_DONE` | A later result (`rip task report <id>`) on a task that is not Done |
+| `CONNECTION_FORBIDDEN` / `CONNECTION_NOT_FOUND` | Not allowed to use, or no such enabled, connection (also: not a named user of its restricted credential, or no management right on the credential) |
+| `PATH_NOT_ALLOWED` / `PATH_NOT_CANONICAL` | No rule of the connection allows that method and path / the path has dot segments, a backslash or bad percent-encoding; nothing was sent |
+| `CREDENTIAL_NOT_FOUND` / `CREDENTIAL_IN_USE` / `CREDENTIAL_NAME_TAKEN` | No such credential under that owner / connections still use it / the owner already has a credential of that name (for an inline secret on `connection create`, attach it with `--credential` instead) |
+| `INVALID_CREDENTIAL` / `INVALID_CREDENTIAL_USERS` / `INVALID_CONNECTION_FOR_CREDENTIAL` | The key or scopes are wrong for the kind / a named user is not a current team member / a Google credential needs `bearer` and an https googleapis.com base URL |
+| `TOKEN_EXCHANGE_FAILED` | Google refused to trade the service-account key for a token (Google's own error in the message) |
 | `SKILL_NOT_FOUND` / `SKILL_FORBIDDEN` | Skill not in reach (or missing); in reach but you may not share or delete it |
 | `INVALID_SKILL` | The folder breaks a skill rule; `reason` says which (`references/skills.md`) |
 | `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` | A personal skill needs exactly one operator linked to this agent |

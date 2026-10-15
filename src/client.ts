@@ -211,6 +211,10 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         reason?: unknown;
         /** `TASK_TAKEN`: who holds the task. */
         holder?: unknown;
+        /** `REVIEW_NOT_YOURS` / `INVALID_REVIEWER`: whom the review is addressed to. */
+        reviewer?: unknown;
+        /** `TASK_NOT_IN_REVIEW`: who decided it. */
+        decision?: unknown;
         /** A trashed refusal's dates (`DELETED`, `WORKSPACE_DELETED`). */
         data?: unknown;
         errors?: Array<{ code?: string; message?: string }>;
@@ -247,7 +251,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
-          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder']
+          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'decision']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
         });
         for (const issue of Array.isArray(safeDetails) ? safeDetails : []) {

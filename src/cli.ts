@@ -380,7 +380,7 @@ NOTE:
 withWhy(artifact
   .command('patch'))
   .argument('<identifier>', 'Artifact UUID or alias')
-  .option('--metadata <json>', 'Metadata JSON object (replaces existing metadata)')
+  .option('--metadata <json>', 'Metadata JSON object (replaces existing metadata; a table keeps its schema and strict unless you send them)')
   .option('--alias <alias>', 'New alias for the artifact')
   .option('--title <title>', 'New title for the artifact')
   .option('--description <description>', 'New description for the artifact (empty string clears it)')
@@ -443,7 +443,7 @@ withWhy(table
   .argument('<uuid>', 'Table artifact public ID')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
-  .option('--upsert-on <column>', 'Update the row matching this column instead of inserting (column must be unique: true)')
+  .option('--upsert-on <column>', 'Update the row matching this column instead of inserting (must be the table key, its unique: true column)')
   .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
   .addOption(retired('--workspace-session-id <id>'))
   .description('Append one or more rows to a table (max 1000 per call)')
@@ -456,8 +456,14 @@ EXAMPLES:
 NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
 
 UPSERT: --upsert-on makes publishing idempotent in one call — no check-then-write,
-no race. The named column must be declared unique: true in the table schema.
-Without --upsert-on, a duplicate value in a unique column is rejected (409).
+no race. A table has at most one key, its unique: true column, and --upsert-on
+must name it; every row must carry the key (MISSING_FIELD otherwise).
+
+KEY: the key compares the exact stored text: "100" and "100.0" are different keys,
+the number 1 and the string "1" are the same key. Before any row is written,
+a key repeated within the call, or (without --upsert-on) a key a stored row
+already holds, is rejected with 409 DUPLICATE_UNIQUE_VALUE; a key value that is
+an object or array, or longer than 1024 bytes, is 400 INVALID_COLUMN_VALUE.
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { tableAppend } = await import('./commands/table.js');
@@ -657,6 +663,38 @@ EXAMPLES:
     await authCode();
   }));
 
+auth
+  .command('link')
+  .description("Make a one-time sign-in link for the person's browser")
+  .option('--to <page>', 'Tokenrip page to open after sign-in: a URL or a path')
+  // The retired password form's options: accepted so an old script gets the pointer, not a usage error.
+  .addOption(new Option('--alias <alias>').hideHelp())
+  .addOption(new Option('--password <password>').hideHelp())
+  .addOption(new Option('--force').hideHelp())
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip auth link
+  $ rip auth link --to https://tokenrip.com/operator/agents
+
+  Prints a sign-in link for the person who owns this account. Give it whole,
+  only to the person in this conversation; never post or store it. It signs
+  their browser in once, within 10 minutes, after one click on a page that
+  names the account, and the person is emailed when it is used. Never open
+  it yourself: it signs a browser in as the person. Revoking this agent's
+  key signs that browser out.
+
+  A sign-in link is for the person's browser; a code for the person's next
+  agent is \`rip auth code\`.
+`)
+  .action(wrapCommand(async (options) => {
+    if (options.alias !== undefined || options.password !== undefined || options.force !== undefined) {
+      const { retiredLinkForm } = await import('./commands/auth.js');
+      retiredLinkForm();
+    }
+    const { authLink } = await import('./commands/auth-keys.js');
+    await authLink({ to: options.to });
+  }));
+
 const keys = auth.command('keys').description('List, create, and revoke the keys on this account');
 
 keys
@@ -713,7 +751,8 @@ EXAMPLES:
   $ rip auth rotate-key
 
   Revokes the key this agent uses and saves a new one. Every other key on
-  the account (other agents, connectors) keeps working.
+  the account (other agents, connectors) keeps working. Browsers this key's
+  sign-in links signed in are signed out.
 
   Refused (ENV_KEY_ROTATION) while TOKENRIP_API_KEY is set: unset it to rotate
   a stored key; for a key kept in a host's vault, make a new one with
@@ -777,17 +816,6 @@ EXAMPLES:
   .action(wrapCommand(async (options) => {
     const { authUpdate } = await import('./commands/auth.js');
     await authUpdate(options);
-  }));
-
-auth
-  .command('link')
-  .description('Retired: use `rip auth login`')
-  .option('--alias <alias>', 'Ignored')
-  .option('--password <password>', 'Ignored')
-  .option('--force', 'Ignored')
-  .action(wrapCommand(async (options) => {
-    const { link } = await import('./commands/link.js');
-    await link(options);
   }));
 
 // ── agent commands ──────────────────────────────────────────────────
@@ -871,7 +899,7 @@ program
   .command('activity')
   .description('What happened in a team or your own scope — connections, team shares, team changes')
   .option('--team <slug>', "A team's feed (default: your own scope)")
-  .option('--type <list>', 'Comma list of event types, e.g. connection.created,team.member_removed')
+  .option('--type <list>', 'Comma list of event types, e.g. connection.created,credential.rotated,team.member_removed')
   .option('--actor <who>', "Account id or alias, or the literal 'system'")
   .option('--subject <ref>', "'<type>:<id>' — e.g. connection:<uuid> for one subject's history")
   .option('--since <iso>', 'ISO timestamp, or a number of days back')
@@ -881,6 +909,7 @@ program
 EXAMPLES:
   $ rip activity --team quintel
   $ rip activity --team quintel --type connection.created --since 7
+  $ rip activity --team quintel --type credential.created,credential.rotated
 
 NOTES:
   Read-only: poll it freely. Each row's sentence is rendered server-side, so
@@ -1031,18 +1060,19 @@ const collectKv = (v: string, prev: string[] = []): string[] => prev.concat(v);
 
 const connection = program
   .command('connection')
-  .description('Manage connections — encrypted server-side API-router credentials (personal or team)');
+  .description('Manage connections — where agents call an outside API with a credential the server holds (personal or team)');
 
 connection
   .command('create')
   .requiredOption('--name <name>', 'Connection name (unique per owner)')
   .requiredOption('--base-url <url>', 'Base URL of the upstream API')
-  .requiredOption('--auth-type <type>', 'bearer | header | basic | query')
+  .option('--credential <name|id>', 'Use an existing credential of the same owner (see `rip credential`); --auth-type then defaults to bearer')
+  .option('--auth-type <type>', 'bearer | header | basic (required without --credential)')
   .option('--auth-header-name <name>', 'Header name when --auth-type=header (e.g. x-api-key)')
-  .option('--secret <value>', 'Secret value (prefer --secret-env / --secret-stdin)')
+  .option('--secret <value>', 'Without --credential: the key, kept as a new credential named after the connection (prefer --secret-env / --secret-stdin)')
   .option('--secret-env <VAR>', 'Read the secret from an environment variable')
   .option('--secret-stdin', 'Read the secret from stdin')
-  .option('--allowed-paths <csv>', 'Comma-separated allowed path globs (e.g. "/v1/*")')
+  .option('--allowed-paths <csv>', 'Comma-separated rules "[METHOD|METHOD ]/path": * matches one path segment, ** any number (e.g. "GET|POST /v1/**")')
   .option('--header <kv>', 'Static default header key=value (repeatable)', collectKv, [])
   .option('--query <kv>', 'Static default query key=value (repeatable)', collectKv, [])
   .option('--rate-limit-per-min <n>', 'Per-minute rate limit')
@@ -1054,7 +1084,15 @@ EXAMPLES:
   $ MINIMAX_KEY=sk-... rip connection create --team quintel --name minimax \\
       --base-url https://api.minimax.io/anthropic --auth-type header \\
       --auth-header-name x-api-key --secret-env MINIMAX_KEY \\
-      --allowed-paths '/v1/*' --header anthropic-version=2023-06-01
+      --allowed-paths 'POST /v1/messages' --header anthropic-version=2023-06-01
+  $ rip connection create --team quintel --name ga4 --credential google \\
+      --base-url https://analyticsdata.googleapis.com \\
+      --allowed-paths 'POST /v1beta/properties/*:runReport'
+
+NOTES:
+  Without --credential, the secret becomes a new credential named after the
+  connection. Rotate a key with \`rip credential rotate <credential-id>\`: every
+  connection using it sends the new key from the next call.
 `)
   .action(wrapCommand(async (options) => {
     const { connectionCreate } = await import('./commands/connection.js');
@@ -1088,7 +1126,7 @@ connection
   .option('--secret-env <VAR>', 'Read the new secret from an environment variable')
   .option('--secret-stdin', 'Read the new secret from stdin')
   .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
-  .description('Rotate a connection secret')
+  .description('Deprecated: use `rip credential rotate`. Rotates the key of the credential this connection uses')
   .action(wrapCommand(async (id, options) => {
     const { connectionRotate } = await import('./commands/connection.js');
     await connectionRotate(id, options);
@@ -1134,6 +1172,110 @@ EXAMPLES:
   .action(wrapCommand(async (options) => {
     const { connectionCall } = await import('./commands/connection.js');
     await connectionCall(options);
+  }));
+
+// ── credential commands ──────────────────────────────────────────────
+// Repeatable `--scope <url>` / `--user <alias|id>` collector.
+const collectList = (v: string, prev: string[] = []): string[] => prev.concat(v);
+
+const credential = program
+  .command('credential')
+  .description('Manage credentials — keys for outside services kept encrypted on the server and used by connections (personal or team)');
+
+credential
+  .command('create')
+  .requiredOption('--name <name>', 'Credential name (lowercase, unique per owner)')
+  .option('--kind <kind>', 'secret | google_service_account', 'secret')
+  .option('--secret <value>', 'The key (prefer --secret-env / --secret-stdin)')
+  .option('--secret-env <VAR>', 'Read the key from an environment variable')
+  .option('--secret-stdin', 'Read the key from stdin')
+  .option('--key-file <path>', 'Read the key from a file (a Google service-account key JSON)')
+  .option('--scope <url>', 'Google scope URL for a google_service_account credential (repeatable)', collectList, [])
+  .option('--team <slug>', 'Create a team credential (any current team member)')
+  .description('Create a credential (its key is never shown again)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ POSTHOG_KEY=phx_... rip credential create --team quintel --name posthog --secret-env POSTHOG_KEY
+  $ rip credential create --team quintel --name google --kind google_service_account \\
+      --key-file ./service-account.json \\
+      --scope https://www.googleapis.com/auth/analytics.readonly \\
+      --scope https://www.googleapis.com/auth/webmasters.readonly
+
+NOTES:
+  Then attach it: \`rip connection create --credential <name> ...\`. A Google
+  credential mints short-lived tokens itself; its connections use bearer and
+  an https *.googleapis.com base URL.
+`)
+  .action(wrapCommand(async (options) => {
+    const { credentialCreate } = await import('./commands/credential.js');
+    await credentialCreate(options);
+  }));
+
+credential
+  .command('list')
+  .option('--team <slug>', "List a team's credentials")
+  .description('List credentials and the connections using each (keys are never shown)')
+  .action(wrapCommand(async (options) => {
+    const { credentialList } = await import('./commands/credential.js');
+    await credentialList(options);
+  }));
+
+credential
+  .command('get')
+  .argument('<id>', 'Credential id')
+  .option('--team <slug>', 'Team credential')
+  .description('Show one credential')
+  .action(wrapCommand(async (id, options) => {
+    const { credentialGet } = await import('./commands/credential.js');
+    await credentialGet(id, options);
+  }));
+
+credential
+  .command('update')
+  .argument('<id>', 'Credential id')
+  .option('--name <name>', 'New name')
+  .option('--scope <url>', 'Replace the Google scopes (repeatable; google_service_account only)', collectList, [])
+  .option('--restrict', 'Only the named users may call through it (team credential)')
+  .option('--unrestrict', 'Every team member may call through it again (clears the named users)')
+  .option('--user <alias|id>', 'A team member who may use it once restricted (repeatable; replaces the list)', collectList, [])
+  .option('--team <slug>', "Team credential (its creator or the team owner)")
+  .description('Rename a credential, change its Google scopes, or name who may use it')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip credential update <id> --team quintel --restrict --user simon --user alek
+  $ rip credential update <id> --team quintel --unrestrict
+
+NOTES:
+  A restricted credential with no named users refuses everyone, the team owner
+  included. It never changes the key: use \`rip credential rotate\`.
+`)
+  .action(wrapCommand(async (id, options) => {
+    const { credentialUpdate } = await import('./commands/credential.js');
+    await credentialUpdate(id, options);
+  }));
+
+credential
+  .command('rotate')
+  .argument('<id>', 'Credential id')
+  .option('--secret <value>', 'The new key (prefer --secret-env / --secret-stdin)')
+  .option('--secret-env <VAR>', 'Read the new key from an environment variable')
+  .option('--secret-stdin', 'Read the new key from stdin')
+  .option('--key-file <path>', 'Read the new key from a file (a Google service-account key JSON)')
+  .option('--team <slug>', "Team credential (its creator or the team owner)")
+  .description('Replace a credential\'s key; every connection using it sends the new key from the next call')
+  .action(wrapCommand(async (id, options) => {
+    const { credentialRotate } = await import('./commands/credential.js');
+    await credentialRotate(id, options);
+  }));
+
+credential
+  .command('rm')
+  .argument('<id>', 'Credential id')
+  .option('--team <slug>', "Team credential (its creator or the team owner)")
+  .description('Delete a credential (refused while a connection uses it)')
+  .action(wrapCommand(async (id, options) => {
+    const { credentialRemove } = await import('./commands/credential.js');
+    await credentialRemove(id, options);
   }));
 
 // ── skill commands ───────────────────────────────────────────────────
@@ -1259,14 +1401,16 @@ const collectResult = (v: string, prev: string[] = []): string[] => prev.concat(
 
 const task = program
   .command('task')
-  .description('Work queue — file, start and complete tasks in a workspace');
+  .description('Work in a workspace: propose before acting outside it, report what you did, decide reviews addressed to you, and start and complete tasks');
 
 task
   .command('list')
   .requiredOption('--workspace-id <id>', 'The workspace whose tasks to list')
-  .option('--status <list>', "Comma list of todo,doing,done,cancelled or 'all' (default todo,doing)")
+  .option('--status <list>', "Comma list of todo,doing,review,done,cancelled or 'all' (default todo,doing)")
   .option('--kind <kind>', 'Only tasks of this kind')
-  .option('--mine', 'Only tasks suggested to you or held by you')
+  .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
+  .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
+  .option('--parent <id>', "Only this task's children")
   .option('--since <iso>', 'Only tasks created after this ISO timestamp')
   .option('--order <order>', "created (default, newest first) or finished (newest finish first; only with --status done and/or cancelled)")
   .option('--limit <n>', 'Page size (max 200)')
@@ -1280,7 +1424,7 @@ task
 task
   .command('show')
   .argument('<id>', 'Task id')
-  .description('Show one task with its results')
+  .description('Show one task: who it is for and who reviews it, the draft and the approved text to carry out, the decision, the result and links, children and recent history')
   .action(wrapCommand(async (id) => {
     const { taskShow } = await import('./commands/task.js');
     await taskShow(id);
@@ -1292,7 +1436,8 @@ withWhy(task
   .requiredOption('--expected-revision <n>', 'Current task revision')
   .option('--title <title>', 'Replace the title')
   .option('--body <markdown>', 'Replace the body')
-  .option('--assignee <who>', 'Suggested assignee — account id or alias')
+  .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
+  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle>; never the assignee')
   .option('--audience <audience>', 'Visibility: internal or shared')
   .addOption(retired('--workspace-session-id <id>'))
   .description('Update task metadata')
@@ -1307,7 +1452,9 @@ withWhy(task
   .requiredOption('--workspace-id <id>', 'The workspace to file the task in')
   .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
   .addOption(retired('--workspace-session-id <id>'))
-  .option('--assignee <who>', 'Suggested assignee — account id or alias (a workspace editor)')
+  .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
+  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle>; never the assignee')
+  .option('--parent <id>', 'A task in the same workspace this one belongs under')
   .option('--kind <kind>', 'Task kind (lowercase slug, e.g. process-call)')
   .option('--body <markdown>', 'Details')
   .option('--due <iso>', 'Due date (informational)')
@@ -1316,6 +1463,7 @@ withWhy(task
   .addHelpText('after', `
 EXAMPLES:
   $ rip task add "Review pricing page copy" --workspace-id 4f2c1b90-... --assignee alek
+  $ rip task add "Draft the launch post" --workspace-id 4f2c1b90-... --assignee agent:9b1d0e2a-... --reviewer alek
   $ rip task add "Renew domain" --workspace-id 4f2c1b90-... --due 2026-10-01
 `)
   .action(wrapCommand(async (title, options) => {
@@ -1346,8 +1494,9 @@ withWhy(task
   .command('done'))
   .argument('<id>', 'Task id')
   .option('--result <type:id>', 'Attach a result: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .option('--result-text <text>', 'What came of it, at most 280 characters (e.g. "4 likes")')
   .addOption(retired('--workspace-session-id <id>'))
-  .description('Complete a task: one that is free (To do) or yours')
+  .description('Complete a task: one that is free (To do) or yours. An approved proposal: carry out exactly its approved text first')
   .action(wrapCommand(async (id, options) => {
     const { taskDone } = await import('./commands/task.js');
     await taskDone(id, options);
@@ -1371,6 +1520,77 @@ withWhy(task
   .action(wrapCommand(async (id, options) => {
     const { taskReopen } = await import('./commands/task.js');
     await taskReopen(id, options);
+  }));
+
+withWhy(task
+  .command('propose'))
+  .argument('[id]', 'A task that is free or yours, or your own proposal (omit for a new proposal)')
+  .option('--workspace-id <id>', 'A new proposal: the workspace')
+  .option('--title <title>', 'A new proposal: what you would do')
+  .option('--draft <text>', 'The exact text the action uses (the post, the email)')
+  .option('--draft-file <path>', 'Read the draft from a file, verbatim')
+  .option('--verb <verb>', 'The approve button\'s word, e.g. Post or Send (default Approve)')
+  .option('--kind <kind>', 'The kind of work (lowercase slug, e.g. x-reply); your instructions may let some kinds run on their own')
+  .option('--reviewer <who>', 'Who decides: a person or agent:<handle> (default your own person; never you)')
+  .option('--parent <id>', 'A new proposal: a task in the same workspace it belongs under')
+  .option('--body <markdown>', 'A new proposal: context for the reviewer')
+  .option('--audience <audience>', 'A new proposal: internal | shared')
+  .option('--link <type:id>', 'Attach a link: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .description('Propose an action before it leaves the workspace; it waits In review, or comes back doing and approved when your instructions allow its kind')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task propose --workspace-id 4f2c1b90-... --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
+  $ rip task propose 7a1c2d1e-... --draft "Thanks Jen, we ship Thursday!"     # a task you are doing, or your own proposal
+
+In review: stop; on a later run, rip workspace load lists it under Waiting on you once it is approved.
+Doing and approved: carry out exactly its approved text now, then rip task done <id> --result-text "…".
+`)
+  .action(wrapCommand(async (id, options) => {
+    const { taskPropose } = await import('./commands/task.js');
+    await taskPropose(id, options);
+  }));
+
+withWhy(task
+  .command('report'))
+  .argument('[id]', 'A Done task to add a later result to (omit for a new report)')
+  .option('--workspace-id <id>', 'A new report: the workspace')
+  .option('--title <title>', 'A new report: what you did')
+  .option('--result-text <text>', 'What came of it, at most 280 characters; a later result replaces it')
+  .option('--link <type:id>', 'Attach a link: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .option('--kind <kind>', 'A new report: the kind of work')
+  .option('--parent <id>', 'A new report: a task in the same workspace it belongs under')
+  .option('--body <markdown>', 'A new report: details')
+  .option('--audience <audience>', 'A new report: internal | shared')
+  .description('Report work you already did that needed no approval (born Done), or add a later result to a Done task')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task report --workspace-id 4f2c1b90-... --title "Sent the weekly digest" --result-text "38% opened" --link url:https://...
+  $ rip task report 7a1c2d1e-... --result-text "12 likes"
+`)
+  .action(wrapCommand(async (id, options) => {
+    const { taskReport } = await import('./commands/task.js');
+    await taskReport(id, options);
+  }));
+
+withWhy(task
+  .command('decide'))
+  .argument('<id>', 'A task In review whose reviewer is you (rip task list --reviewer me)')
+  .option('--approve', 'Approve it')
+  .option('--skip', 'Skip it: it is cancelled')
+  .requiredOption('--expected-revision <n>', 'The revision you read; a draft replaced since is refused CONFLICT')
+  .option('--edited-draft <text>', 'With --approve: the text to carry out instead of the draft')
+  .option('--edited-draft-file <path>', 'With --approve: read the edited draft from a file, verbatim')
+  .option('--note <text>', 'With --skip: why not')
+  .description('Decide a review addressed to you: approve (optionally with an edited draft) or skip')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task decide 7a1c2d1e-... --approve --expected-revision 3
+  $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edited-draft-file edited.txt
+  $ rip task decide 7a1c2d1e-... --skip --expected-revision 3 --note "Not this week"
+`)
+  .action(wrapCommand(async (id, options) => {
+    const { taskDecide } = await import('./commands/task.js');
+    await taskDecide(id, options);
   }));
 
 /**

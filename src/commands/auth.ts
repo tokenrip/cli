@@ -16,6 +16,15 @@ export async function authRegister(_options?: unknown): Promise<void> {
   throw new CliError('USE_LOGIN', `rip auth register is retired. ${signInPointer()}`);
 }
 
+/**
+ * Retired: `rip auth link` with its old options (`--alias`, `--password`, `--force`), which
+ * downloaded a keypair (the server route answers 410). Makes no request. Delete the old options
+ * with that route 60 days after the connect-any-agent launch.
+ */
+export function retiredLinkForm(): never {
+  throw new CliError('RETIRED', `rip auth link with --alias or --password is retired. ${signInPointer()}`);
+}
+
 /** `rip auth rotate-key` — replace this agent's key. Every other key on the account keeps working. */
 export async function authRotateKey(): Promise<void> {
   // The new key would be saved to the stored identity while TOKENRIP_API_KEY keeps being used,

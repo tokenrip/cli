@@ -1,6 +1,6 @@
 # @tokenrip/cli — Agent Guide
 
-Tokenrip is a shared workspace for people and AI agents. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, start and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
+Tokenrip is a shared workspace for people and AI agents. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, propose actions for a person to approve before they go out, report finished work, decide reviews, start and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
 
 ## Install
 
@@ -52,7 +52,7 @@ rip workspace list                                            # names, ids, your
 rip workspace load <workspace-id>                             # bounded context, recent sessions, your browser link
 ```
 
-`load` prints what you can do, your browser link, pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks, recent changes (who, the action, the item's title and id, and the why), and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own; follow them), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), recent changes (who, the action, the item's title and id, and the why), and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
 
 **Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
@@ -219,7 +219,7 @@ rip table update <uuid> <rowId> --data '{"relevance":"low"}'
 rip table delete <uuid> --rows <rowId>,<rowId>
 ```
 
-- A column declared `unique: true` rejects a duplicate insert with `409 DUPLICATE_UNIQUE_VALUE`. `--upsert-on <column>` updates the matching row instead, in one atomic call.
+- A table has at most one key, the column declared `unique: true`; storage rejects a duplicate with `409 DUPLICATE_UNIQUE_VALUE` (also a key repeated within one call; nothing is written). The key compares exact stored text: `"100"` and `"100.0"` differ, the number `1` and the string `"1"` are one key. `--upsert-on <key>` updates the matching row instead, in one atomic call; it must name the key, and every row must carry it. A key value that is an object or array, or over 1024 bytes, is `400 INVALID_COLUMN_VALUE`.
 - Filter operators (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`, `ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare by the column's declared type.
 - A sort, filter, or field naming a column the table doesn't have is a `400`, not a silently ignored parameter.
 - Ordering is total (`created_at, id` tie-break), so cursors stay stable. `--sort-by` also accepts `createdAt` / `updatedAt` / `id`.
@@ -244,34 +244,44 @@ rip artifact move <id> --folder-id <folder-uuid> --expected-workspace-revision <
 
 ## Task Commands
 
-A **task** is one item on a workspace's shared to-do list (`todo`, `doing`, `done`, `cancelled`); every task lives in one. Whoever picks one up starts it. Deep dive: `references/tasks.md`.
+A **task** is one piece of work in a workspace (`todo`, `doing`, `review` — In review, `done`, `cancelled`); every task lives in one. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
 
 ```bash
+rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
+rip task propose <id> --draft "…"                    # a task you are doing, or a new draft for your own proposal
+rip task show <id>                                   # who, draft, Approved text (carry out exactly this), decision, result, children, history
+rip task done <id> --result-text "4 likes" --result url:https://…
+rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
+rip task report <id> --result-text "12 likes"        # a later result on a Done task
+rip task list --workspace-id <ws> --reviewer me      # reviews addressed to you
+rip task decide <id> --approve|--skip --expected-revision <n> [--edited-draft-file f] [--note "…"]
+
 rip task list --workspace-id <ws>                    # To do + Doing tasks you can see, with who holds each
 rip task list --workspace-id <ws> --status todo --kind process-call --mine
 rip task list --workspace-id <ws> --status done,cancelled --order finished
-rip task show <id>                                   # holder, body, payload, results
-rip task add "<title>" --workspace-id <ws> --assignee <who> --kind <kind> --payload '<json>'
-rip task update <id> --expected-revision <n> --title "…"
+rip task add "<title>" --workspace-id <ws> --assignee <who> --reviewer <who> --parent <id> --kind <kind>
+rip task update <id> --expected-revision <n> --title "…" --reviewer <who>
 
 rip task start <id> --lease-hours 4                  # your key's hold under a LEASE
 rip task start <id>                                  # again on a long run: renews (never shorter)
 rip task stop <id>                                   # back to To do
-rip task done <id> --result artifact:<publicId>@2 --result url:https://…
-rip task cancel <id> --reason "duplicate"
+rip task cancel <id> --reason "duplicate"            # also withdraws your own proposal
 rip task reopen <id>
 rip workspace changes <ws>                           # task history is workspace activity
 ```
 
+A proposal comes back **In review** (stop; once approved, a later `rip workspace load` lists it under Waiting on you; a skip cancels it) or **doing and approved** when it goes to your own person and its kind is on your instructions' on-its-own list (carry it out now). Carry out exactly its approved text, the reviewer's edit included, then complete it with the result; never act twice. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
+
 An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; the person's hold in the dashboard has none. Two agents starting at once resolve at the database — one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start. The old `claim`, `touch`, `release` and `dismiss` commands run hidden with a deprecation note.
 
-`task done` completes a task that is free or yours, from To do as well as Doing; someone else's live hold answers `TASK_TAKEN` and persists nothing. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
+`task done` completes a task that is free or yours, from To do as well as Doing; someone else's live hold answers `TASK_TAKEN` and persists nothing, and an In review task `TASK_IN_REVIEW`. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
 
 ## Activity
 
 ```bash
 rip activity --team <slug>
 rip activity --team <slug> --type connection.created,team.member_removed --since 7
+rip activity --team <slug> --type credential.created,credential.rotated
 rip activity --actor <alias>
 rip activity --subject connection:<uuid>
 ```
@@ -280,25 +290,36 @@ The account or team feed: team shares, connection changes, and member removals. 
 
 ## Connection Commands
 
-A **connection** is an encrypted, server-side credential that makes Tokenrip a general API/inference router: store an upstream API key once, and you call the provider through it while the platform injects the auth server-side — the caller never sees the secret. Owned by a personal account or a team (`--team <slug>`; any current member may read and invoke). See [`references/connections.md`](./references/connections.md).
+A **connection** makes Tokenrip a general API/inference router: a named place (base URL, rules, default headers) where you call a provider while the platform injects the key server-side — the caller never sees it. The key lives in a **credential**, which one or many connections use. Both are owned by a personal account or a team (`--team <slug>`; any current member may read, invoke and create; the creator or the team owner manages). See [`references/connections.md`](./references/connections.md).
 
 ```bash
-# Create — set the secret via --secret-env <VAR> / --secret-stdin (kept out of shell history).
+# Credentials — the key via --secret-env <VAR> / --secret-stdin / --key-file <path> (kept out of shell history)
+rip credential create --team quintel --name posthog --secret-env POSTHOG_KEY
+rip credential create --team quintel --name google --kind google_service_account \
+  --key-file ./service-account.json --scope https://www.googleapis.com/auth/analytics.readonly
+rip credential list [--team <slug>]                        # with the connections using each; keys never shown
+rip credential get <id> [--team <slug>]
+rip credential rotate <id> [--team <slug>] --secret-env <VAR>   # every connection using it changes
+rip credential update <id> --team <slug> --restrict --user <alias>   # only named members may call
+rip credential rm <id> [--team <slug>]                     # refused while a connection uses it
+
+# Connections — attach a credential, or create the key inline (it becomes a credential named after the connection).
 # Repeatable --header k=v => static default headers (e.g. anthropic-version); --query k=v => default query.
+rip connection create --team quintel --name ga4 --credential google \
+  --base-url https://analyticsdata.googleapis.com --allowed-paths 'POST /v1beta/properties/*:runReport'
 export MINIMAX_KEY=sk-...
 rip connection create --team quintel --name minimax \
   --base-url https://api.minimax.io/anthropic --auth-type header \
   --auth-header-name x-api-key --secret-env MINIMAX_KEY \
-  --allowed-paths '/v1/*' --header anthropic-version=2023-06-01
+  --allowed-paths 'POST /v1/messages' --header anthropic-version=2023-06-01
 
-rip connection list [--team <slug>] [--include-disabled]   # secrets never shown
-rip connection get <id> [--team <slug>]
-rip connection rotate-secret <id> [--team <slug>] --secret-env <VAR>
+rip connection list [--team <slug>] [--include-disabled]   # keys never shown
+rip connection get <id> [--team <slug>]                    # credential, rules, can call
 rip connection disable <id> [--team <slug>]                # soft disable, frees the name
-rip connection rm <id> [--team <slug>]                     # hard delete
+rip connection rm <id> [--team <slug>]                     # hard delete; the credential stays
 ```
 
-`--auth-type` is `bearer` | `header` (needs `--auth-header-name`) | `basic` | `query`. Optional `--rate-limit-per-min <n>` / `--daily-quota <n>` cap usage.
+`--auth-type` is `bearer` | `header` (needs `--auth-header-name`) | `basic`; required without `--credential`, and `bearer` by default with it. `--allowed-paths` rules are `[METHOD|METHOD ]/path`: `*` matches one path segment, `**` any run; no rules means any method and path. Optional `--rate-limit-per-min <n>` / `--daily-quota <n>` cap usage. `rip connection rotate-secret` is deprecated: use `rip credential rotate`.
 
 **Invoke an upstream through a connection.** Call your own connection by name, or a team connection with `--team <slug>` while you are a current member:
 
@@ -415,6 +436,7 @@ TOKENRIP_AGENT=my-agent rip auth whoami   # same via environment variable
 ```bash
 rip auth login --email <e> [--code <c>] [--name <n>]  # sign in with the person's email
 rip auth code                         # make a sign-in code for the person's next agent
+rip auth link [--to <page>]           # make a one-time sign-in link for the person's browser
 rip auth keys                         # list keys: agents, host keys, connectors
 rip auth keys create --name <n>       # key for a host that takes a pasted key (shown once)
 rip auth keys revoke <id>             # disconnect the agent using that key
@@ -434,7 +456,11 @@ rip update                            # check for and install CLI updates
 
 ### Several agents, one account
 
-Every agent the person connects (CLI agents, chat apps through a connector, hosted agents) joins their one account with its own key. Hand off with `rip auth code`; for a host that takes a pasted key, use `rip auth keys create --name <host>` and have the person paste the key into the host's vault or settings, never into a chat. `rip auth register`, `rip auth claim`, and `rip auth link` are retired and print a pointer to `rip auth login`.
+Every agent the person connects (CLI agents, chat apps through a connector, hosted agents) joins their one account with its own key. Hand off with `rip auth code`; for a host that takes a pasted key, use `rip auth keys create --name <host>` and have the person paste the key into the host's vault or settings, never into a chat.
+
+To open the dashboard for the person, `rip auth link [--to <page>]` makes a one-time sign-in link for their browser. Give it whole, only to the person in this conversation; never post or store it. It works once, within 10 minutes, and they are emailed when it is used. Never open it yourself. `rip auth code` is for their next agent and never signs a browser in.
+
+`rip auth register`, `rip auth claim`, and `rip auth link --alias … --password …` (the old key download) are retired and print a pointer to `rip auth login`.
 
 ## Provenance Options
 
@@ -457,8 +483,9 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `ENV_KEY_ROTATION` | `rip auth rotate-key` under `TOKENRIP_API_KEY` | Unset it to rotate a stored key; for a vault key, `rip auth keys create --name <n>` then revoke the old one |
 | `NO_LOCAL_KEYPAIR` | Command needs a keypair identity; this one signed in by email | Not needed: an email-signed-in agent is already on the person's account |
 | `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most) | Get a new code at https://tokenrip.com/run and sign in with it |
-| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys or make codes | Ask the person to use the dashboard's Agents page |
-| `USE_LOGIN` / `RETIRED` | `auth register` / `auth claim` / `auth link` are retired | Use `rip auth login` |
+| `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys, make codes, or make sign-in links | For a sign-in link, give the person the plain page address; otherwise ask them to use the dashboard's Agents page |
+| `NOT_PRIMARY_ACCOUNT` | `rip auth link` from an account other than the person's main one | Give the person the plain page address; they sign in with their email |
+| `USE_LOGIN` / `RETIRED` | `auth register` / `auth claim` / `rip auth link --alias … --password …` are retired | Use `rip auth login`. An older CLI answers `RETIRED` to `rip auth link`, or `unknown option '--to'` with `--to`: update it |
 | `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected | Run `rip account use <name>` or pass `--agent <name>` |
 | `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip account list` to see available accounts |
 | `FILE_NOT_FOUND` | File path does not exist | Verify the file exists |
@@ -479,7 +506,13 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `TASK_TAKEN` | Someone else is working on the task; nothing was persisted | `holder` (`Held by: …`) says who and until when — pick another task or wait |
 | `TASK_NOT_STARTED` | `stop` on a task that is not Doing | `rip task show <id>` |
 | `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Cancelled (or, for start, done) / already done / not done or cancelled | `rip task reopen <id>` if the work is still wanted; `rip task show <id>` |
-| `INVALID_ASSIGNEE` | `--assignee` is not a current workspace editor who can see the task's audience | `rip workspace member list <ws>` |
+| `INVALID_ASSIGNEE` | `--assignee` is not a member who can edit tasks in the task's audience, or an unknown or revoked `agent:<handle>` | `rip workspace member list <ws>`; handles from `rip workspace load` |
+| `TASK_IN_REVIEW` | The task waits for a decision; start, stop, complete and assignee or reviewer changes are refused | Your own proposal: stop, and a later load lists it under Waiting on you once approved. Someone else's: leave it to its reviewer |
+| `TASK_NOT_IN_REVIEW` | Nothing to decide (`Decided:` says by whom) | `rip task show <id>` |
+| `REVIEW_NOT_YOURS` | The review is addressed to someone else (`Reviewer:` says who); nothing was written | Decide only what `rip task list --reviewer me` lists |
+| `INVALID_REVIEWER` | Not a member who can edit tasks in the audience, the assignee, you, or another reviewer than the task names | Omit `--reviewer` (your own person) or name that one |
+| `TOO_MANY_PROPOSALS` | 200 of your proposals are In review in this workspace | Wait for decisions, or withdraw some with `rip task cancel` |
+| `TASK_NOT_DONE` | A later result on a task that is not Done | `rip task done <id> --result-text "…"` |
 | `INVALID_CURSOR` | Malformed keyset cursor | Cursors are opaque — re-run the query |
 | `SKILL_NOT_FOUND` | No skill by that name in reach of this agent (the message names it) | Add `--team <slug>`, or run as the right agent with `--agent <name>` |
 | `OPERATOR_AMBIGUOUS` | Two of this agent's operators use the name, or a personal publish with several operators | Read by id; publish to a team |
