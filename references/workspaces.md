@@ -43,7 +43,9 @@ rip workspace member set-role <workspace-id> <member> --role viewer|editor [--me
 rip workspace member remove <workspace-id> <member>
 ```
 
-`--team-id` takes the team's UUID (`rip team list` prints it); only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`).
+`--team-id` takes the team's UUID (`rip team list` prints it); only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`), nor can a team on a paid plan (`TEAM_HAS_PLAN`).
+
+A team-owned workspace needs the Team plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore workspace`, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit, count and the Billing link (`details.billingUrl` with `--json`). For a team without a plan, give the person the link to subscribe; at the maximum, delete a workspace. Nothing was created or restored.
 
 Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-every-write-says-what-it-is-for)).
 
@@ -92,6 +94,7 @@ rip artifact patch <id> --audience shared --expected-workspace-revision <n>
 rip artifact move <id> --folder-id <workspace-folder-uuid> --expected-workspace-revision <n>   # or --unfiled
 rip artifact delete <id> --expected-workspace-revision <n>         # to the trash for 30 days (needs deleteContent)
 rip artifact delete-version <id> <version-id> --expected-workspace-revision <n>   # permanent; no trash
+rip artifact prune-versions <id> [--keep <n>] --expected-workspace-revision <n>   # old versions, all but the current and newest --keep; permanent
 rip artifact bulk delete --ids "<id>,<id>" --expected-workspace-revisions '{"<id>": <n>, "<id>": <n>}'
 
 # tables (the row revision for a row; the workspaceRevision for schema-expanding appends)
@@ -149,6 +152,7 @@ rip workspace sessions <workspace-id> [--cursor <nextCursor>]
 `load` takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position, and every load records this agent in the workspace's Agents with the harness it used; only `rip workspace ack` moves the position). The response is bounded, and human output prints all of it, in the order an agent should read it:
 
 - `Workspace:` name, id, `membership/role`, and `Can:` — the capabilities you hold now; `Browser:` — the link the person opens to pair a browser tab to your agent key
+- `Storage:` (internal members) — this workspace's bytes and its payer's plan and usage ("the owner's account" or "the team"), never trimmed. When a notice follows it, tell your person; don't delete anything on your own
 - `Instructions (v<n>):` — what your person wrote for this agent in this workspace, **whole and never trimmed**, then `On its own:` the kinds of proposal your person lets run without asking (applied for you by `rip task propose`). Follow them. Without any: "No instructions here yet: your person writes them in the dashboard, Members & settings". Only your person edits them, in the dashboard; no agent writes instructions, and a change reaches you on your next load
 - `Waiting on you` — up to 20 tasks for exactly this agent, in this order: `carry out` (approved: read the approved text with `rip task show <id>` and carry out exactly that), `decide` (a review addressed to you: `rip task decide`), `do` (To do, for you), each with the next command; a task listed here is not printed again under `Tasks`. Then `Your proposals In review: <n>`
 - `Agents` — the workspace's agents as you may see them (internal members see every agent, an external member only their own), each in History's words with its handle, `agent:<handle>`: name an agent that way in a task's `--assignee` or `--reviewer` ([references/tasks.md](tasks.md))
@@ -158,7 +162,7 @@ rip workspace sessions <workspace-id> [--cursor <nextCursor>]
 - `Tasks` (To do and Doing, 20), `Recent changes` (up to 50, each with when, `You` or `~alias`, the action, the item's title and id, and its why on the next line; a `refresh`/`historyGap` warning when set), and the `Artifacts` index (50)
 - `More` — one `rip workspace load <ws> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset <value>` line per list that continues
 
-With `--json`, the keys come in this order: `workspace`, `instructions` (`{ version, text, onItsOwn, savedAt }` or null), `waiting` (`items[]`, each a task with `waiting: carry_out | decide | do`, and `hasMore`; the `carry_out` and `do` items, To do or Doing, also appear in `tasks`), `tasks`, `proposals` (`{ inReview }`), `agents` (`items[]`, principals whose `agent.id` is the handle, and `hasMore`), `pins[]`, `artifacts`, `activity`, `handoffs.items[]`, `sessions` (`items`, `hasMore`, `nextCursor`), and `browserLink`. When the reply would exceed its budget, the lists are cut in a fixed order and `waiting` last, to one item; the instructions are never cut; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above). Follow the explicit continuation fields; no page implies completeness. A workspace in the trash answers `WORKSPACE_DELETED` (410) to `load` and `show`. Loading does **not** acknowledge activity.
+With `--json`, the keys come in this order: `workspace`, `storage` (internal members only: `{ workspaceBytes, payer: { kind, plan, usedBytes, limitBytes }, notice? }`), `instructions` (`{ version, text, onItsOwn, savedAt }` or null), `waiting` (`items[]`, each a task with `waiting: carry_out | decide | do`, and `hasMore`; the `carry_out` and `do` items, To do or Doing, also appear in `tasks`), `tasks`, `proposals` (`{ inReview }`), `agents` (`items[]`, principals whose `agent.id` is the handle, and `hasMore`), `pins[]`, `artifacts`, `activity`, `handoffs.items[]`, `sessions` (`items`, `hasMore`, `nextCursor`), and `browserLink`. When the reply would exceed its budget, the lists are cut in a fixed order and `waiting` last, to one item; the instructions and `storage` are never cut; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above). Follow the explicit continuation fields; no page implies completeness. A workspace in the trash answers `WORKSPACE_DELETED` (410) to `load` and `show`. Loading does **not** acknowledge activity.
 
 **Sessions record themselves.** A session is a run of writes in one workspace by one account, agent key and conversation, each within 45 minutes of the previous one. Nothing is started, ended or expired; the server groups activity when you read it. Each session reads like a git log:
 
@@ -249,6 +253,8 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 | `ALREADY_IN_WORKSPACE` / `MIXED_OWNERSHIP` / `INELIGIBLE_STORAGE` / `WORKSPACE_BULK_LIMIT` | Adoption refused before any effect |
 | `CROSS_WORKSPACE_MOVE` | The folder and the artifact belong to different workspaces |
 | `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed with Delete forever in the dashboard |
+| `WORKSPACE_LIMIT_REACHED` | A create or workspace restore the owner has no room for: `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>` (`details.owner`, `plan`, `limit`, `used`, `billingUrl` with `--json`). A team without a plan (`none`) needs the Team plan, which the person subscribes to at that link; at the maximum, you delete a workspace. Nothing was written |
+| `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted or left by its last member; its person cancels the plan in Billing first |
 | `WHY_REQUIRED` / `INVALID_FIELD` (`why`) | State `--why` (or `TOKENRIP_WHY`); at most 300 characters. No `--why` flag: `rip update` |
 | `INVALID_SCOPE` / `INVALID_HANDOFF` | `--handoff` needs `--workspace-id` and markdown |
 | `INVALID_CURSOR` | Start `rip workspace sessions` again without `--cursor` |

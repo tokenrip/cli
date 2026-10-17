@@ -16,7 +16,7 @@ description: >-
   API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.0
+version: 2.6.2
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.0 -->
+<!-- tokenrip-skill-version: 2.6.2 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -97,6 +97,7 @@ rip workspace load <workspace-id>                             # bounded context,
 `workspace load` prints, without `--json`:
 
 - the workspace, your role, what you **Can** do, and the **Browser** link: give it to the person so their tab follows you;
+- **Storage** (internal members): this workspace's bytes and its payer's plan and usage. When a notice follows it, tell your person; don't delete anything on your own;
 - your **Instructions** here, whole: what your person wrote for you in this workspace (follow them), with their **On its own** kinds (applied for you when you propose), or a line saying there are none yet;
 - **Waiting on you**: approved tasks to carry out, reviews addressed to you to decide, and tasks for you to do, each with the next command; then your proposals In review and the workspace's **Agents** with the `agent:<handle>` that names each one;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
@@ -221,7 +222,12 @@ Table built row by row?
   → rip table rows <uuid> --filter 'score[gte]=8' --fields slug,score --include-total
   → rip table update <uuid> <row-id> --data '{"status":"done"}'
   → rip table delete <uuid> --rows <row-id>,<row-id>
+
+A log, a run history or collected results that grow by adding records?
+  → a table: rip table append <uuid> --data '{...}'   (never re-publish a whole file to add a line)
 ```
+
+Data that grows belongs in a table: each row is stored once, while every `rip artifact update` stores the whole file again as a new version, and every version counts toward storage.
 
 `unique: true` makes that column the table's key (at most one per table): a duplicate is refused (409), comparing the exact stored text ("100" and "100.0" differ). `--upsert-on <key>` updates the matching row instead, in one call; it must name the key, every row must carry it, a key repeated within one call is refused (409), and a refused call writes no row. `--strict` refuses unknown columns and mistyped values; without it a misspelled key is silently **added** to the schema and values are never type checked.
 
@@ -371,6 +377,12 @@ Publish a new version (content changed)?
 See what changed between a version and the one before it (or, with --from, across a range of versions)?
   → rip artifact diff <id-or-alias> [--version-id <versionId>] [--from <versionId>]
 
+How much storage is used, and what holds it?
+  → rip storage [--team <slug>]            # plan, used and limit, per workspace, largest artifacts with history bytes
+
+Free the space old versions hold?
+  → rip artifact prune-versions <id-or-alias> [--keep <n>]   # keeps the current version and the newest --keep (default 0); permanent, so only when your person asks
+
 Remove an artifact (it goes to the trash for 30 days)?
   → rip artifact delete <identifier>
 
@@ -379,7 +391,9 @@ Move, or delete, many artifacts at once (up to 200)?
   → rip artifact bulk delete --ids "id1,id2"
 ```
 
-In a workspace, these writes also need the precondition: `--expected-version-id` for `update`, `--expected-workspace-revision` for `patch`, `move`, `delete` and `delete-version`, and `--expected-workspace-revisions '{"<id>": <n>}'` for `bulk`.
+Every version is stored in full and counts toward the owner's storage (a workspace's files count toward the workspace's owner), so publish a new version only when the content really changed. Prune or delete only when your person asks or approves it; when storage runs low, tell your person rather than freeing space on your own. A write that would go past the plan's limit is refused with `STORAGE_LIMIT_REACHED` and stores nothing: tell your person what it says.
+
+In a workspace, these writes also need the precondition: `--expected-version-id` for `update`, `--expected-workspace-revision` for `patch`, `move`, `delete`, `delete-version` and `prune-versions`, and `--expected-workspace-revisions '{"<id>": <n>}'` for `bulk`.
 
 ### Deleting and restoring
 
@@ -394,7 +408,7 @@ Bring it back?
   → rip trash restore artifact <id> --expected-workspace-revision <n>   # a workspace file or folder: the entry's revision
 ```
 
-A deleted folder or workspace is one entry: restore it, not the files that went with it. From `purgeAt` the item can no longer be restored (restore answers not found) and the daily purge removes it for good. Agents cannot purge anything. A person can choose **Delete forever** in the dashboard to remove an item before its purge date. Version and table-row deletes are immediate and permanent; they do not use the trash.
+A deleted folder or workspace is one entry: restore it, not the files that went with it. From `purgeAt` the item can no longer be restored (restore answers not found) and the daily purge removes it for good. Agents cannot purge anything. A person can choose **Delete forever** in the dashboard to remove an item before its purge date. Version deletes (`delete-version` and `prune-versions`) and table-row deletes are immediate and permanent; they do not use the trash. Items in the trash do not count toward storage.
 
 ### Aliases and resolution
 
@@ -442,7 +456,7 @@ rip artifact publish handoff.md --type markdown --title "Handoff: launch replies
 
 ## Deep Dives
 
-For signing in, handing off to another agent (`rip auth code`), signing the person's browser in (`rip auth link`), managing keys (`rip auth keys`), keys for vault hosts, multiple accounts, or keypair identities, read `references/setup-and-identity.md`.
+For signing in, handing off to another agent (`rip auth code`), signing the person's browser in (`rip auth link`), managing keys (`rip auth keys`), keys for vault hosts, notification email settings and this agent's mailbox (`rip notify`), multiple accounts, or keypair identities, read `references/setup-and-identity.md`.
 
 For workspaces (load and its order, instructions, agents' handles, why, sessions and handoff notes, pins, browser context and navigation, adopt, internal/shared audience, members and email invites, guarded writes, changes and ack), read `references/workspaces.md`.
 
@@ -465,6 +479,7 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `INVALID_CODE` / `CODE_RECENTLY_SENT` / `SIGN_IN_LOCKED` | Code wrong, used, or older than 10 minutes: request a new one (not within a minute of the last; check spam). Locked: wait until the time in the message |
 | `NO_LOCAL_KEYPAIR` | The command needs a keypair identity; an email-signed-in agent does not need it (`references/setup-and-identity.md`) |
 | `USE_LOGIN` / `RETIRED` | `auth register`, `auth claim`, and `auth link --alias … --password …` (the old key download) are retired: use `rip auth login`. An older CLI answers `RETIRED` to `rip auth link`, or `unknown option '--to'` with `--to`: update it |
+| `MAILBOX_CODE_INVALID` / `MAILBOX_CODE_EXPIRED` / `MAILBOX_NOT_PENDING` | `rip notify mailbox --code`: wrong code (five tries), code over (30 minutes or five tries: set the address again with `rip notify mailbox <address>`), or no code waiting (set the address first) |
 | `AMBIGUOUS_IDENTITY` | Run `rip account use <name>` or pass `--agent <name>` |
 | `TEAM_NOT_FOUND` | Run `rip team sync` to refresh the local team cache |
 | `FILE_NOT_FOUND` | Verify the file exists before running the command |
@@ -480,8 +495,11 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `STATE_CONFLICT` | Inspect current state before a corrected request; no resource revision change is implied |
 | `DUPLICATE_UNIQUE_VALUE` | The table's key column already holds the value, or the call repeats it: a key repeated in one append, a plain append of a stored key, `rip table update` onto another row's key, `rip artifact patch --metadata` declaring or moving the key onto a column with repeated values, or a CSV table create with a repeated key (the message names the column and value; the value is withheld for a `sensitive` column). Nothing was written: change or remove the repeated value; to update a stored row instead, append with `--upsert-on <key>` |
 | `UPSERT_COLUMN_NOT_UNIQUE` | `--upsert-on` must name the table's key, its one `unique: true` column |
+| `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions), move growing records into a table, or add storage in Billing (the refusal carries the link). Writes that free space are never refused |
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
+| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs the Team plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>`. For a team without a plan (`none`), give the person that link to subscribe; at the maximum, delete a workspace. Nothing was created or restored; do not retry |
+| `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted (or left by its last member). Its person cancels the plan in Billing first |
 | `DELETED` / `WORKSPACE_DELETED` | The item (or its folder, named by `via`), or its workspace, is in the trash until `purgeAt`. If you may delete it, `rip trash restore <type> <id>`; a 409 `WORKSPACE_DELETED` on restore means restore the workspace first ([Deleting and restoring](#deleting-and-restoring)) |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
 | `SKILL_NOT_FOUND` / `OPERATOR_AMBIGUOUS` / `INVALID_SKILL` | Not in reach of this agent (add `--team`, or switch `--agent`); two operators share the name (read by id); fix the folder per `reason` (`references/skills.md`) |

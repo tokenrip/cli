@@ -30,6 +30,23 @@ export interface DomainErrorDetails {
   status?: string;
   /** `TASK_NOT_IN_REVIEW`: who decided it, when it was decided. */
   decision?: TaskDecisionDetails | null;
+  /**
+   * `WORKSPACE_LIMIT_REACHED`: the owner held to its plan, the plan, how many it allows and has, and where its person pays.
+   * `STORAGE_LIMIT_REACHED`: the plan and billingUrl too.
+   */
+  owner?: { kind: 'personal' | 'team'; id: string; name: string | null };
+  plan?: string;
+  limit?: number;
+  used?: number;
+  billingUrl?: string;
+  /**
+   * `STORAGE_LIMIT_REACHED`: the payer's bytes used, its plan's limit, what the write would have
+   * added, and the plan. All four or none (a workspace's external member gets none). With them,
+   * `billingUrl` when the payer is the caller's own account or team.
+   */
+  usedBytes?: number;
+  limitBytes?: number;
+  addedBytes?: number;
 }
 /** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
 export interface TaskPrincipalDetails {
@@ -136,6 +153,16 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       const reviewer = taskPrincipalDetails(body.reviewer);
       if (reviewer) details.reviewer = reviewer;
     }
+  } else if (code === 'WORKSPACE_LIMIT_REACHED') Object.assign(details, workspaceLimitDetails(body));
+  else if (code === 'STORAGE_LIMIT_REACHED') {
+    const { usedBytes, limitBytes, addedBytes, plan } = body;
+    const counts = [usedBytes, limitBytes, addedBytes];
+    if (counts.every((value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+      && typeof plan === 'string' && PLAN_KEYS.has(plan)) {
+      Object.assign(details, { usedBytes, limitBytes, addedBytes, plan });
+      // The payer's own refusal names where its person adds storage.
+      if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
+    }
   } else if (code === 'TASK_NOT_IN_REVIEW') {
     if (typeof body.status === 'string' && TASK_STATUSES.has(body.status)) details.status = body.status;
     if (body.decision === null) details.decision = null;
@@ -146,6 +173,29 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   }
   return Object.keys(details).length ? details : undefined;
 }
+
+/** The server's `PlanLabel` (apps/backend/src/api/service/billing-plans.ts). */
+const PLAN_LABELS: ReadonlySet<string> = new Set(['free', 'pro', 'team', 'none']);
+const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+/** A `WORKSPACE_LIMIT_REACHED` refusal's details, field by field: exactly owner, plan, limit, used and billingUrl. */
+function workspaceLimitDetails(body: Record<string, unknown>): DomainErrorDetails {
+  const details: DomainErrorDetails = {};
+  const owner = body.owner as Record<string, unknown> | undefined;
+  if (owner && typeof owner === 'object' && (owner.kind === 'personal' || owner.kind === 'team') && shortString(owner.id)
+    && nullableShortString(owner.name)) details.owner = { kind: owner.kind, id: owner.id, name: owner.name };
+  if (typeof body.plan === 'string' && PLAN_LABELS.has(body.plan)) details.plan = body.plan;
+  if (count(body.limit)) details.limit = body.limit;
+  if (count(body.used)) details.used = body.used;
+  if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
+  return details;
+}
+/** A refusal's Billing link (`WORKSPACE_LIMIT_REACHED`, `STORAGE_LIMIT_REACHED`): a bounded http(s) URL. */
+function isBillingUrl(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 2048 && /^https?:\/\/\S+$/.test(value);
+}
+/** The server's `PLAN_KEYS` (apps/backend/src/db/models/plan-keys.ts). */
+const PLAN_KEYS: ReadonlySet<string> = new Set(['free', 'pro', 'team', 'enterprise']);
 
 /** The server's `TASK_STATUSES` (apps/backend/src/db/models/task-vocabulary.ts). */
 const TASK_STATUSES: ReadonlySet<string> = new Set(['todo', 'doing', 'review', 'done', 'cancelled']);
