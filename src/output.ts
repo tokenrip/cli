@@ -30,7 +30,11 @@ export function outputSuccess(data: Record<string, unknown>, formatter?: Formatt
 
 export function outputError(err: CliError): never {
   if (isJsonMode()) {
-    console.log(JSON.stringify({ ok: false, error: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }));
+    console.log(JSON.stringify({
+      ok: false, error: err.code, message: err.message,
+      ...(err.details ? { details: err.details } : {}),
+      ...(err.partial ? { partial: err.partial } : {}),
+    }));
   } else {
     console.error(`Error [${err.code}]: ${err.message}`);
     const details = err.details;
@@ -120,7 +124,7 @@ export const ERROR_HINTS: Record<string, string> = {
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
   WORKSPACE_LIMIT_REACHED: 'A team-owned workspace needs the Team plan: give your person the Billing link to subscribe. Otherwise the owner is at its maximum: delete a workspace to make room.',
   TEAM_HAS_PLAN: "Cancel the team's plan in Billing first.",
-  STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; `rip artifact prune-versions <id>` clears old versions), move growing records into a table, or add storage in Billing (the link above, when your account or team pays).',
+  STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; deleted files count until their trash is emptied, `rip trash purge --all`, with `--team <slug>` for a team\'s or `--workspace <id>` for files deleted inside a workspace; `rip artifact prune-versions <id>` clears old versions), move growing records into a table, or add storage in Billing (the link above, when your account or team pays).',
   MAILBOX_CODE_INVALID: 'Use the six-digit code from the latest confirmation email: `rip notify mailbox --code <code>`. Five wrong codes end it; then set the address again.',
   MAILBOX_CODE_EXPIRED: 'The code lasted 30 minutes or five tries. Set the address again for a new one: `rip notify mailbox <address>`.',
   MAILBOX_NOT_PENDING: 'No code is waiting. Set the address first (`rip notify mailbox <address>`), then confirm with the emailed code; `rip notify` shows the mailbox.',

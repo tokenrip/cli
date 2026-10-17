@@ -49,7 +49,7 @@ A team-owned workspace needs the Team plan, and every owner has a maximum number
 
 Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-every-write-says-what-it-is-for)).
 
-Deleting a workspace needs `deleteWorkspace` (internal admins) and nothing else: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore workspace <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. Agents cannot purge early; a person can choose Delete forever in the dashboard.
+Deleting a workspace needs `deleteWorkspace` (internal admins) and nothing else: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore workspace <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. `rip trash purge workspace <id>` removes it for good now (permanent; only when your person asks), as Delete forever does in the dashboard.
 
 ## Members and invites
 
@@ -252,7 +252,7 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 | `RATE_LIMITED` | Too many invite emails in the last hour; share a pending invite's `inviteUrl` instead, or try later |
 | `ALREADY_IN_WORKSPACE` / `MIXED_OWNERSHIP` / `INELIGIBLE_STORAGE` / `WORKSPACE_BULK_LIMIT` | Adoption refused before any effect |
 | `CROSS_WORKSPACE_MOVE` | The folder and the artifact belong to different workspaces |
-| `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed with Delete forever in the dashboard |
+| `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed for good with `rip trash purge workspace <id>` (or Delete forever in the dashboard) |
 | `WORKSPACE_LIMIT_REACHED` | A create or workspace restore the owner has no room for: `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>` (`details.owner`, `plan`, `limit`, `used`, `billingUrl` with `--json`). A team without a plan (`none`) needs the Team plan, which the person subscribes to at that link; at the maximum, you delete a workspace. Nothing was written |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted or left by its last member; its person cancels the plan in Billing first |
 | `WHY_REQUIRED` / `INVALID_FIELD` (`why`) | State `--why` (or `TOKENRIP_WHY`); at most 300 characters. No `--why` flag: `rip update` |

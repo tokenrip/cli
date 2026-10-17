@@ -294,6 +294,11 @@ export class CliError extends Error {
   public readonly details?: CliErrorDetails;
   /** The terminal hint for this failure when the command knows better than `ERROR_HINTS[code]`. */
   public hint?: string;
+  /**
+   * What a multi-call command finished before it failed (`rip trash purge --all`: the pages
+   * purged), a local fact never copied from a response; `--json` prints it as `partial`.
+   */
+  public partial?: Record<string, unknown>;
   constructor(
     public readonly code: string,
     message: string,

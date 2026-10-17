@@ -5,11 +5,17 @@ import { formatStorageUsage } from '../formatters.js';
 
 export interface StorageOptions {
   team?: string;
+  /** Another account, by id or alias (platform admins only). */
+  account?: string;
 }
 
-/** `GET /v0/storage` query from the `rip storage` flags: your account by default, or one team. */
+/** `GET /v0/storage` query from the `rip storage` flags: your account by default, or one team or account. */
 export function storageQuery(options: StorageOptions): string {
-  return options.team ? `/v0/storage?team=${encodeURIComponent(resolveTeam(options.team))}` : '/v0/storage';
+  const params = [
+    ...(options.team ? [`team=${encodeURIComponent(resolveTeam(options.team))}`] : []),
+    ...(options.account ? [`account=${encodeURIComponent(options.account)}`] : []),
+  ];
+  return `/v0/storage${params.length ? `?${params.join('&')}` : ''}`;
 }
 
 /** Show how much storage your account (or a team) uses against its plan, and what uses it. */

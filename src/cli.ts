@@ -2148,12 +2148,13 @@ withWhy(folder
 // ── trash commands ──────────────────────────────────────────────────
 const trash = program
   .command('trash')
-  .description('List what is in the trash and bring items back (restorable for 30 days after deletion)');
+  .description('List what is in the trash, bring items back (restorable for 30 days after deletion), or purge them for good');
 
 trash
   .command('list')
   .option('--workspace <workspace-id>', "A workspace's trash: the artifacts and folders deleted in it")
-  .option('--team <slug>', "A team's trash: its folders and workspaces")
+  .option('--team <slug-or-id>', "A team's trash: its folders and workspaces")
+  .option('--account <id-or-alias>', "Another account's own trash (platform admins only)")
   .option('--limit <n>', 'Page size (max 100, default 50)')
   .option('--offset <n>', 'Skip this many entries (the nextOffset of the previous page)')
   .description('List the trash, newest first (default: your own)')
@@ -2162,11 +2163,14 @@ EXAMPLES:
   $ rip trash list
   $ rip trash list --team acme
   $ rip trash list --workspace 3f1a2b4c-5d6e-4f70-8901-23456789abcd
+  $ rip trash list --account sam
 
 NOTES:
   Your own trash holds your standalone artifacts, bundles, personal folders and
   personal workspaces. A deleted folder or workspace is one entry: restoring it
   brings back everything that went with it. Each entry says when it purges.
+  Pass at most one of --workspace, --team and --account. A platform admin reads
+  any team's or workspace's trash, and another account's with --account.
 `)
   .action(wrapCommand(async (options) => {
     const { trashList } = await import('./commands/trash.js');
@@ -2196,23 +2200,56 @@ NOTES:
     await trashRestore(type, id, options);
   }));
 
+withWhy(trash
+  .command('purge'))
+  .argument('[type]', 'artifact | bundle | folder | workspace (from `rip trash list`)')
+  .argument('[id]', 'The entry id from `rip trash list`')
+  .option('--all', 'Empty a whole trash instead of one entry (default: your own)')
+  .option('--team <slug-or-id>', "With --all: a team's trash")
+  .option('--workspace <workspace-id>', "With --all: a workspace's trash")
+  .option('--account <id-or-alias>', "With --all: another account's own trash (platform admins only)")
+  .description('Delete for good from the trash: one entry, or everything with --all (frees storage)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip trash purge artifact 550e8400-e29b-41d4-a716-446655440000
+  $ rip trash purge --all
+  $ rip trash purge --all --team acme
+  $ rip trash purge --all --workspace 3f1a2b4c-5d6e-4f70-8901-23456789abcd --why "Clear the old drafts"
+
+NOTES:
+  Purging is permanent: nothing purged can be restored. It frees the storage the
+  items used. Pass one entry (it must be in the trash) or --all with at most one
+  of --team, --workspace and --account. --all takes what was in the trash when it
+  began, page by page until done, and lists what it left and why (forbidden,
+  restored, gone, failed). It needs the same authority as deleting each item.
+  A workspace artifact or folder, and --workspace, need --why.
+`)
+  .action(wrapCommand(async (type, id, options) => {
+    const { trashPurge } = await import('./commands/trash.js');
+    await trashPurge(type, id, options);
+  }));
+
 // ── storage ─────────────────────────────────────────────────────────
 program
   .command('storage')
-  .option('--team <slug>', "A team's storage (any member may read it)")
+  .option('--team <slug-or-id>', "A team's storage (any member may read it)")
+  .option('--account <id-or-alias>', "Another account's storage (platform admins only)")
   .description('Show storage used against your plan, and what uses it (default: your account)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip storage
   $ rip storage --team acme
+  $ rip storage --account sam
   $ rip storage --json
 
 NOTES:
   A workspace's files count toward its owner (your account, or the team that owns
   it); your standalone files and every version of your bundles count toward your
-  account. Every kept version and table row counts; the trash does not. Sizes are
-  decimal (1 GB = 1,000,000,000 bytes), as the plans count them. The largest
-  files list current and history bytes: deleting old versions frees history.
+  account. Every kept version and table row counts, and so does the trash until it
+  is emptied (rip trash purge --all, with --team <slug> for a team's, and
+  --workspace <id> for files deleted inside a workspace). Sizes are decimal
+  (1 GB = 1,000,000,000 bytes), as the plans count them. The largest files list
+  current and history bytes: deleting old versions frees history.
 `)
   .action(wrapCommand(async (options) => {
     const { storage } = await import('./commands/storage.js');

@@ -155,7 +155,18 @@ export const formatStorageUsage: Formatter = (data) => {
     for (const w of workspaces) lines.push(`  ${formatDecimalBytes(w.bytes)}  ${w.name}  (${w.id})`);
   }
   lines.push(`Standalone artifacts: ${formatDecimalBytes(Number(d.standaloneBytes))}`);
-  lines.push(`Bundles (every version): ${formatDecimalBytes(Number(d.bundleBytes))}`, '');
+  lines.push(`Bundles (every version): ${formatDecimalBytes(Number(d.bundleBytes))}`);
+  // The trash counts until it is emptied (an older server sends no trashBytes). It is in two places:
+  // the payer's own trash (an account's standalone files, folders, bundles and workspaces; a team's
+  // folders and workspaces), and each live workspace's trash, which holds the files deleted inside it.
+  if (typeof d.trashBytes === 'number') {
+    lines.push(`Trash: ${formatDecimalBytes(d.trashBytes)}${d.trashBytes > 0 ? ' (counts until emptied)' : ''}`);
+    if (d.trashBytes > 0) {
+      lines.push(`  Empty it: rip trash purge --all${payer.kind === 'team' ? ` --team ${payer.id}` : ''}`);
+      lines.push("  Files deleted inside a workspace are in that workspace's trash: rip trash purge --all --workspace <id>");
+    }
+  }
+  lines.push('');
 
   const largest = (d.largest ?? []) as Array<Record<string, any>>;
   if (largest.length === 0) {
@@ -169,7 +180,7 @@ export const formatStorageUsage: Formatter = (data) => {
     lines.push(`    current ${formatDecimalBytes(a.currentBytes)}, history ${formatDecimalBytes(a.historyBytes)}, ${a.versionCount} version${a.versionCount === 1 ? '' : 's'}${home}`);
     if (a.url) lines.push(`    ${a.url}`);
   }
-  lines.push('', 'Free space: delete old versions (rip artifact prune-versions) or files; keep growing records in a table.');
+  lines.push('', `Free space: delete old versions (rip artifact prune-versions), or delete files and empty the trash (rip trash purge --all${payer.kind === 'team' ? ` --team ${payer.id}` : ''}, and --workspace <id> for a workspace's); keep growing records in a table.`);
   return lines.join('\n');
 };
 
@@ -1053,6 +1064,30 @@ export const formatRestored: Formatter = (data) => {
   const reply = data as Record<string, any>;
   const line = `Restored ${reply.type} ${reply.id}.`;
   return reply.unfiled ? `${line} Its folder is still in the trash, so it is back unfiled.` : line;
+};
+
+const PURGE_SKIP_REASONS: Record<string, string> = {
+  forbidden: 'you may not remove it',
+  restored: 'it left the trash, or was deleted again, after the purge began',
+  gone: 'it was already purged',
+  failed: 'its purge failed; it stays in the trash, and a rerun tries it again',
+};
+
+/** `rip trash purge`: how many went for good, then every entry left in the trash with its full id and why. */
+export const formatTrashPurged: Formatter = (data) => {
+  const d = data as { purged?: Array<{ type: string; id: string }>; skipped?: Array<{ type: string; id: string; reason: string }> };
+  const purged = d.purged ?? [];
+  const skipped = d.skipped ?? [];
+  if (purged.length === 0 && skipped.length === 0) return 'Nothing to purge: the trash is empty.';
+  const items = `${purged.length} item${purged.length === 1 ? '' : 's'}`;
+  if (skipped.length === 0) {
+    return purged.length === 1 ? `Purged 1 item for good: ${purged[0]!.type} ${purged[0]!.id}.` : `Purged ${items} for good.`;
+  }
+  const lines = [`Purged ${items} for good. Skipped ${skipped.length}:`];
+  for (const entry of skipped) {
+    lines.push(`  ${entry.type}  ${entry.id}  ${entry.reason}${PURGE_SKIP_REASONS[entry.reason] ? `: ${PURGE_SKIP_REASONS[entry.reason]}` : ''}`);
+  }
+  return lines.join('\n');
 };
 
 /** `rip artifact bulk`: the counts, every item a delete moved to the trash with its purge date, then the failures. */
