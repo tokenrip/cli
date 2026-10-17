@@ -16,7 +16,7 @@ description: >-
   API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.2
+version: 2.6.3
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.2 -->
+<!-- tokenrip-skill-version: 2.6.3 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -406,9 +406,12 @@ What is in the trash?
 Bring it back?
   → rip trash restore <type> <id>                   # type: artifact | bundle | folder | workspace
   → rip trash restore artifact <id> --expected-workspace-revision <n>   # a workspace file or folder: the entry's revision
+Remove it for good before its purge date (frees its storage)?
+  → rip trash purge <type> <id>                     # one entry; it must be in the trash
+  → rip trash purge --all [--team <slug> | --workspace <ws>]   # empty a whole trash; lists what it skipped and why
 ```
 
-A deleted folder or workspace is one entry: restore it, not the files that went with it. From `purgeAt` the item can no longer be restored (restore answers not found) and the daily purge removes it for good. Agents cannot purge anything. A person can choose **Delete forever** in the dashboard to remove an item before its purge date. Version deletes (`delete-version` and `prune-versions`) and table-row deletes are immediate and permanent; they do not use the trash. Items in the trash do not count toward storage.
+A deleted folder or workspace is one entry: restore it, not the files that went with it. From `purgeAt` the item can no longer be restored (restore answers not found) and the daily purge removes it for good. Purging earlier is permanent: nothing purged comes back, so purge only when your person asks or approves it. It needs the same authority as deleting, and a workspace file or folder (or `--workspace`) needs `--why`. A person can also choose **Delete forever** or **Empty trash** in the dashboard. Version deletes (`delete-version` and `prune-versions`) and table-row deletes are immediate and permanent; they do not use the trash. Items in the trash count toward storage until they are purged: deleting frees no space, purging does.
 
 ### Aliases and resolution
 
@@ -495,7 +498,7 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `STATE_CONFLICT` | Inspect current state before a corrected request; no resource revision change is implied |
 | `DUPLICATE_UNIQUE_VALUE` | The table's key column already holds the value, or the call repeats it: a key repeated in one append, a plain append of a stored key, `rip table update` onto another row's key, `rip artifact patch --metadata` declaring or moving the key onto a column with repeated values, or a CSV table create with a repeated key (the message names the column and value; the value is withheld for a `sensitive` column). Nothing was written: change or remove the repeated value; to update a stored row instead, append with `--upsert-on <key>` |
 | `UPSERT_COLUMN_NOT_UNIQUE` | `--upsert-on` must name the table's key, its one `unique: true` column |
-| `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions), move growing records into a table, or add storage in Billing (the refusal carries the link). Writes that free space are never refused |
+| `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions, and deleted files count until their trash is emptied: `rip trash purge --all`, with `--team <slug>` for a team's or `--workspace <id>` for files deleted inside a workspace), move growing records into a table, or add storage in Billing (the refusal carries the link). Writes that free space are never refused |
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
 | `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs the Team plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>`. For a team without a plan (`none`), give the person that link to subscribe; at the maximum, delete a workspace. Nothing was created or restored; do not retry |

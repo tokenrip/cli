@@ -45,7 +45,7 @@ Every command in `@tokenrip/cli` 2.6, grouped by area. `rip --help` and `rip <co
 
 `rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and members you add or invite by email. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
-**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore`. Reads and pins take none.
+**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|update|share-contents`, `trash restore|purge`. Reads and pins take none.
 
 ### `rip workspace create <slug>`
 
@@ -599,7 +599,7 @@ A task's history is `rip task show <id>` (its latest 30 steps) and workspace act
 
 ## Trash
 
-Deleting an artifact, folder, bundle or workspace moves it to the trash for 30 days. A folder or workspace takes what is in it along and is one entry. Anyone who could delete an item can restore it, exactly as it was, until its purge date (`purgeAt`, 30 days after deletion). From then on it cannot be restored, and the daily purge removes it for good. Agents cannot purge: there is no purge command. A person can choose **Delete forever** on the dashboard Trash page to remove an item sooner. Version and table-row deletes are immediate and do not use the trash.
+Deleting an artifact, folder, bundle or workspace moves it to the trash for 30 days. A folder or workspace takes what is in it along and is one entry. Anyone who could delete an item can restore it, exactly as it was, until its purge date (`purgeAt`, 30 days after deletion). From then on it cannot be restored, and the daily purge removes it for good. `rip trash purge` removes an entry, or a whole trash, sooner (as **Delete forever** does on the dashboard Trash page). Version and table-row deletes are immediate and do not use the trash.
 
 ### `rip trash list`
 
@@ -611,7 +611,7 @@ rip trash list --team acme           # a team's folders and workspaces
 rip trash list --workspace <ws>      # files and folders deleted in a workspace (external members see shared items only)
 ```
 
-Options: `--workspace <workspace-id>`, `--team <slug>` (not both), `--limit <n>` (default 50, max 100), `--offset <n>` (the previous page's `nextOffset`).
+Options: `--workspace <workspace-id>`, `--team <slug-or-id>`, `--account <id-or-alias>` (another account's own trash; platform admins only), at most one of the three; `--limit <n>` (default 50, max 100), `--offset <n>` (the previous page's `nextOffset`).
 
 ### `rip trash restore <type> <id>`
 
@@ -625,19 +625,31 @@ rip trash restore workspace <workspace-id>
 
 Options: `--expected-workspace-revision <n>` (required for a workspace file or folder: the entry's `workspaceRevision`), `--why <text>`. Restoring a live item does nothing. A file or folder whose workspace is in the trash answers 409 `WORKSPACE_DELETED`: restore the workspace first. Past `purgeAt`, or for an unknown id, restore answers the type's not-found code.
 
+### `rip trash purge [<type> <id>] [--all]`
+
+Delete for good, now: permanent (nothing purged can be restored), and it frees the storage the items used. Give one entry (`<type> <id>` from `rip trash list`; it must be in the trash, a live item answers 409 `NOT_IN_TRASH`; a folder or workspace takes everything in it), or `--all` to empty a whole trash: your own, or with one of `--team <slug-or-id>`, `--workspace <workspace-id>` or `--account <id-or-alias>` (platform admins only). `--all` takes what was in the trash when it began; the server answers at most `TRASH_PURGE_PER_CALL` entries (100 by default) per call with a `nextCursor`, and the command calls again until it is null. It prints how many it purged and every entry it left with the reason: `forbidden` (you may not remove it), `restored` (it left the trash, or was deleted again, after the purge began), `gone` (already purged), `failed` (its purge failed; it stays in the trash, and a rerun tries it again). If a call fails partway, the error says how many earlier pages purged ("at least" when the failing call timed out, since it may have finished on the server) and that a rerun is safe. `--json` returns the totals as `{ purged: [{ type, id }], skipped: [{ type, id, reason }], nextCursor: null }`.
+
+```bash
+rip trash purge artifact 550e8400-e29b-41d4-a716-446655440000
+rip trash purge --all
+rip trash purge --all --workspace <workspace-id> --why "Clear out the old drafts"
+```
+
+Options: `--all`, `--team <slug>`, `--workspace <workspace-id>`, `--account <id-or-alias>` (with `--all`, at most one), `--why <text>` (required for a workspace file or folder, and for `--workspace`). Each item needs the authority deleting it needs. A workspace file or folder purged by an agent is recorded in the workspace history (`artifact.purged`, `folder.purged`) with its why.
+
 ## Storage
 
 ### `rip storage`
 
-How much storage your account, or a team you belong to (`--team <slug>`, any member), uses against its plan, and what uses it: the plan, bytes used and the limit (`limitBytes: null` is no limit), bytes per workspace, standalone and bundle bytes, and the ten largest artifacts with their current and history bytes, workspace and URL.
+How much storage your account, or a team you belong to (`--team <slug-or-id>`, any member), uses against its plan, and what uses it: the plan, bytes used and the limit (`limitBytes: null` is no limit), bytes per workspace, standalone and bundle bytes, the bytes in the trash, and the ten largest artifacts with their current and history bytes, workspace and URL.
 
 ```bash
 rip storage
 rip storage --team acme
-rip storage --json        # { payer, plan, usedBytes, limitBytes, workspaces, standaloneBytes, bundleBytes, largest }
+rip storage --json        # { payer, plan, usedBytes, limitBytes, workspaces, standaloneBytes, bundleBytes, trashBytes, largest }
 ```
 
-A workspace's files count toward the workspace's owner (your account, or the team that owns it), whoever wrote them; your standalone files and every version of your bundles count toward your account. Every kept version and table row counts; the trash does not. Sizes print in decimal units (1 GB = 1,000,000,000 bytes), as the plans count them. A team you are not in answers 403 `NOT_A_MEMBER`; an unknown one 404 `TEAM_NOT_FOUND`.
+A workspace's files count toward the workspace's owner (your account, or the team that owns it), whoever wrote them; your standalone files and every version of your bundles count toward your account. Every kept version and table row counts, and so does the trash until it is emptied: the `Trash:` line, `trashBytes`, is the part of the bytes used that is in the trash, and names how to empty it (`rip trash purge --all` for your own trash, `--team <slug>` for a team's, `--workspace <workspace-id>` for the files deleted inside a workspace, which stay in that workspace's own trash). Sizes print in decimal units (1 GB = 1,000,000,000 bytes), as the plans count them. A team you are not in answers 403 `NOT_A_MEMBER`; an unknown one 404 `TEAM_NOT_FOUND`.
 
 ## Activity
 

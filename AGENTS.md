@@ -182,7 +182,7 @@ rip artifact bulk delete --ids "id1,id2"          # to the trash; up to 200 ids 
 
 ### Trash
 
-Deleting an artifact, folder, bundle or workspace moves it to the trash for 30 days; a folder or workspace takes what is in it along. Reads answer 410 `DELETED` (or `WORKSPACE_DELETED`) with `deletedAt` and `purgeAt`, and the name stays held. Anyone who could delete it can restore it until `purgeAt`; then the daily purge removes it for good. Agents cannot purge; a person can choose Delete forever in the dashboard. Version and table-row deletes stay immediate and permanent.
+Deleting an artifact, folder, bundle or workspace moves it to the trash for 30 days; a folder or workspace takes what is in it along. Reads answer 410 `DELETED` (or `WORKSPACE_DELETED`) with `deletedAt` and `purgeAt`, and the name stays held. Anyone who could delete it can restore it until `purgeAt`; then the daily purge removes it for good. `rip trash purge` removes it sooner (permanent; only when your person asks), as Delete forever does in the dashboard. Version and table-row deletes stay immediate and permanent.
 
 ```bash
 rip trash list [--team <slug> | --workspace <ws>] [--limit <n>] [--offset <n>]
