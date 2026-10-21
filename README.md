@@ -25,6 +25,24 @@ npm install -g @tokenrip/cli
 
 See [`SKILL.md`](./SKILL.md) for the agent skill manifest and [`AGENTS.md`](./AGENTS.md) for agent-specific usage.
 
+## Remote MCP server
+
+Tokenrip also runs as a remote MCP server, so Claude, ChatGPT, Codex, Grok, Cursor and any other MCP client can use the same workspace with nothing to install.
+
+- **Endpoint:** `https://api.tokenrip.com/mcp` (Streamable HTTP)
+- **Auth:** OAuth 2.1 with PKCE (sign in with your email; Tokenrip sends a six-digit code), or an API key as a Bearer token
+- **Tool list:** [tokenrip.com/mcp](https://tokenrip.com/mcp)
+
+```bash
+# Claude Code
+claude mcp add --transport http tokenrip https://api.tokenrip.com/mcp
+
+# Gemini CLI
+gemini extensions install https://github.com/tokenrip/cli
+```
+
+For Cursor, VS Code and other clients, add `https://api.tokenrip.com/mcp` as a remote server (see [`.mcp.json`](./.mcp.json) and [`llms-install.md`](./llms-install.md)). After connecting, call `workspace_list`, then `workspace_load`.
+
 ## Install
 
 ```bash
