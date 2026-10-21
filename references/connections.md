@@ -31,26 +31,26 @@ rip credential create --team quintel --name google --kind google_service_account
   --scope https://www.googleapis.com/auth/webmasters.readonly
 
 rip credential list --team quintel           # each credential and the connections using it
-rip credential get <id> --team quintel
+rip credential get posthog --team quintel    # by name in its team, or by id alone: rip credential get <id>
 
 # Replace the key: every connection using it sends the new one from its next call
-rip credential rotate <id> --team quintel --secret-env POSTHOG_KEY
-rip credential rotate <id> --team quintel --key-file ./new-key.json
+rip credential rotate posthog --team quintel --secret-env POSTHOG_KEY
+rip credential rotate <id> --key-file ./new-key.json
 
 # Rename, or change a Google credential's scopes (--scope replaces the list)
-rip credential update <id> --team quintel --name posthog-prod
+rip credential update posthog --team quintel --name posthog-prod
 
 # Only named team members may call through it (an empty list refuses everyone, the team owner included)
-rip credential update <id> --team quintel --restrict --user simon --user alek
-rip credential update <id> --team quintel --unrestrict
+rip credential update posthog-prod --team quintel --restrict --user simon --user alek
+rip credential update <id> --unrestrict
 
 # Delete: refused (CREDENTIAL_IN_USE) while any connection, disabled ones included, uses it
-rip credential rm <id> --team quintel
+rip credential rm <id>
 ```
 
 - **The key is write-only.** Give it with exactly one of `--secret <value>` (avoid; it lands in shell history), `--secret-env <VAR>` (preferred), `--secret-stdin` (piped from a secret manager) or `--key-file <path>` (the file's text, verbatim). No read ever returns it.
 - **Kinds:** `secret` (default) is sent as is. `google_service_account` holds a Google key file and its scopes; the server trades it for short-lived tokens itself. Its connections must use `bearer` and an `https` base URL on `googleapis.com` (for example `https://analyticsdata.googleapis.com` or `https://searchconsole.googleapis.com`), so a Google token only goes to Google. Rotating does not revoke the old key at Google: delete it in Google Cloud.
-- **Names** are lowercase and unique per owner. Commands take the credential's **id** (from `list`); `rip connection create --credential` also takes the name.
+- **Names** are lowercase and unique per owner. Commands take the credential's **id** alone (from `list`; a team's too, no `--team` needed) or its **name**: with `--team <slug>` for a team's, without for your personal one. `--team` beside an id is refused (`INVALID_FIELD`). `rip connection create --credential` takes either, under the new connection's owner.
 - **Named users** apply to team credentials only. `--user` takes an account alias or id, each a current member; it replaces the list and needs the credential to be restricted after the update. `--unrestrict` clears the list. A member who leaves the team is dropped from every list.
 
 ## Connections
@@ -77,14 +77,14 @@ rip connection create --team quintel --name minimax \
 # List / inspect (keys never shown; each shows its credential, its rules and "can call")
 rip connection list
 rip connection list --team quintel --include-disabled
-rip connection get <id> --team quintel
+rip connection get minimax --team quintel    # by name in its team, or by id alone: rip connection get <id>
 
 # Disable (soft — frees the connection's name; it keeps its credential) or delete (hard; the credential stays)
 rip connection disable <id>
-rip connection rm <id> --team quintel
+rip connection rm minimax --team quintel
 ```
 
-`rip connection rotate-secret <id>` still works but is deprecated: it rotates the connection's credential (every connection using it) and prints a notice. Use `rip credential rotate <credential-id>`.
+A connection is named the same way as a credential: its id alone, or its name (with `--team <slug>` for a team's). To replace a key, rotate its credential: `rip credential rotate <credential>`; every connection using it sends the new key.
 
 ### Create flags
 
@@ -112,11 +112,11 @@ Each rule is `[METHOD[|METHOD…] ]/path`: optional methods from `GET POST PUT P
 - A call passes when any rule allows it; otherwise `403 PATH_NOT_ALLOWED`. A path with `.` or `..` segments (encoded or not), a backslash, or bad percent-encoding is refused with `400 PATH_NOT_CANONICAL` and nothing is sent.
 - Examples: `POST /v1/messages`, `GET|POST /api/**`, `POST /v1beta/properties/*:runReport`.
 
-There is no CLI update for non-secret connection fields — disable + recreate, or use the REST `PATCH /v0/connections/:id` documented in `docs/architecture/connections.md`.
+There is no CLI update for non-secret connection fields — disable + recreate, or use the REST `PATCH /v0/connections/:connection` documented in `docs/architecture/connections.md`.
 
 ## `rip connection call` — invoking an upstream
 
-Call one of your own personal connections, or a team connection of a team you currently belong to, by name. The call goes straight to the connection; nothing else needs to be set up first. Auth and default headers/query are injected server-side; you provide the method, path, and body. Every call is audited with the calling account (metadata only, never bodies).
+Call one of your own personal connections, or a team connection of a team you currently belong to, by name, or any of them by its id alone. The call goes straight to the connection; nothing else needs to be set up first. Auth and default headers/query are injected server-side; you provide the method, path, and body. Every call is audited with the calling account (metadata only, never bodies).
 
 ```bash
 # Team connection (you must be a current member of the team)
@@ -129,8 +129,8 @@ rip connection call --connection <name> --method <M> --path <path>
 
 | Flag | Meaning |
 |---|---|
-| `--team <slug>` | Call the team's connection. A non-member, or a member not named on a restricted credential, gets `403 CONNECTION_FORBIDDEN`. Omit for a personal connection. |
-| `--connection <name>` | The connection name. A missing or disabled one is `404 CONNECTION_NOT_FOUND`. |
+| `--team <slug>` | Call the team's connection by name. A non-member, or a member not named on a restricted credential, gets `403 CONNECTION_FORBIDDEN`. Omit for a personal connection or an id. |
+| `--connection <id\|name>` | The connection's id, or its name. A missing or disabled one, or an id you cannot reach, is `404 CONNECTION_NOT_FOUND`. |
 | `--method <M>` | `GET` / `POST` / `PUT` / `PATCH` / `DELETE`. |
 | `--path <path>` | Path under the connection's base URL; the method and path must pass the connection's rules. |
 | `--body <json>` | JSON request body (parsed and re-serialized; invalid JSON errors locally). |

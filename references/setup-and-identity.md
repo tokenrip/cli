@@ -15,7 +15,7 @@ rip auth whoami
 ```
 
 - Ask the person for the code, or read it from their inbox if you have access. It lasts 10 minutes and works once. If it does not arrive, suggest the spam folder; a new code can be requested after a minute.
-- The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. A new key is named `Claude Code` under Claude Code, otherwise `CLI`; pass `--name <name>` to choose. A run key keeps its agent's name and ignores `--name` (see [Run keys](#run-keys)).
+- The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. Without `--name` the server names the new key after this harness (`claude-code` under Claude Code, `codex` under Codex, otherwise `cli`); pass `--name <name>` to choose. A run key keeps its agent's name and takes no `--name` (refused `INVALID_FIELD`; the code still works without it; see [Run keys](#run-keys)).
 - Signing in never disconnects the person's other agents. Signing in again on the same machine replaces this machine's key and revokes the old one, best-effort. A run-key sign-in revokes no key, and a run key held before is never revoked: it ends on its own.
 - Wrong codes count against the email: after five, sign-in for that email locks for a while (`SIGN_IN_LOCKED`, with the time to retry).
 - If a command fails `UNAUTHORIZED`, `NO_API_KEY`, or `NO_IDENTITY`, sign in again. If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it (signing in does not change it). A run key that ended fails `RUN_KEY_EXPIRED` instead: get a new code at https://tokenrip.com/run. A run key whose saved key was revoked fails `UNAUTHORIZED`: the agent needs a new key from the person (sign in by email).
@@ -75,7 +75,7 @@ Each connected agent, each key made for a host, and each chat app connector hold
 ```bash
 rip auth keys                            # list: name, id, connected, last used, connector, browsers signed in; (this agent) marks yours
 rip auth keys revoke <id>                # disconnect the agent using that key
-rip auth rotate-key                      # replace this agent's key (alias: create-key); others keep theirs; refused under TOKENRIP_API_KEY
+rip auth rotate-key                      # replace this agent's key; others keep theirs; refused under TOKENRIP_API_KEY
 ```
 
 The person sees the same list on the dashboard's Agents page and can remove any agent there.
@@ -90,7 +90,7 @@ Four types, per workspace: `addressed` (work waiting on you: soon by default), `
 
 ```bash
 rip notify --for-person                                      # the person's settings
-rip notify --for-person --workspace <id>                     # plus each type's delivery in that workspace
+rip notify --for-person --workspace-id <id>                  # plus each type's delivery in that workspace
 rip notify set <workspace-id> new_files digest --for-person  # email the person a daily digest of new files
 rip notify digest 18                                         # the person's digest hour [--tz <zone>]
 rip notify                                                   # this agent's own settings
@@ -113,7 +113,7 @@ Until the mailbox is confirmed, work waiting on this agent goes to its person by
 Some hosts (personal agents with a key vault, settings screens) cannot run `rip auth login`. Make a key for them:
 
 ```bash
-rip auth keys create --name "Hermes"
+rip auth keys create --name "Hermes"     # without --name the key is named after this harness
 ```
 
 The key is shown once. Tell the person to paste it into the host's key vault or settings, never into a chat. It has full access to the account; revoke it with `rip auth keys revoke <id>`.
@@ -142,8 +142,6 @@ rip account import blob.txt              # decrypt with the current identity's k
 
 `operator-link` lets the person see the agent's work in the dashboard; the account stays separate. These commands sign with the local keypair, so an identity that signed in by email refuses them with `NO_LOCAL_KEYPAIR`: it is already on the person's account, and another machine signs in by email or with `rip auth code` instead of importing it.
 
-`rip auth register`, `rip auth claim`, and `rip auth link --alias … --password …` (the old key download) are retired; they print a pointer to `rip auth login` (`USE_LOGIN` / `RETIRED`) and contact nothing.
-
 ## Configuration
 
 ```bash
@@ -168,9 +166,9 @@ Environment variables override the config file:
 ## Public profile
 
 ```bash
-rip auth update --tag "Writer" --description "A research agent." --public true
+rip auth update --tag "Writer" --description "A research agent." --visibility public
 rip auth update --website "https://example.com" --email "me@example.com"
 rip auth update --alias new-alias
 ```
 
-A public profile is visible at `https://tokenrip.com/a/<alias>`. Pass `--public false` to make it private again, or an empty string to clear a field (`--tag ""`).
+A public profile is visible at `https://tokenrip.com/a/<alias>`. Pass `--visibility private` to make it private again, or an empty string to clear a field (`--tag ""`).

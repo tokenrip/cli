@@ -11,6 +11,21 @@ import { resolveTeam, resolveTeams } from '../teams.js';
 
 const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'table', 'csv'] as const;
 type ContentType = (typeof VALID_TYPES)[number];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Where the new artifact is filed and who it is shared with: `--team` lists the teams to share it
+ * with (`teams`); its first team also scopes a `--folder` slug (`team`), and is sent only then (a
+ * folder id stands alone, and with no folder the server has nothing to scope).
+ */
+export function addHomeFields(body: Record<string, unknown>, options: { team?: string; folder?: string }): void {
+  if (options.team) body.teams = resolveTeams(options.team.split(',').map((t) => t.trim()));
+  if (options.folder) {
+    body.folder = options.folder;
+    if (options.team && !UUID.test(options.folder)) body.team = resolveTeam(options.team.split(',')[0]!.trim());
+  }
+}
+
 function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; why?: string; handoff?: boolean }): void {
   if (options.workspaceId) body.workspaceId = options.workspaceId;
   if (options.audience) body.audience = options.audience;
@@ -76,6 +91,16 @@ export async function publish(
     throw new CliError('INVALID_TYPE', `Type must be one of: ${VALID_TYPES.join(', ')}`);
   }
 
+  if (options.type === 'table') {
+    // What a table does not store is refused here rather than sent (the server refuses it too).
+    if (options.metadata) throw new CliError('INVALID_ARGS', 'A table keeps its schema in metadata: use --schema (and --strict) instead of --metadata.');
+    if (options.publicAsset) throw new CliError('INVALID_ARGS', 'A table cannot be a public asset.');
+    if (options.fromCsv && options.strict) throw new CliError('INVALID_ARGS', 'A table imported from CSV is not strict: --strict applies to a table created from --schema.');
+  }
+  if (options.headers && !(options.type === 'table' && options.fromCsv)) {
+    throw new CliError('INVALID_ARGS', '--headers applies to CSV imported into a table (--type table --from-csv).');
+  }
+
   let parsedMetadata: Record<string, unknown> | undefined;
   if (options.metadata) {
     parsedMetadata = parseJsonObjectOption(options.metadata, '--metadata');
@@ -96,10 +121,6 @@ export async function publish(
   // Inline content path: skip all filesystem reads and send the string directly.
   // Tables / CSV import still need a file, so this branch is text-like types only.
   if (hasContent) {
-    if (!options.title) {
-      throw new CliError('INVALID_ARGS', '--title is required when using --content.');
-    }
-
     if (options.dryRun) {
       outputSuccess(
         {
@@ -118,20 +139,15 @@ export async function publish(
     const body: Record<string, unknown> = {
       type: options.type,
       content: options.content,
-      title: options.title,
     };
+    if (options.title) body.title = options.title;
     if (options.alias) body.alias = options.alias;
     if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    if (options.team) {
-      const teamSlugs = options.team.split(',').map((t) => t.trim());
-      body.teams = resolveTeams(teamSlugs);
-      body.team = resolveTeam(teamSlugs[0]);
-    }
-    if (options.folder) body.folder = options.folder;
+    addHomeFields(body, options);
     if (parsedMetadata) body.metadata = parsedMetadata;
-    if (options.publicAsset) body.public_asset = true;
+    if (options.publicAsset) body.publicAsset = true;
     if (options.visibility) body.visibility = options.visibility;
     addWorkspaceFields(body, options);
 
@@ -158,9 +174,9 @@ export async function publish(
       return;
     }
 
+    // A table with CSV content imports its rows (the server's one selector for CSV import).
     const body: Record<string, unknown> = {
       type: 'table',
-      from_csv: true,
       content,
       title,
     };
@@ -170,18 +186,10 @@ export async function publish(
     if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    if (options.team) {
-      const teamSlugs = options.team.split(',').map((t) => t.trim());
-      body.teams = resolveTeams(teamSlugs);
-      body.team = resolveTeam(teamSlugs[0]);
-    }
-    if (options.folder) body.folder = options.folder;
-    if (parsedMetadata) body.metadata = parsedMetadata;
-    // No public_asset here: the backend rejects table + public asset with
-    // PUBLIC_ASSET_UNSUPPORTED, so sending it could only ever surface as a
-    // server error.
+    addHomeFields(body, options);
+    // No publicAsset, metadata or strict here: a table is never a public asset, keeps its schema
+    // in metadata, and a table imported from CSV is not strict (all refused above).
     if (options.visibility) body.visibility = options.visibility;
-    if (options.strict) body.strict = true;
     addWorkspaceFields(body, options);
 
     const { client, config } = requireAuthClient();
@@ -217,13 +225,7 @@ export async function publish(
     if (options.parent) body.parentArtifactId = options.parent;
     if (options.context) body.creatorContext = options.context;
     if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    if (options.team) {
-      const teamSlugs = options.team.split(',').map((t) => t.trim());
-      body.teams = resolveTeams(teamSlugs);
-      body.team = resolveTeam(teamSlugs[0]);
-    }
-    if (options.folder) body.folder = options.folder;
-    if (parsedMetadata) body.metadata = parsedMetadata;
+    addHomeFields(body, options);
     // Same as the CSV table path above — public assets are not valid on tables.
     if (options.visibility) body.visibility = options.visibility;
     if (options.strict) body.strict = true;
@@ -260,14 +262,9 @@ export async function publish(
   if (options.parent) body.parentArtifactId = options.parent;
   if (options.context) body.creatorContext = options.context;
   if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-  if (options.team) {
-    const teamSlugs = options.team.split(',').map((t) => t.trim());
-    body.teams = resolveTeams(teamSlugs);
-    body.team = resolveTeam(teamSlugs[0]);
-  }
-  if (options.folder) body.folder = options.folder;
+  addHomeFields(body, options);
   if (parsedMetadata) body.metadata = parsedMetadata;
-  if (options.publicAsset) body.public_asset = true;
+  if (options.publicAsset) body.publicAsset = true;
   if (options.visibility) body.visibility = options.visibility;
   addWorkspaceFields(body, options);
 

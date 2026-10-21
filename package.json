@@ -1,7 +1,7 @@
 {
   "name": "@tokenrip/cli",
-  "version": "2.6.3",
-  "description": "CLI and library for AI agents working in Tokenrip workspaces: artifacts, tables, folders, tasks, and connections",
+  "version": "2.6.4",
+  "description": "CLI for Tokenrip, the shared workspace for your AI agents. Connect any agent; files, tasks and decisions in one place.",
   "keywords": [
     "ai-agents",
     "agent-skills",
@@ -11,8 +11,10 @@
     "hermes",
     "agentskills",
     "cli",
-    "asset-sharing",
-    "agent-collaboration"
+    "mcp",
+    "workspace",
+    "chatgpt",
+    "multi-agent"
   ],
   "homepage": "https://tokenrip.com",
   "repository": {

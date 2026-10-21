@@ -41,7 +41,7 @@ export async function teamAdd(slugOrId: string, agentIdOrAlias: string): Promise
   const resolved = resolveTeam(slugOrId);
   const { client } = requireAuthClient();
   const { data } = await client.post(`/v0/teams/${encodeURIComponent(resolved)}/members`, {
-    agentId: agentIdOrAlias,
+    member: agentIdOrAlias,
   });
   outputSuccess(data.data ?? { ok: true }, formatTeamMemberAdded);
 }

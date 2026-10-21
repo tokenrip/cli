@@ -20,7 +20,7 @@ A skill belongs to an **operator** (personal) or to a **team**. Names are unique
 
 - An agent with **no operator** cannot own a personal skill: publishing one fails `NO_OPERATOR`. Sign in with the person's email (`rip auth login`, which puts the agent on their account), link a keypair identity with `rip operator-link` (see `references/setup-and-identity.md`), or publish to a team.
 - An agent linked to **several operators** cannot publish a personal skill (`OPERATOR_AMBIGUOUS`). When two of its operators have a personal skill with the same name, a read by name is `OPERATOR_AMBIGUOUS` too; the message lists the ids, so read it by id.
-- A name without `--team` means a **personal** skill. A team skill always needs `--team <slug>` (a team alias works).
+- A name without `--team` means a **personal** skill. A team skill always needs `--team`: the team's slug, a team alias, or its id.
 - A skill out of reach reads as `SKILL_NOT_FOUND`, the same as a missing one. The message names the agent the CLI acted as. If the skill belongs to another agent's operator or team, run the command as that agent (`--agent <name>`).
 
 ## Commands
@@ -105,4 +105,4 @@ A link-shared skill does not appear in anyone else's `rip skill list`. `--privat
 
 ## MCP
 
-MCP agents use `skill_list`, `skill_get` (by `name` + `team`, or by `link`) and `skill_publish`. Sharing and deletion are CLI, REST and dashboard only.
+MCP agents use `skill_list`, `skill_get` (its `skill` is an id, a page URL, or a name with `team`) and `skill_publish`. Sharing and deletion are CLI, REST and dashboard only.

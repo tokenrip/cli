@@ -51,7 +51,7 @@ export function outputError(err: CliError): never {
       if (err.code === 'CONFLICT') console.error('Read the current resource and reconcile your changes before another write.');
       if (err.code === 'PRECONDITION_REQUIRED' && details.field) console.error(`Required field: ${details.field}. Read the current resource to obtain its value, then correct the request.`);
       if (err.code === 'INVALID_SCOPE' && details.field) console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
-      if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'Use workspace audience to share content.'}`);
+      if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
       if (details.holder) console.error(`Held by: ${taskHolderLine(details.holder)}`);
       if (details.reviewer !== undefined) console.error(`Reviewer: ${details.reviewer ? principalWho(details.reviewer) : 'any person who can edit tasks'}`);
@@ -111,10 +111,9 @@ export const ERROR_HINTS: Record<string, string> = {
   NO_OPERATOR: 'This account is not linked to a verified person. Sign in by email instead (`rip auth login --email <your email>`), or link this agent with `rip operator-link`.',
   INVALID_AGENT_ID: 'Agent IDs start with rip1. Example: rip1x9a2f...',
   INVALID_OUTPUT_FORMAT: 'Valid values are "json" and "human".',
-  DELETED: 'The item is in the trash. If you deleted it (or may delete it), bring it back with `rip trash restore <type> <id>`; `rip trash list` shows the entry.',
-  WORKSPACE_DELETED: 'The workspace is in the trash. A workspace admin can bring it back, with everything in it, using `rip trash restore workspace <id>`.',
+  DELETED: 'The item is in the trash. If you deleted it (or may delete it), bring it back with `rip trash restore <id>`; `rip trash list` shows the entry.',
+  WORKSPACE_DELETED: 'The workspace is in the trash. A workspace admin can bring it back, with everything in it, using `rip trash restore <workspace-id>`.',
   WHY_REQUIRED: 'Add --why "<what the person is trying to accomplish>" or set TOKENRIP_WHY. If your rip has no --why flag, run `rip self-update`.',
-  SESSION_END_RETIRED: 'Sessions record themselves. Leave a note with `rip artifact publish <file> --type markdown --workspace-id <id> --handoff --why "…"`.',
   TASK_IN_REVIEW: 'The task waits for a decision: nothing starts, stops or completes it, and its assignee and reviewer stay as they are. If it is your proposal, stop here: once approved, `rip workspace load` lists it under Waiting on you, and a skip cancels it. If it is someone else\'s, leave it to its reviewer. Its proposer, the proposer\'s person or whoever decides it may withdraw it with `rip task cancel <id>`.',
   TASK_NOT_IN_REVIEW: 'There is nothing to decide: it was decided already (Decided above) or was never proposed. `rip task show <id>` shows where it stands.',
   REVIEW_NOT_YOURS: 'Decide only reviews addressed to you: `rip task list --workspace-id <ws> --reviewer me`. A person decides theirs in the dashboard; never decide your own proposal.',
@@ -124,9 +123,10 @@ export const ERROR_HINTS: Record<string, string> = {
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
   WORKSPACE_LIMIT_REACHED: 'A team-owned workspace needs the Team plan: give your person the Billing link to subscribe. Otherwise the owner is at its maximum: delete a workspace to make room.',
   TEAM_HAS_PLAN: "Cancel the team's plan in Billing first.",
-  STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; deleted files count until their trash is emptied, `rip trash purge --all`, with `--team <slug>` for a team\'s or `--workspace <id>` for files deleted inside a workspace; `rip artifact prune-versions <id>` clears old versions), move growing records into a table, or add storage in Billing (the link above, when your account or team pays).',
+  STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; deleted files count until their trash is emptied, `rip trash purge --all`, with `--team <slug>` for a team\'s or `--workspace-id <id>` for files deleted inside a workspace; `rip artifact prune-versions <id>` clears old versions), move growing records into a table, or move to a bigger plan (the message names the step; the Billing link above when there is one).',
   MAILBOX_CODE_INVALID: 'Use the six-digit code from the latest confirmation email: `rip notify mailbox --code <code>`. Five wrong codes end it; then set the address again.',
   MAILBOX_CODE_EXPIRED: 'The code lasted 30 minutes or five tries. Set the address again for a new one: `rip notify mailbox <address>`.',
   MAILBOX_NOT_PENDING: 'No code is waiting. Set the address first (`rip notify mailbox <address>`), then confirm with the emailed code; `rip notify` shows the mailbox.',
-  DUPLICATE_UNIQUE_VALUE: 'Nothing was written: the table\'s key column already holds this value, or the call repeats it. Change or remove the repeated value; to update a stored row instead, append with `--upsert-on <key column>`.',
+  NO_TABLE_KEY: 'An upsert matches on the table\'s key, and this table has none: append without --upsert, or mark one column unique: true in its schema (rip artifact patch --metadata).',
+  DUPLICATE_UNIQUE_VALUE: 'Nothing was written: the table\'s key column already holds this value, or the call repeats it. Change or remove the repeated value; to update a stored row instead, append with `--upsert` (it matches on the key).',
 };

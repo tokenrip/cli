@@ -8,11 +8,11 @@ export async function artifactCat(
   const identifier = parseArtifactId(input);
   const { client } = optionalAuthClient();
 
-  const endpoint = options.versionId
-    ? `/v0/artifacts/${identifier}/versions/${options.versionId}/content`
-    : `/v0/artifacts/${identifier}/content`;
-
-  const response = await client.get(endpoint, { responseType: 'arraybuffer' });
+  // One version of this artifact: the content read checks it is one of the artifact's.
+  const response = await client.get(`/v0/artifacts/${identifier}/content`, {
+    responseType: 'arraybuffer',
+    ...(options.versionId ? { params: { versionId: options.versionId } } : {}),
+  });
 
   process.stdout.write(Buffer.from(response.data));
 }

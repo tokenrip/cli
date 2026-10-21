@@ -25,11 +25,11 @@ export async function artifactDownload(
   const artifact = artifactRes.data;
 
   if (artifact.type !== 'table') {
-    const endpoint = options.versionId
-      ? `/v0/artifacts/${uuid}/versions/${options.versionId}/content`
-      : `/v0/artifacts/${uuid}/content`;
-
-    const response = await client.get(endpoint, { responseType: 'arraybuffer' });
+    // One version of this artifact: the content read checks it is one of the artifact's.
+    const response = await client.get(`/v0/artifacts/${uuid}/content`, {
+      responseType: 'arraybuffer',
+      ...(options.versionId ? { params: { versionId: options.versionId } } : {}),
+    });
 
     const header = response.headers['content-type'];
     const contentType = typeof header === 'string' && header ? header : 'application/octet-stream';

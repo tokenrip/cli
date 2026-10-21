@@ -27,13 +27,14 @@ export interface CredentialUpdateOptions {
   user?: string[];
 }
 
-/** Route to the personal or team credential collection. */
-function credentialsBase(team?: string): string {
-  return team ? `/v0/teams/${encodeURIComponent(resolveTeam(team))}/credentials` : '/v0/credentials';
+/** `team` for a team's credentials (a list or a create), or to scope a credential name. Local aliases resolve to the slug. */
+function teamField(team?: string): { team?: string } {
+  return team ? { team: resolveTeam(team) } : {};
 }
 
-function credentialPath(id: string, team?: string): string {
-  return `${credentialsBase(team)}/${encodeURIComponent(id)}`;
+/** One credential: its id (personal, or a team's you belong to), or its name (in `--team` when given). */
+function credentialPath(credential: string): string {
+  return `/v0/credentials/${encodeURIComponent(credential)}`;
 }
 
 /**
@@ -71,24 +72,24 @@ export async function credentialCreate(options: CredentialCreateOptions): Promis
   body.secret = resolveMaterial(options);
   const scopes = nonEmpty(options.scope);
   if (scopes) body.scopes = scopes;
-  const { data } = await client.post(credentialsBase(options.team), body);
+  const { data } = await client.post('/v0/credentials', { ...teamField(options.team), ...body });
   outputSuccess(data.data, formatCredential);
 }
 
 export async function credentialList(options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(credentialsBase(options.team));
+  const { data } = await client.get('/v0/credentials', { params: teamField(options.team) });
   outputSuccess(data.data, formatCredentialList);
 }
 
-export async function credentialGet(id: string, options: { team?: string }): Promise<void> {
+export async function credentialGet(credential: string, options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(credentialPath(id, options.team));
+  const { data } = await client.get(credentialPath(credential), { params: teamField(options.team) });
   outputSuccess(data.data, formatCredential);
 }
 
 /** Rename, set Google scopes, or name who may use a team credential. Never changes the key (rotate does). */
-export async function credentialUpdate(id: string, options: CredentialUpdateOptions): Promise<void> {
+export async function credentialUpdate(credential: string, options: CredentialUpdateOptions): Promise<void> {
   if (options.restrict && options.unrestrict) {
     throw new CliError('INVALID_ARGS', 'Give --restrict or --unrestrict, not both.');
   }
@@ -104,21 +105,23 @@ export async function credentialUpdate(id: string, options: CredentialUpdateOpti
     throw new CliError('MISSING_OPTION', 'Provide at least one option to update (--name, --scope, --restrict, --unrestrict, --user).');
   }
   const { client } = requireAuthClient();
-  const { data } = await client.patch(credentialPath(id, options.team), body);
+  const { data } = await client.patch(credentialPath(credential), { ...teamField(options.team), ...body });
   outputSuccess(data.data, formatCredential);
 }
 
 /** New material of the same kind; every connection using the credential sends it from the next call. */
-export async function credentialRotate(id: string, options: CredentialMaterialOptions & { team?: string }): Promise<void> {
+export async function credentialRotate(credential: string, options: CredentialMaterialOptions & { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
   const secret = resolveMaterial(options);
-  const { data } = await client.post(`${credentialPath(id, options.team)}/rotate`, { secret });
+  const { data } = await client.post(`${credentialPath(credential)}/rotate`, { ...teamField(options.team), secret });
   outputSuccess(data.data, formatCredential);
 }
 
 /** Refused (`CREDENTIAL_IN_USE`) while any connection still uses it. */
-export async function credentialRemove(id: string, options: { team?: string }): Promise<void> {
+export async function credentialRemove(credential: string, options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  await client.delete(credentialPath(id, options.team));
-  outputSuccess({ id, message: `Credential ${id} removed` });
+  const body = teamField(options.team);
+  await client.delete(credentialPath(credential), Object.keys(body).length ? { data: body } : {});
+  // The reference as given (an id or a name), under its own key: a name never reads as an id.
+  outputSuccess({ credential, message: `Credential ${credential} removed` });
 }

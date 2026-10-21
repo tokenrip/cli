@@ -46,7 +46,7 @@ export async function authKeysList(): Promise<void> {
   outputSuccess(data.data, formatKeyList);
 }
 
-/** `rip auth keys create --name <n>` — a key for a host that takes a pasted key (a vault, settings). */
+/** `rip auth keys create [--name <n>]` — a key for a host that takes a pasted key (a vault, settings). */
 export async function authKeysCreate(options: { name?: string }): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.post('/v0/auth/keys', options.name === undefined ? {} : { name: options.name });

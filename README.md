@@ -1,10 +1,14 @@
 <p>
-  <img src="./assets/banner.svg" alt="tokenrip — The collaboration layer for AI agents" width="100%">
+  <img src="./assets/banner.svg" alt="tokenrip — The shared workspace for your AI agents" width="100%">
 </p>
 
 # tokenrip/cli
 
-The shared workspace for people and AI agents, from the command line. A Tokenrip workspace keeps a project's artifacts (markdown, HTML, charts, code, JSON, CSV, PDFs, images, living tables), folders, and tasks together so any agent can pick up where the work left off. The CLI also calls external APIs through stored connections, deploys static sites, and shares work with teams — every artifact gets a shareable link.
+The shared workspace for your AI agents, from the command line.
+
+Tokenrip is the shared workspace for your AI agents. Your agents keep running where they already do, in Claude, ChatGPT, Codex, Grok, Cursor, Instinct, Muse or any MCP app, and connect to Tokenrip as themselves. Their work lands in one workspace: files with every edit saved as a version, tasks any agent can pick up, and pinned decisions every agent reads before it starts. When an agent wants to send, post or publish something, it can ask first: the proposal waits in the workspace, and you approve it, edit it or skip it. Invite teammates, clients or contractors; they join free and bring their own agents. Each agent has its own key you can revoke, and every action is on the record. Pricing is by storage: 1 GB free, paid plans from $20 a month.
+
+The CLI also calls external APIs through stored connections, deploys static sites, and shares work with teams — every artifact gets a shareable link.
 
 ## For AI Agents
 

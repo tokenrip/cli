@@ -31,37 +31,19 @@ function withWhy(command: Command): Command {
   return command.addOption(new Option('--why <text>', 'One sentence: what the person is trying to accomplish, in their terms — not a description of this edit. Required for workspace items.').env('TOKENRIP_WHY'));
 }
 
-/**
- * Retired flags (plan D7): still accepted so an old invocation runs, hidden from help, and ignored.
- * The program's preAction hook prints one notice naming those given and clears them, so no command
- * sends them.
- */
-const retiredOptions = new WeakSet<Option>();
-function retired(flags: string): Option {
-  const option = new Option(flags).hideHelp();
-  retiredOptions.add(option);
-  return option;
-}
-
 const program = new Command();
 program
   .name('rip')
-  .description('Tokenrip — shared workspaces for people and AI agents')
+  .description('Tokenrip — the shared workspace for your AI agents')
   .version(CLI_VERSION)
   .option('--json', 'Use JSON output instead of human-readable')
   .option('--agent <name>', 'Use a specific agent identity for this command')
-  .hook('preAction', async (thisCommand, actionCommand) => {
+  .hook('preAction', async (thisCommand) => {
     if (program.opts().json) setForceJson(true);
     const opts = thisCommand.optsWithGlobals();
     if (opts.agent) {
       const { setAgentOverride } = await import('./identities.js');
       setAgentOverride(opts.agent);
-    }
-    const given = actionCommand.options.filter(option => retiredOptions.has(option) && actionCommand.getOptionValue(option.attributeName()) !== undefined);
-    if (given.length) {
-      const { retiredFlagsNotice } = await import('./commands/workspace.js');
-      console.error(retiredFlagsNotice(given.map(option => option.long!)));
-      for (const option of given) actionCommand.setOptionValue(option.attributeName(), undefined);
     }
   });
 
@@ -78,13 +60,12 @@ withWhy(artifact
   .option('--parent <uuid>', 'Parent artifact ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
-  .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
-  .option('--folder <slug>', 'File into folder (with --workspace-id: a folder in that workspace, by slug or id)')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with (the first also scopes a --folder slug)')
+  .option('--folder <folder>', 'File into a folder: its id (a workspace folder puts it in that workspace), or a slug (in --workspace-id, else the first --team, else your personal folders)')
   .option('--public-asset', 'Store in a public bucket and return a direct CDN URL (publicUrl)')
-  .option('--visibility <level>', 'Standalone visibility (link | public | private); omit with --workspace-id')
+  .option('--visibility <level>', 'Standalone visibility (link | public | private); omit with --workspace-id (patch it to link afterwards to open it to anyone)')
   .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
-  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id, or a --folder in a workspace)')
   .option('--dry-run', 'Validate inputs without uploading')
   .description('Upload a file and get a shareable link')
   .addHelpText('after', `
@@ -101,24 +82,23 @@ withWhy(artifact
   .argument('[file]', 'File containing the content to publish (omit if using --content)')
   .requiredOption('--type <type>', 'Content type: markdown, html, chart, code, text, json, csv, or table')
   .option('--title <title>', 'Display title for the artifact')
-  .option('--content <string>', 'Inline content to publish (alternative to a file; requires --title)')
+  .option('--content <string>', 'Inline content to publish (alternative to a file)')
   .option('--alias <alias>', 'Human-readable alias for the artifact URL')
   .option('--parent <uuid>', 'Parent artifact ID for lineage tracking')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--refs <urls>', 'Comma-separated input reference URLs')
   .option('--schema <json>', 'Column schema JSON (for tables, or to type CSV columns on import)')
-  .option('--headers', 'CSV has a header row — use it for column names (pairs with --from-csv)')
-  .option('--from-csv', 'Parse the file as CSV and populate a new table (pairs with --type table)')
-  .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with')
-  .option('--folder <slug>', 'File into folder (with --workspace-id: a folder in that workspace, by slug or id)')
-  .option('--metadata <json>', 'Arbitrary metadata JSON object (merged into artifact metadata)')
+  .option('--headers', 'CSV has a header row — use it for column names (only with --from-csv)')
+  .option('--from-csv', 'The file is CSV: import its rows into a new table (with --type table; sends the CSV as the table\'s content)')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this artifact with (the first also scopes a --folder slug)')
+  .option('--folder <folder>', 'File into a folder: its id (a workspace folder puts it in that workspace), or a slug (in --workspace-id, else the first --team, else your personal folders)')
+  .option('--metadata <json>', 'Arbitrary metadata JSON object (not for tables)')
   .option('--public-asset', 'Store bytes in a public bucket and return a direct CDN URL (not valid with private visibility)')
-  .option('--visibility <level>', 'Standalone visibility: private | link | public (default link); omit with --workspace-id')
-  .option('--strict', 'For tables: reject unknown columns and type-mismatched values on row writes')
+  .option('--visibility <level>', 'Standalone visibility: private | link | public (default link); omit with --workspace-id (patch it to link afterwards to open it to anyone)')
+  .option('--strict', 'For a table created from --schema: reject unknown columns and type-mismatched values on row writes (not with --from-csv)')
   .option('--workspace-id <id>', 'Create inside a workspace; no expected revision required')
-  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
-  .option('--handoff', 'Publish this markdown as the workspace handoff note for whoever comes next (requires --workspace-id)')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id, or a --folder in a workspace)')
+  .option('--handoff', 'Publish this markdown as the workspace handoff note for whoever comes next (requires --workspace-id, or a --folder in a workspace)')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -152,9 +132,10 @@ artifact
   .option('--since <iso-date>', 'Only show artifacts modified after this timestamp (ISO 8601)')
   .option('--limit <n>', 'Maximum number of artifacts to return (default: 20)', '20')
   .option('--type <type>', 'Filter by artifact type (markdown, html, chart, code, text, file)')
-  .option('--folder <slug>', 'Filter by folder')
+  .option('--folder <folder>', 'Filter by folder: an id, or a slug (in --workspace-id, else --team, else your personal folders)')
   .option('--unfiled', 'Show only unfiled artifacts')
   .option('--team <slug>', 'Filter to team artifacts')
+  .option('--workspace-id <id>', 'Filter to one workspace\'s artifacts')
   .description('List your published artifacts and their metadata')
   .addHelpText('after', `
 EXAMPLES:
@@ -172,8 +153,7 @@ withWhy(artifact
   .command('delete'))
   .argument('<identifier>', 'Artifact UUID, alias, or full URL (https://tokenrip.com/s/...)')
   .option('--dry-run', 'Show what would move to the trash without moving it')
-  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
   .description('Move an artifact to the trash (restorable for 30 days)')
   .addHelpText('after', `
 EXAMPLES:
@@ -184,63 +164,62 @@ EXAMPLES:
 NOTE:
   The artifact leaves listings and search, and its link answers 410 with the
   deletion and purge dates. It is removed for good 30 days later. The alias
-  stays held while it is in the trash. Workspace artifacts need
-  --expected-workspace-revision.
+  stays held while it is in the trash.
 `)
   .action(wrapCommand(deleteArtifact));
 
 withWhy(artifact
   .command('fork'))
-  .argument('<identifier>', 'Artifact public ID, alias, or scoped alias (~owner/alias) to fork')
-  .option('--version-id <versionId>', 'Fork a specific version (defaults to latest)')
+  .allowExcessArguments(false)
+  .argument('[artifact]', 'Artifact ID, alias, scoped alias (~owner/alias), or full URL to fork (its current version)')
+  .option('--version-id <versionId>', 'Fork one version by its own id instead (it names its artifact; give it alone)')
   .option('--title <title>', 'Title for the forked artifact (defaults to original)')
-  .option('--folder <folder>', 'Folder slug to file the fork into')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Create your own copy of an existing artifact')
+  .option('--folder <folder>', 'Folder to file the fork into: an id, or a slug (in the source\'s workspace, else --team, else your personal folders)')
+  .option('--team <slug>', 'The team a --folder slug belongs to')
+  .description('Create your own copy of an existing artifact (POST /v0/forks); a public workspace file you cannot edit is copied into your own account')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact fork 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact fork my-skill --title "My Custom Skill"
   $ rip artifact fork '~alice/dashboard' --title "My Dashboard"
-  $ rip artifact fork 550e8400 --version-id abc123 --folder tools
+  $ rip artifact fork --version-id 660f9500-... --folder tools
 `)
   .action(wrapCommand(forkArtifact));
 
 withWhy(artifact
   .command('update'))
-  .argument('<uuid>', 'Artifact public ID')
+  .allowExcessArguments(false)
+  .argument('<artifact>', 'Artifact ID, alias, or full URL')
   .argument('<file>', 'File containing the new version content')
-  .option('--type <type>', 'Content type (markdown, html, chart, code, text, json, csv) — omit for binary file upload')
   .option('--description <text>', 'Version description')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--title <title>', 'Also update the artifact title (applied via a follow-up patch)')
   .option('--alias <alias>', 'Also update the artifact alias (applied via a follow-up patch)')
   .option('--expected-version-id <id>', 'Required current version ID when replacing workspace content')
-  .addOption(retired('--workspace-session-id <id>'))
   .option('--dry-run', 'Validate without publishing')
   .description('Publish a new version of an existing artifact')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip artifact update 550e8400-... report-v2.md --type markdown
+  $ rip artifact update 550e8400-... report-v2.md
   $ rip artifact update 550e8400-... chart.png --description "with axes fixed"
-  $ rip artifact update my-doc report-v2.md --type markdown --title "Report (v2)"
+  $ rip artifact update my-doc report-v2.md --title "Report (v2)"
 
-A new version keeps the artifact's audience. To share a workspace artifact,
-use: rip artifact patch <id> --audience shared --expected-workspace-revision <n>
+A new version keeps the artifact's type: a text artifact (markdown, html, csv, ...)
+takes the file's text, a file artifact the file as it is. It keeps its audience
+too. To share a workspace artifact, use: rip artifact patch <id> --audience shared
 `)
   .action(wrapCommand(update));
 
 withWhy(artifact
   .command('delete-version'))
-  .argument('<uuid>', 'Artifact ID')
-  .argument('<versionId>', 'Version ID to delete')
+  .allowExcessArguments(false)
+  .argument('<versionId>', 'Version ID to delete (it names its artifact)')
   .option('--dry-run', 'Show what would be deleted without deleting')
-  .option('--expected-workspace-revision <n>', 'Required live revision when deleting a workspace artifact version')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Delete a specific version of an artifact')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
+  .description('Delete one version of an artifact, by its own id')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip artifact delete-version 550e8400-... 660f9500-...
+  $ rip artifact delete-version 660f9500-...
 
 CAUTION:
   This permanently removes the version content.
@@ -250,15 +229,16 @@ CAUTION:
 
 withWhy(artifact
   .command('prune-versions'))
-  .argument('<uuid>', 'Artifact ID')
+  .allowExcessArguments(false)
+  .argument('<artifact>', 'Artifact ID, alias, or full URL')
   .option('--keep <n>', 'How many of the newest old versions to keep besides the current one (default 0)')
-  .option('--expected-workspace-revision <n>', 'Required live revision when pruning a workspace artifact')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
   .description("Delete an artifact's old versions, keeping the current one")
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact prune-versions 550e8400-...
   $ rip artifact prune-versions 550e8400-... --keep 3
-  $ rip artifact prune-versions 550e8400-... --expected-workspace-revision 12 --why "Keep the run log small"
+  $ rip artifact prune-versions 550e8400-... --why "Keep the run log small"
 
 Every version is stored in full and counts toward the owner's storage.
 Prints the versions removed, the bytes freed and how many versions remain.
@@ -284,6 +264,7 @@ EXAMPLES:
 
 artifact
   .command('download')
+  .allowExcessArguments(false)
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--output <path>', 'Output file path (default: <uuid>.<ext> in current directory)')
   .option('--version-id <versionId>', 'Download a specific version')
@@ -300,6 +281,7 @@ EXAMPLES:
 
 artifact
   .command('cat')
+  .allowExcessArguments(false)
   .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
   .option('--version-id <versionId>', 'Output a specific version')
   .description('Print artifact content to stdout')
@@ -315,45 +297,49 @@ EXAMPLES:
 
 artifact
   .command('versions')
-  .argument('<uuid>', 'Artifact UUID or full URL')
-  .option('--version-id <versionId>', 'Get metadata for a specific version')
-  .description('List versions of an artifact')
+  .allowExcessArguments(false)
+  .argument('[artifact]', 'Artifact ID, alias, or full URL')
+  .option('--version-id <versionId>', 'Get one version\'s metadata by its own id instead (give it alone)')
+  .description('List versions of an artifact, or read one version')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact versions 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact versions 550e8400-... --version-id abc123
+  $ rip artifact versions --version-id 660f9500-...
 `)
   .action(wrapCommand(artifactVersions));
 
 artifact
   .command('diff')
-  .argument('<identifier>', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL')
-  .option('--version-id <versionId>', 'Diff a specific version (default: current version)')
-  .option('--from <versionId>', 'Diff from this version (its predecessor is the base) up to --version-id')
-  .description('Show what changed in a version vs. the previous version, or across a range with --from')
+  .allowExcessArguments(false)
+  .argument('[artifact]', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL: diffs its current version')
+  .option('--version-id <versionId>', 'Diff one version by its own id instead (give it alone; it names its artifact)')
+  .option('--from-version-id <versionId>', 'Diff the range from this version (its predecessor is the base) up to the diffed one')
+  .description('Show what changed in a version vs. the previous version, or across a range with --from-version-id')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact diff 550e8400-e29b-41d4-a716-446655440000
-  $ rip artifact diff my-alias --version-id abc123
-  $ rip artifact diff my-alias --from <firstVersionId> --version-id <lastVersionId>
+  $ rip artifact diff --version-id <versionId>
+  $ rip artifact diff --version-id <lastVersionId> --from-version-id <firstVersionId>
+  $ rip artifact diff my-alias --from-version-id <firstVersionId>
 `)
   .action(wrapCommand(artifactDiff));
 
 withWhy(artifact
   .command('move'))
-  .argument('<uuid>', 'Artifact UUID')
-  .option('--folder <slug>', 'Target folder slug')
-  .option('--folder-id <uuid>', 'Target workspace folder UUID')
-  .option('--team <slug>', 'Target team (for team folders)')
-  .option('--unfiled', 'Remove from current folder')
-  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .addOption(retired('--workspace-session-id <id>'))
+  .argument('<artifact>', 'Artifact ID, alias, or full URL')
+  .option('--folder <folder>', 'Destination folder: an id, or a slug (in the artifact\'s workspace, else --team, else your personal folders)')
+  .option('--team <slug>', 'The team a --folder slug belongs to')
+  .option('--unfiled', 'Remove from its folder (sends folder: null)')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
   .description('Move an artifact into a folder or unfile it')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact move 550e8400-... --folder reports
   $ rip artifact move 550e8400-... --folder research --team my-team
+  $ rip artifact move 550e8400-... --folder 7c9e6679-7425-40de-944b-e07fc1f90ae7
   $ rip artifact move 550e8400-... --unfiled
+
+A move names its destination: --folder or --unfiled.
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { artifactMove } = await import('./commands/folder.js');
@@ -364,12 +350,10 @@ withWhy(artifact
   .command('bulk'))
   .argument('<action>', 'Bulk action: move or delete')
   .requiredOption('--ids <csv>', 'Comma-separated artifact identifiers (UUID, alias, or URL)')
-  .option('--folder <slug>', 'Target folder slug (for move)')
-  .option('--team <slug>', 'Target team for the folder (for move into a team folder)')
-  .option('--unfiled', 'Unfile the artifacts (for move)')
-  .option('--folder-id <uuid>', 'Target workspace folder UUID (for move)')
-  .option('--expected-workspace-revisions <json>', 'Map artifact identifiers to live workspace revisions')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--folder <folder>', 'Destination folder for move: an id, or a slug (in the artifacts\' workspace, else --team, else your personal folders)')
+  .option('--team <slug>', 'The team a --folder slug belongs to (for move)')
+  .option('--unfiled', 'Unfile the artifacts (for move; sends folder: null)')
+  .option('--expected-workspace-revisions <json>', 'Optional: map artifact identifiers to revisions; refuse an item if it changed since')
   .description('Move many artifacts, or move them to the trash, in one call')
   .addHelpText('after', `
 EXAMPLES:
@@ -381,6 +365,7 @@ EXAMPLES:
 NOTE:
   The "delete" action moves every listed artifact to the trash, restorable
   for 30 days, and prints each one's purge date. Up to 200 ids per call.
+  A move names its destination (--folder or --unfiled); a delete takes neither.
 `)
   .action(wrapCommand(async (action, options) => {
     const { artifactBulk } = await import('./commands/bulk.js');
@@ -394,10 +379,9 @@ withWhy(artifact
   .option('--alias <alias>', 'New alias for the artifact')
   .option('--title <title>', 'New title for the artifact')
   .option('--description <description>', 'New description for the artifact (empty string clears it)')
-  .option('--visibility <level>', 'private | link | public')
-  .option('--audience <audience>', 'Set workspace audience: internal | shared without creating a version')
-  .option('--expected-workspace-revision <n>', 'Required live revision for a workspace artifact')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--visibility <level>', 'private | link | public. A workspace artifact takes private or link, set by internal editors: link lets anyone with the URL read it and makes it shared. Earlier versions become readable too; prune them first (rip artifact prune-versions) if they shouldn\'t be. No --why needed when visibility is the only change')
+  .option('--audience <audience>', 'Set workspace audience: internal | shared without creating a version; internal turns public access off')
+  .option('--expected-workspace-revision <n>', 'Required with --description or --metadata on a workspace artifact (the patch was composed from what you read); otherwise optional: refuse if the item changed since this revision')
   .description('Update artifact metadata and/or alias without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
@@ -406,6 +390,7 @@ EXAMPLES:
   $ rip artifact patch my-post --metadata '{"featured":true}' --alias new-slug
   $ rip artifact patch my-post --title "New Title"
   $ rip artifact patch my-post --description "A helpful description"
+  $ rip artifact patch <id> --visibility link
 `)
   .action(wrapCommand(patch));
 
@@ -450,28 +435,29 @@ const table = program
 
 withWhy(table
   .command('append'))
-  .argument('<uuid>', 'Table artifact public ID')
+  .allowExcessArguments(false)
+  .argument('<table>', 'Table artifact ID, alias, or full URL')
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
-  .option('--upsert-on <column>', 'Update the row matching this column instead of inserting (must be the table key, its unique: true column)')
-  .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--upsert', 'Update the row whose key (the table\'s unique: true column) matches instead of inserting')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
   .description('Append one or more rows to a table (max 1000 per call)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
   $ rip table append 550e8400-... --file rows.json
-  $ rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert-on slug
+  $ rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert
 
 NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
 
-UPSERT: --upsert-on makes publishing idempotent in one call — no check-then-write,
-no race. A table has at most one key, its unique: true column, and --upsert-on
-must name it; every row must carry the key (MISSING_FIELD otherwise).
+UPSERT: --upsert makes publishing idempotent in one call — no check-then-write,
+no race. It matches on the table's key, its one unique: true column (a table
+without one is refused, NO_TABLE_KEY); every row must carry the key
+(MISSING_FIELD otherwise).
 
 KEY: the key compares the exact stored text: "100" and "100.0" are different keys,
 the number 1 and the string "1" are the same key. Before any row is written,
-a key repeated within the call, or (without --upsert-on) a key a stored row
+a key repeated within the call, or (without --upsert) a key a stored row
 already holds, is rejected with 409 DUPLICATE_UNIQUE_VALUE; a key value that is
 an object or array, or longer than 1024 bytes, is 400 INVALID_COLUMN_VALUE.
 `)
@@ -482,7 +468,8 @@ an object or array, or longer than 1024 bytes, is 400 INVALID_COLUMN_VALUE.
 
 table
   .command('rows')
-  .argument('<uuid>', 'Table artifact public ID')
+  .allowExcessArguments(false)
+  .argument('<table>', 'Table artifact ID, alias, or full URL')
   .option('--limit <n>', 'Max rows to return (default: 100, max: 500)')
   .option('--after <rowId>', 'Cursor: show rows after this row ID')
   .option('--before <rowId>', 'Cursor: show rows before this row ID (not with --after)')
@@ -491,7 +478,7 @@ table
   .option('--filter <key=value...>', 'Filter rows (repeatable). The key may carry an operator: revenue[gte]=75')
   .option('--fields <columns>', 'Comma-separated columns to return, e.g. slug,title')
   .option('--include-total', 'Also return the total row count matching the filters')
-  .description('List rows in a table')
+  .description('List rows in a table (no sign-in needed for a table anyone with the link may read)')
   .addHelpText('after', `
 FILTER OPERATORS:
   eq (default)  lt  lte  gt  gte  ne  in (comma-separated)  contains  starts
@@ -515,36 +502,35 @@ EXAMPLES:
 
 withWhy(table
   .command('update'))
-  .argument('<uuid>', 'Table artifact public ID')
-  .argument('<rowId>', 'Row ID to update')
+  // An old form's extra positional (the table beside its rows, an artifact beside a version) is refused, never dropped.
+  .allowExcessArguments(false)
+  .argument('<rowId>', 'Row ID to update (it names its table)')
   .requiredOption('--data <json>', 'Fields to update as JSON (partial merge)')
   .option('--expected-revision <n>', 'Required live row revision for a workspace row')
-  .option('--expected-workspace-revision <n>', 'Required live workspace artifact revision')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Update a single row in a table')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
+  .description('Update a single row of a table, by its own id')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip table update 550e8400-... 660f9500-... --data '{"relevance":"low"}'
+  $ rip table update 660f9500-... --data '{"relevance":"low"}'
 `)
-  .action(wrapCommand(async (uuid, rowId, options) => {
+  .action(wrapCommand(async (rowId, options) => {
     const { tableUpdate } = await import('./commands/table.js');
-    await tableUpdate(uuid, rowId, options);
+    await tableUpdate(rowId, options);
   }));
 
 withWhy(table
   .command('delete'))
-  .argument('<uuid>', 'Table artifact public ID')
-  .requiredOption('--rows <ids>', 'Comma-separated row IDs to delete')
-  .option('--expected-revisions <json>', 'Map row IDs to live row revisions for workspace deletion')
-  .addOption(retired('--workspace-session-id <id>'))
-  .description('Delete rows from a table')
+  .allowExcessArguments(false)
+  .requiredOption('--row-ids <ids>', 'Comma-separated row IDs to delete, all of one table (they name it)')
+  .option('--expected-revisions <json>', 'Optional: map row IDs to revisions; refuse if a row changed since')
+  .description('Delete rows of a table, by their own ids')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip table delete 550e8400-... --rows uuid1,uuid2
+  $ rip table delete --row-ids uuid1,uuid2
 `)
-  .action(wrapCommand(async (uuid, options) => {
+  .action(wrapCommand(async (options) => {
     const { tableDelete } = await import('./commands/table.js');
-    await tableDelete(uuid, options);
+    await tableDelete(options);
   }));
 
 // ── bundle commands (multi-file static-site deployment) ──────────────
@@ -554,18 +540,17 @@ EXAMPLES:
 // `https://bundles.tokenrip.com/<id>/`. `rip bundle …` manages the lifecycle.
 const deployOptions = (cmd: import('commander').Command) =>
   cmd
-    .option('--title <title>', 'Display title (default: directory name)')
-    .option('--slug <slug>', 'Human-readable slug for the bundle')
-    .option('--alias <slug>', 'Alias for --slug')
+    .option('--title <title>', 'Display title of a new bundle (default: directory name)')
+    .option('--slug <slug>', 'Human-readable slug of a new bundle')
     .option('--description <text>', 'Optional description')
-    .option('--bundle <idOrSlug>', 'Re-deploy a new version of an existing bundle')
-    .option('--visibility <v>', 'private | link | public (default: link)')
+    .option('--bundle <bundle>', 'Deploy a new version of an existing bundle (takes --description, --entrypoint and --spa, not --title, --slug or --visibility)')
+    .option('--visibility <v>', 'private | link | public, for a new bundle (default: link)')
     .option('--entrypoint <file>', 'Default file to serve (default: index.html)')
     .option('--spa', 'SPA fallback — serve the entrypoint for unknown paths')
-    .option('--dry-run', 'Zip and inspect locally without uploading');
+    .option('--dry-run', 'Zip and inspect locally without uploading')
+    .allowExcessArguments(false);
 
-const runDeploy = (dir: string, options: Record<string, unknown>) =>
-  bundleDeploy(dir, { ...options, slug: (options.slug as string) ?? (options.alias as string) });
+const runDeploy = (dir: string, options: Record<string, unknown>) => bundleDeploy(dir, options);
 
 // Top-level convenience: `rip deploy <dir>`
 deployOptions(
@@ -592,40 +577,45 @@ deployOptions(bundle.command('deploy').argument('<dir>', 'Directory to deploy').
 bundle
   .command('list')
   .description('List your bundles')
+  .allowExcessArguments(false)
   .action(wrapCommand(bundleList));
 
 bundle
   .command('get')
-  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .argument('<bundle>', 'The bundle: its id or your slug for it')
   .description('Show a bundle: metadata, live URL, and file manifest')
+  .allowExcessArguments(false)
   .action(wrapCommand(bundleGet));
 
 bundle
   .command('versions')
-  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .argument('<bundle>', 'The bundle: its id or your slug for it')
   .description('List a bundle\'s versions, newest first')
+  .allowExcessArguments(false)
   .action(wrapCommand(bundleVersions));
 
 bundle
   .command('rollback')
-  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .argument('<bundle>', 'The bundle: its id or your slug for it')
   .argument('<version>', 'Version number to roll back to')
   .description('Flip the live site back to an earlier version')
+  .allowExcessArguments(false)
   .action(wrapCommand(bundleRollback));
 
 bundle
   .command('open')
-  .argument('<idOrSlug>', 'Bundle public ID or slug')
+  .argument('<bundle>', 'The bundle: its id or your slug for it')
   .option('--browser', 'Launch the live URL in the OS default browser (best-effort)')
   .description('Print (or open) the bundle\'s live URL')
+  .allowExcessArguments(false)
   .action(wrapCommand(bundleOpen));
 
 bundle
   .command('delete')
-  .argument('<idOrSlug>', 'Bundle public ID or slug')
-  .option('--yes', 'Confirm deletion (required)')
-  .description('Move a bundle to the trash')
-  .action(wrapCommand(bundleDelete));
+  .argument('<bundle>', 'The bundle: its id or your slug for it')
+  .description('Move a bundle to the trash for 30 days (restore with rip trash restore <id>)')
+  .allowExcessArguments(false)
+  .action(wrapCommand((bundleRef: string) => bundleDelete(bundleRef)));
 
 // ── auth commands ───────────────────────────────────────────────────
 const auth = program.command('auth').description('Sign in, hand off to another agent, and manage keys');
@@ -635,7 +625,8 @@ auth
   .description("Sign in with the person's email and a six-digit code")
   .requiredOption('--email <email>', "The person's email address")
   .option('--code <code>', 'The six-digit code (emailed, or from a connected agent or the dashboard)')
-  .option('--name <name>', 'Name for this agent\'s key (default: "Claude Code" under Claude Code, else "CLI")')
+  .option('--name <name>', 'Name for this agent\'s key (default: this harness, e.g. "claude-code" or "cli")')
+  .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth login --email ana@example.com                # emails a six-digit code
@@ -650,7 +641,8 @@ EXAMPLES:
 
   A code from the key sign-in page gives a run key instead: it acts as the
   agent's saved key for this run, ends after 12 hours without use (24 hours
-  at most), and cannot manage keys. A run-key sign-in revokes no key.
+  at most), and cannot manage keys. A run-key sign-in revokes no key and
+  makes none, so it takes no --name.
 `)
   .action(wrapCommand(async (options) => {
     const { authLogin } = await import('./commands/auth-login.js');
@@ -677,10 +669,7 @@ auth
   .command('link')
   .description("Make a one-time sign-in link for the person's browser")
   .option('--to <page>', 'Tokenrip page to open after sign-in: a URL or a path')
-  // The retired password form's options: accepted so an old script gets the pointer, not a usage error.
-  .addOption(new Option('--alias <alias>').hideHelp())
-  .addOption(new Option('--password <password>').hideHelp())
-  .addOption(new Option('--force').hideHelp())
+  .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth link
@@ -697,10 +686,6 @@ EXAMPLES:
   agent is \`rip auth code\`.
 `)
   .action(wrapCommand(async (options) => {
-    if (options.alias !== undefined || options.password !== undefined || options.force !== undefined) {
-      const { retiredLinkForm } = await import('./commands/auth.js');
-      retiredLinkForm();
-    }
     const { authLink } = await import('./commands/auth-keys.js');
     await authLink({ to: options.to });
   }));
@@ -724,10 +709,12 @@ EXAMPLES:
 keys
   .command('create')
   .description('Create a key for a host that takes a pasted key (a vault or settings field)')
-  .requiredOption('--name <name>', 'What the key is for, e.g. "Hermes"')
+  .option('--name <name>', 'What the key is for, e.g. "Hermes" (default: this harness, e.g. "cli")')
+  .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth keys create --name "Hermes"
+  $ rip auth keys create
 
   The key is shown once. Paste it into the host's key vault or settings,
   not into a chat. It has full access to the account; revoke it any time.
@@ -755,8 +742,8 @@ EXAMPLES:
 
 auth
   .command('rotate-key')
-  .alias('create-key')
   .description("Replace this agent's key (other agents keep theirs)")
+  .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth rotate-key
@@ -772,26 +759,6 @@ EXAMPLES:
   .action(wrapCommand(async () => {
     const { authRotateKey } = await import('./commands/auth.js');
     await authRotateKey();
-  }));
-
-auth
-  .command('register')
-  .description('Retired: use `rip auth login`')
-  .option('--alias <alias>', 'Ignored')
-  .option('--force', 'Ignored')
-  .action(wrapCommand(async (options) => {
-    const { authRegister } = await import('./commands/auth.js');
-    await authRegister(options);
-  }));
-
-auth
-  .command('claim')
-  .argument('[code]', 'Ignored')
-  .option('--label <label>', 'Ignored')
-  .description('Retired: use `rip auth login`')
-  .action(wrapCommand(async (code, options) => {
-    const { authClaim } = await import('./commands/auth-claim.js');
-    await authClaim(code, options);
   }));
 
 auth
@@ -814,15 +781,16 @@ auth
   .option('--description <text>', 'Set agent description (max 2000 chars, empty to clear)')
   .option('--website <url>', 'Set website URL (empty to clear)')
   .option('--email <email>', 'Set contact email (empty to clear)')
-  .option('--public <bool>', 'Make profile publicly visible (true/false)')
+  .option('--visibility <visibility>', 'public lists the profile publicly; private hides it')
   .description('Update agent profile')
+  .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth update --alias "research-bot"
-  $ rip auth update --tag "Writer" --public true
+  $ rip auth update --tag "Writer" --visibility public
   $ rip auth update --description "Collaborative research agent"
   $ rip auth update --website "https://example.com" --email "contact@example.com"
-  $ rip auth update --public false
+  $ rip auth update --visibility private
 `)
   .action(wrapCommand(async (options) => {
     const { authUpdate } = await import('./commands/auth.js');
@@ -855,13 +823,13 @@ ${NOTIFY_TARGETS}
 notify
   .command('show', { isDefault: true })
   .description("Show this agent's notification settings (or its person's)")
-  .option('--workspace <id>', "Also show each type's delivery in this workspace")
+  .option('--workspace-id <id>', "Also show each type's delivery in this workspace")
   .option('--for-person', "Your person's settings instead of this agent's")
   .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip notify --for-person
-  $ rip notify --workspace <workspace-id> --for-person
+  $ rip notify --workspace-id <workspace-id> --for-person
   $ rip notify
 
   Four types: addressed (work waiting on you: soon by default), new_files,
@@ -872,7 +840,7 @@ ${NOTIFY_TARGETS}
 `)
   .action(wrapCommand(async (options) => {
     const { notifyShow } = await import('./commands/notify.js');
-    await notifyShow({ workspace: options.workspace, forPerson: options.forPerson });
+    await notifyShow({ workspaceId: options.workspaceId, forPerson: options.forPerson });
   }));
 
 notify
@@ -1024,7 +992,7 @@ program
   .option('--team <slug>', "A team's feed (default: your own scope)")
   .option('--type <list>', 'Comma list of event types, e.g. connection.created,credential.rotated,team.member_removed')
   .option('--actor <who>', "Account id or alias, or the literal 'system'")
-  .option('--subject <ref>', "'<type>:<id>' — e.g. connection:<uuid> for one subject's history")
+  .option('--subject <ref>', "One subject's history: the id a row names (a connection's, say), or an artifact's id or alias")
   .option('--since <iso>', 'ISO timestamp, or a number of days back')
   .option('--limit <n>', 'Page size (max 200)')
   .option('--cursor <cursor>', 'Continue from a previous page')
@@ -1033,6 +1001,7 @@ EXAMPLES:
   $ rip activity --team quintel
   $ rip activity --team quintel --type connection.created --since 7
   $ rip activity --team quintel --type credential.created,credential.rotated
+  $ rip activity --team quintel --subject <connection-id>
 
 NOTES:
   Read-only: poll it freely. Each row's sentence is rendered server-side, so
@@ -1049,26 +1018,27 @@ NOTES:
 // ── search command ────────────────────────────────────────────────
 program
   .command('search')
-  .argument('<query>', 'Search text')
+  .argument('[query]', 'Search text (omit it to list by recency within the other filters)')
   .description('Search artifacts: by keyword, and by meaning inside a workspace')
   .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
-  .option('--artifact-type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table')
+  .option('--type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table, csv')
   .option('--workspace-id <uuid>', 'Search one workspace (its UUID): ranks by keywords and meaning, returns passages')
-  .option('--artifact <id>', 'Scope to one artifact (publicId or alias) — its passages, best first, up to --limit')
+  .option('--artifact-id <id>', 'Scope to one artifact (its id or alias): its passages, best first, up to --limit')
   .addHelpText('after', `
-Inside a workspace (--workspace-id, or --artifact of a workspace document) the
+Inside a workspace (--workspace-id, or --artifact-id of a workspace document) the
 search ranks by keywords and meaning together ("mode: hybrid") and prints each
 result's best passages. "pending: N" counts chunks not yet searchable by
 meaning. Everywhere else the ranking is by keyword.
 
 EXAMPLES:
   $ rip search "quarterly report"
-  $ rip search "chart" --artifact-type chart --since 7
+  $ rip search "chart" --type chart --since 7
+  $ rip search --type table --since 7
   $ rip search "proposal" --limit 10
   $ rip search "how do we handle auth failures" --workspace-id <workspace-uuid>
-  $ rip search "termination clause" --artifact contract-2026 --limit 5
+  $ rip search "termination clause" --artifact-id contract-2026 --limit 5
 `)
   .action(wrapCommand(async (query, options) => {
     const { search } = await import('./commands/search.js');
@@ -1187,6 +1157,7 @@ const connection = program
 
 connection
   .command('create')
+  .allowExcessArguments(false)
   .requiredOption('--name <name>', 'Connection name (unique per owner)')
   .requiredOption('--base-url <url>', 'Base URL of the upstream API')
   .option('--credential <name|id>', 'Use an existing credential of the same owner (see `rip credential`); --auth-type then defaults to bearer')
@@ -1214,7 +1185,7 @@ EXAMPLES:
 
 NOTES:
   Without --credential, the secret becomes a new credential named after the
-  connection. Rotate a key with \`rip credential rotate <credential-id>\`: every
+  connection. Rotate a key with \`rip credential rotate <credential>\`: every
   connection using it sends the new key from the next call.
 `)
   .action(wrapCommand(async (options) => {
@@ -1224,6 +1195,7 @@ NOTES:
 
 connection
   .command('list')
+  .allowExcessArguments(false)
   .option('--team <slug>', "List a team's connections")
   .option('--include-disabled', 'Include disabled connections')
   .description('List connections (secrets are never shown)')
@@ -1232,55 +1204,49 @@ connection
     await connectionList(options);
   }));
 
-connection
-  .command('get')
-  .argument('<id>', 'Connection id')
-  .option('--team <slug>', 'Team-owned connection')
-  .description('Show one connection')
-  .action(wrapCommand(async (id, options) => {
-    const { connectionGet } = await import('./commands/connection.js');
-    await connectionGet(id, options);
-  }));
+const CONNECTION_ARGUMENT = 'Connection id (personal, or a team\'s you belong to), or its name';
+const CONNECTION_TEAM = 'The team (slug) a connection name belongs to; an id needs none';
 
 connection
-  .command('rotate-secret')
-  .argument('<id>', 'Connection id')
-  .option('--secret <value>', 'New secret (prefer --secret-env / --secret-stdin)')
-  .option('--secret-env <VAR>', 'Read the new secret from an environment variable')
-  .option('--secret-stdin', 'Read the new secret from stdin')
-  .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
-  .description('Deprecated: use `rip credential rotate`. Rotates the key of the credential this connection uses')
-  .action(wrapCommand(async (id, options) => {
-    const { connectionRotate } = await import('./commands/connection.js');
-    await connectionRotate(id, options);
+  .command('get')
+  .allowExcessArguments(false)
+  .argument('<connection>', CONNECTION_ARGUMENT)
+  .option('--team <slug>', CONNECTION_TEAM)
+  .description('Show one connection')
+  .action(wrapCommand(async (ref, options) => {
+    const { connectionGet } = await import('./commands/connection.js');
+    await connectionGet(ref, options);
   }));
 
 connection
   .command('disable')
-  .argument('<id>', 'Connection id')
-  .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
-  .description('Disable a connection (frees the name)')
-  .action(wrapCommand(async (id, options) => {
+  .allowExcessArguments(false)
+  .argument('<connection>', CONNECTION_ARGUMENT)
+  .option('--team <slug>', CONNECTION_TEAM)
+  .description('Disable a connection (frees the name; a team connection: its creator or the team owner)')
+  .action(wrapCommand(async (ref, options) => {
     const { connectionDisable } = await import('./commands/connection.js');
-    await connectionDisable(id, options);
+    await connectionDisable(ref, options);
   }));
 
 connection
   .command('rm')
-  .argument('<id>', 'Connection id')
-  .option('--team <slug>', 'Team-owned connection (its creator or the team owner)')
-  .description('Delete a connection')
-  .action(wrapCommand(async (id, options) => {
+  .allowExcessArguments(false)
+  .argument('<connection>', CONNECTION_ARGUMENT)
+  .option('--team <slug>', CONNECTION_TEAM)
+  .description('Delete a connection (a team connection: its creator or the team owner)')
+  .action(wrapCommand(async (ref, options) => {
     const { connectionRemove } = await import('./commands/connection.js');
-    await connectionRemove(id, options);
+    await connectionRemove(ref, options);
   }));
 
 connection
   .command('call')
-  .requiredOption('--connection <name>', 'Connection name (personal, or of --team)')
+  .allowExcessArguments(false)
+  .requiredOption('--connection <connection>', 'Connection id, or its name (personal, or of --team)')
   .requiredOption('--method <M>', 'HTTP method (GET/POST/PUT/PATCH/DELETE)')
   .requiredOption('--path <path>', "Path under the connection's base URL")
-  .option('--team <slug>', 'Call a team connection (you must be a current member)')
+  .option('--team <slug>', 'The team a connection name belongs to (you must be a current member); an id needs none')
   .option('--body <json>', 'JSON request body')
   .option('--query <json>', 'JSON object of query params')
   .option('--header <kv>', 'Extra request header key=value (repeatable)', collectKv, [])
@@ -1307,6 +1273,7 @@ const credential = program
 
 credential
   .command('create')
+  .allowExcessArguments(false)
   .requiredOption('--name <name>', 'Credential name (lowercase, unique per owner)')
   .option('--kind <kind>', 'secret | google_service_account', 'secret')
   .option('--secret <value>', 'The key (prefer --secret-env / --secret-stdin)')
@@ -1336,6 +1303,7 @@ NOTES:
 
 credential
   .command('list')
+  .allowExcessArguments(false)
   .option('--team <slug>', "List a team's credentials")
   .description('List credentials and the connections using each (keys are never shown)')
   .action(wrapCommand(async (options) => {
@@ -1343,62 +1311,69 @@ credential
     await credentialList(options);
   }));
 
+const CREDENTIAL_ARGUMENT = 'Credential id (personal, or a team\'s you belong to), or its name';
+const CREDENTIAL_TEAM = 'The team (slug) a credential name belongs to; an id needs none';
+
 credential
   .command('get')
-  .argument('<id>', 'Credential id')
-  .option('--team <slug>', 'Team credential')
+  .allowExcessArguments(false)
+  .argument('<credential>', CREDENTIAL_ARGUMENT)
+  .option('--team <slug>', CREDENTIAL_TEAM)
   .description('Show one credential')
-  .action(wrapCommand(async (id, options) => {
+  .action(wrapCommand(async (ref, options) => {
     const { credentialGet } = await import('./commands/credential.js');
-    await credentialGet(id, options);
+    await credentialGet(ref, options);
   }));
 
 credential
   .command('update')
-  .argument('<id>', 'Credential id')
+  .allowExcessArguments(false)
+  .argument('<credential>', CREDENTIAL_ARGUMENT)
   .option('--name <name>', 'New name')
   .option('--scope <url>', 'Replace the Google scopes (repeatable; google_service_account only)', collectList, [])
   .option('--restrict', 'Only the named users may call through it (team credential)')
   .option('--unrestrict', 'Every team member may call through it again (clears the named users)')
   .option('--user <alias|id>', 'A team member who may use it once restricted (repeatable; replaces the list)', collectList, [])
-  .option('--team <slug>', "Team credential (its creator or the team owner)")
-  .description('Rename a credential, change its Google scopes, or name who may use it')
+  .option('--team <slug>', CREDENTIAL_TEAM)
+  .description('Rename a credential, change its Google scopes, or name who may use it (a team credential: its creator or the team owner)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip credential update <id> --team quintel --restrict --user simon --user alek
-  $ rip credential update <id> --team quintel --unrestrict
+  $ rip credential update google --team quintel --restrict --user simon --user alek
+  $ rip credential update <credential-id> --unrestrict
 
 NOTES:
   A restricted credential with no named users refuses everyone, the team owner
   included. It never changes the key: use \`rip credential rotate\`.
 `)
-  .action(wrapCommand(async (id, options) => {
+  .action(wrapCommand(async (ref, options) => {
     const { credentialUpdate } = await import('./commands/credential.js');
-    await credentialUpdate(id, options);
+    await credentialUpdate(ref, options);
   }));
 
 credential
   .command('rotate')
-  .argument('<id>', 'Credential id')
+  .allowExcessArguments(false)
+  .argument('<credential>', CREDENTIAL_ARGUMENT)
   .option('--secret <value>', 'The new key (prefer --secret-env / --secret-stdin)')
   .option('--secret-env <VAR>', 'Read the new key from an environment variable')
   .option('--secret-stdin', 'Read the new key from stdin')
   .option('--key-file <path>', 'Read the new key from a file (a Google service-account key JSON)')
-  .option('--team <slug>', "Team credential (its creator or the team owner)")
-  .description('Replace a credential\'s key; every connection using it sends the new key from the next call')
-  .action(wrapCommand(async (id, options) => {
+  .option('--team <slug>', CREDENTIAL_TEAM)
+  .description('Replace a credential\'s key (a team credential: its creator or the team owner); every connection using it sends the new key from the next call')
+  .action(wrapCommand(async (ref, options) => {
     const { credentialRotate } = await import('./commands/credential.js');
-    await credentialRotate(id, options);
+    await credentialRotate(ref, options);
   }));
 
 credential
   .command('rm')
-  .argument('<id>', 'Credential id')
-  .option('--team <slug>', "Team credential (its creator or the team owner)")
-  .description('Delete a credential (refused while a connection uses it)')
-  .action(wrapCommand(async (id, options) => {
+  .allowExcessArguments(false)
+  .argument('<credential>', CREDENTIAL_ARGUMENT)
+  .option('--team <slug>', CREDENTIAL_TEAM)
+  .description('Delete a credential (refused while a connection uses it; a team credential: its creator or the team owner)')
+  .action(wrapCommand(async (ref, options) => {
     const { credentialRemove } = await import('./commands/credential.js');
-    await credentialRemove(id, options);
+    await credentialRemove(ref, options);
   }));
 
 // ── skill commands ───────────────────────────────────────────────────
@@ -1408,13 +1383,14 @@ const skill = program
 
 skill
   .command('list')
-  .option('--team <slug>', "Only this team's skills")
+  .option('--team <slug-or-id>', "Only this team's skills (its slug or id)")
   .description('List the skills in reach: your operator\'s personal skills and your teams\' skills')
   .addHelpText('after', `
 EXAMPLES:
   $ rip skill list
   $ rip skill list --team quintel
 `)
+  .allowExcessArguments(false)
   .action(wrapCommand(async (options) => {
     const { skillList } = await import('./commands/skill.js');
     await skillList(options);
@@ -1423,7 +1399,7 @@ EXAMPLES:
 skill
   .command('get')
   .argument('<skill>', 'Skill name, id, or link (…/skills/<id>)')
-  .option('--team <slug>', "The team's skill of that name (without it, a name means a personal skill)")
+  .option('--team <slug-or-id>', "The team (slug or id) whose skill of that name it is (without it, a name means a personal skill)")
   .option('--file <path>', 'Write one file of the skill to stdout (raw bytes)')
   .option('--dir <folder>', 'Write every file into a new or empty folder')
   .description('Print a skill\'s instructions and file list, or fetch its files')
@@ -1434,6 +1410,7 @@ EXAMPLES:
   $ rip skill get https://tokenrip.com/skills/<id>          # link-shared: no identity needed
   $ rip skill get blog-post --dir ./blog-post                # edit locally, then publish
 `)
+  .allowExcessArguments(false)
   .action(wrapCommand(async (ref, options) => {
     const { skillGet } = await import('./commands/skill.js');
     await skillGet(ref, options);
@@ -1442,7 +1419,7 @@ EXAMPLES:
 skill
   .command('publish')
   .argument('<folder>', 'Folder with SKILL.md (frontmatter name and description) and any supporting files')
-  .option('--team <slug>', 'Publish as a team skill (any current member)')
+  .option('--team <slug-or-id>', 'Publish as a team skill: the team\'s slug or id (any current member)')
   .option('--expected-version <n>', 'Compare the folder with version <n> and refuse if the skill is no longer at it (0: must not exist)')
   .description('Publish a folder as the next version of the skill its SKILL.md names (creates it on first publish)')
   .addHelpText('after', `
@@ -1458,6 +1435,7 @@ EXAMPLES:
   $ rip skill publish ./blog-post --team quintel
   $ rip skill publish ./blog-post --expected-version 4
 `)
+  .allowExcessArguments(false)
   .action(wrapCommand(async (folder, options) => {
     const { skillPublish } = await import('./commands/skill.js');
     await skillPublish(folder, options);
@@ -1466,7 +1444,7 @@ EXAMPLES:
 skill
   .command('share')
   .argument('<skill>', 'Skill name or id')
-  .option('--team <slug>', "The team's skill of that name (owner or admin)")
+  .option('--team <slug-or-id>', "The team (slug or id) whose skill of that name it is (owner or admin)")
   .option('--link', 'Anyone with the link can read and install it')
   .option('--private', 'Stop link sharing')
   .description('Share a skill by link, or stop sharing it')
@@ -1475,6 +1453,7 @@ EXAMPLES:
   $ rip skill share blog-post --link
   $ rip skill share blog-post --team quintel --private
 `)
+  .allowExcessArguments(false)
   .action(wrapCommand(async (ref, options) => {
     const { skillShare } = await import('./commands/skill.js');
     await skillShare(ref, options);
@@ -1483,13 +1462,14 @@ EXAMPLES:
 skill
   .command('delete')
   .argument('<skill>', 'Skill name or id')
-  .option('--team <slug>', "The team's skill of that name (owner or admin)")
+  .option('--team <slug-or-id>', "The team (slug or id) whose skill of that name it is (owner or admin)")
   .description('Delete a skill and every version (cannot be undone)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip skill delete old-procedure
   $ rip skill delete old-procedure --team quintel
 `)
+  .allowExcessArguments(false)
   .action(wrapCommand(async (ref, options) => {
     const { skillDelete } = await import('./commands/skill.js');
     await skillDelete(ref, options);
@@ -1528,16 +1508,17 @@ const task = program
 
 task
   .command('list')
-  .requiredOption('--workspace-id <id>', 'The workspace whose tasks to list')
+  .option('--workspace-id <id>', 'The workspace whose tasks to list (or --parent-id)')
+  .option('--parent-id <id>', "Only this task's children; its workspace is the list's (omit --workspace-id)")
   .option('--status <list>', "Comma list of todo,doing,review,done,cancelled or 'all' (default todo,doing)")
   .option('--kind <kind>', 'Only tasks of this kind')
   .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
-  .option('--parent <id>', "Only this task's children")
-  .option('--since <iso>', 'Only tasks created after this ISO timestamp')
+  .option('--since <iso>', 'Only tasks created after this ISO timestamp, or this many days back')
   .option('--order <order>', "created (default, newest first) or finished (newest finish first; only with --status done and/or cancelled)")
   .option('--limit <n>', 'Page size (max 200)')
   .option('--cursor <cursor>', 'Continue from a previous page (same filters and order)')
+  .allowExcessArguments(false)
   .description('List tasks')
   .action(wrapCommand(async (options) => {
     const { taskList } = await import('./commands/task.js');
@@ -1547,6 +1528,7 @@ task
 task
   .command('show')
   .argument('<id>', 'Task id')
+  .allowExcessArguments(false)
   .description('Show one task: who it is for and who reviews it, the draft and the approved text to carry out, the decision, the result and links, children and recent history')
   .action(wrapCommand(async (id) => {
     const { taskShow } = await import('./commands/task.js');
@@ -1562,7 +1544,7 @@ withWhy(task
   .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
   .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle>; never the assignee')
   .option('--audience <audience>', 'Visibility: internal or shared')
-  .addOption(retired('--workspace-session-id <id>'))
+  .allowExcessArguments(false)
   .description('Update task metadata')
   .action(wrapCommand(async (id, options) => {
     const { taskUpdate } = await import('./commands/task.js');
@@ -1572,22 +1554,22 @@ withWhy(task
 withWhy(task
   .command('add'))
   .argument('<title>', 'Task title')
-  .requiredOption('--workspace-id <id>', 'The workspace to file the task in')
-  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--workspace-id <id>', 'The workspace to file the task in (or --parent-id)')
+  .option('--parent-id <id>', 'A task this one belongs under; its workspace is the new task\'s (omit --workspace-id)')
+  .option('--audience <audience>', 'Workspace audience: internal | shared')
   .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
   .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle>; never the assignee')
-  .option('--parent <id>', 'A task in the same workspace this one belongs under')
   .option('--kind <kind>', 'Task kind (lowercase slug, e.g. process-call)')
   .option('--body <markdown>', 'Details')
   .option('--due <iso>', 'Due date (informational)')
   .option('--payload <json>', 'Kind-specific JSON payload')
+  .allowExcessArguments(false)
   .description('File a task')
   .addHelpText('after', `
 EXAMPLES:
   $ rip task add "Review pricing page copy" --workspace-id 4f2c1b90-... --assignee alek
   $ rip task add "Draft the launch post" --workspace-id 4f2c1b90-... --assignee agent:9b1d0e2a-... --reviewer alek
-  $ rip task add "Renew domain" --workspace-id 4f2c1b90-... --due 2026-10-01
+  $ rip task add "Book the venue" --parent-id 7a1c2d1e-...     # a step of the launch task, in its workspace
 `)
   .action(wrapCommand(async (title, options) => {
     const { taskAdd } = await import('./commands/task.js');
@@ -1598,6 +1580,7 @@ withWhy(task
   .command('start'))
   .argument('<id>', 'Task id')
   .option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)')
+  .allowExcessArguments(false)
   .description('Start a task: it becomes yours under a lease; starting your own again renews it')
   .action(wrapCommand(async (id, options) => {
     const { taskStart } = await import('./commands/task.js');
@@ -1607,6 +1590,7 @@ withWhy(task
 withWhy(task
   .command('stop'))
   .argument('<id>', 'Task id')
+  .allowExcessArguments(false)
   .description('Stop a task you hold; it goes back to To do (workspace admins may stop anyone\'s)')
   .action(wrapCommand(async (id, options) => {
     const { taskStop } = await import('./commands/task.js');
@@ -1616,9 +1600,9 @@ withWhy(task
 withWhy(task
   .command('done'))
   .argument('<id>', 'Task id')
-  .option('--result <type:id>', 'Attach a result: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .option('--link <type:id>', 'Attach a link to what it produced: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
   .option('--result-text <text>', 'What came of it, at most 280 characters (e.g. "4 likes")')
-  .addOption(retired('--workspace-session-id <id>'))
+  .allowExcessArguments(false)
   .description('Complete a task: one that is free (To do) or yours. An approved proposal: carry out exactly its approved text first')
   .action(wrapCommand(async (id, options) => {
     const { taskDone } = await import('./commands/task.js');
@@ -1629,6 +1613,7 @@ withWhy(task
   .command('cancel'))
   .argument('<id>', 'Task id')
   .option('--reason <text>', 'Why it will not be done')
+  .allowExcessArguments(false)
   .description('Cancel a task that will not be done (reopenable)')
   .action(wrapCommand(async (id, options) => {
     const { taskCancel } = await import('./commands/task.js');
@@ -1638,7 +1623,7 @@ withWhy(task
 withWhy(task
   .command('reopen'))
   .argument('<id>', 'Task id')
-  .addOption(retired('--workspace-session-id <id>'))
+  .allowExcessArguments(false)
   .description('Reopen a done or cancelled task')
   .action(wrapCommand(async (id, options) => {
     const { taskReopen } = await import('./commands/task.js');
@@ -1648,17 +1633,18 @@ withWhy(task
 withWhy(task
   .command('propose'))
   .argument('[id]', 'A task that is free or yours, or your own proposal (omit for a new proposal)')
-  .option('--workspace-id <id>', 'A new proposal: the workspace')
+  .option('--workspace-id <id>', 'A new proposal: the workspace (or --parent-id)')
+  .option('--parent-id <id>', 'A new proposal: a task it belongs under; its workspace is the proposal\'s (omit --workspace-id)')
   .option('--title <title>', 'A new proposal: what you would do')
   .option('--draft <text>', 'The exact text the action uses (the post, the email)')
   .option('--draft-file <path>', 'Read the draft from a file, verbatim')
   .option('--verb <verb>', 'The approve button\'s word, e.g. Post or Send (default Approve)')
   .option('--kind <kind>', 'The kind of work (lowercase slug, e.g. x-reply); your instructions may let some kinds run on their own')
   .option('--reviewer <who>', 'Who decides: a person or agent:<handle> (default your own person; never you)')
-  .option('--parent <id>', 'A new proposal: a task in the same workspace it belongs under')
   .option('--body <markdown>', 'A new proposal: context for the reviewer')
   .option('--audience <audience>', 'A new proposal: internal | shared')
   .option('--link <type:id>', 'Attach a link: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .allowExcessArguments(false)
   .description('Propose an action before it leaves the workspace; it waits In review, or comes back doing and approved when your instructions allow its kind')
   .addHelpText('after', `
 EXAMPLES:
@@ -1676,14 +1662,15 @@ Doing and approved: carry out exactly its approved text now, then rip task done 
 withWhy(task
   .command('report'))
   .argument('[id]', 'A Done task to add a later result to (omit for a new report)')
-  .option('--workspace-id <id>', 'A new report: the workspace')
+  .option('--workspace-id <id>', 'A new report: the workspace (or --parent-id)')
+  .option('--parent-id <id>', 'A new report: a task it belongs under; its workspace is the report\'s (omit --workspace-id)')
   .option('--title <title>', 'A new report: what you did')
   .option('--result-text <text>', 'What came of it, at most 280 characters; a later result replaces it')
   .option('--link <type:id>', 'Attach a link: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
   .option('--kind <kind>', 'A new report: the kind of work')
-  .option('--parent <id>', 'A new report: a task in the same workspace it belongs under')
   .option('--body <markdown>', 'A new report: details')
   .option('--audience <audience>', 'A new report: internal | shared')
+  .allowExcessArguments(false)
   .description('Report work you already did that needed no approval (born Done), or add a later result to a Done task')
   .addHelpText('after', `
 EXAMPLES:
@@ -1703,44 +1690,19 @@ withWhy(task
   .requiredOption('--expected-revision <n>', 'The revision you read; a draft replaced since is refused CONFLICT')
   .option('--edited-draft <text>', 'With --approve: the text to carry out instead of the draft')
   .option('--edited-draft-file <path>', 'With --approve: read the edited draft from a file, verbatim')
-  .option('--note <text>', 'With --skip: why not')
+  .option('--reason <text>', 'With --skip: why not')
+  .allowExcessArguments(false)
   .description('Decide a review addressed to you: approve (optionally with an edited draft) or skip')
   .addHelpText('after', `
 EXAMPLES:
   $ rip task decide 7a1c2d1e-... --approve --expected-revision 3
   $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edited-draft-file edited.txt
-  $ rip task decide 7a1c2d1e-... --skip --expected-revision 3 --note "Not this week"
+  $ rip task decide 7a1c2d1e-... --skip --expected-revision 3 --reason "Not this week"
 `)
   .action(wrapCommand(async (id, options) => {
     const { taskDecide } = await import('./commands/task.js');
     await taskDecide(id, options);
   }));
-
-/**
- * The old task words, hidden until the task vocabulary window closes (workspace tasks plan M4).
- * Each prints one note on stderr and runs the new command, which posts the new route: a 2.5.1 CLI
- * never posts an old one, so the window query counts only older clients. touch runs start, so it
- * needs a why as start does.
- */
-const TASK_ALIASES = [
-  { name: 'claim', note: 'Deprecated: use rip task start', lease: true, reason: false, run: 'taskStart' },
-  { name: 'touch', note: 'Deprecated: use rip task start, which renews your hold and, like start, needs a why (--why or TOKENRIP_WHY)', lease: true, reason: false, run: 'taskStart' },
-  { name: 'release', note: 'Deprecated: use rip task stop', lease: false, reason: false, run: 'taskStop' },
-  { name: 'dismiss', note: 'Deprecated: use rip task cancel', lease: false, reason: true, run: 'taskCancel' },
-] as const;
-for (const alias of TASK_ALIASES) {
-  const command = withWhy(task.command(alias.name, { hidden: true }))
-    .argument('<id>', 'Task id')
-    .addOption(retired('--workspace-session-id <id>'))
-    .description(alias.note);
-  if (alias.lease) command.option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)');
-  if (alias.reason) command.option('--reason <text>', 'Why it will not be done');
-  command.action(wrapCommand(async (id, options) => {
-    console.error(alias.note);
-    const commands = await import('./commands/task.js');
-    await commands[alias.run](id, options);
-  }));
-}
 
 // ── team commands ────────────────────────────────────────────────────
 const team = program.command('team').description('Manage teams');
@@ -1935,14 +1897,15 @@ const workspace = program
 withWhy(workspace
   .command('create'))
   .argument('<slug>', 'Workspace slug (unique within your account or team)')
-  .option('--name <name>', 'Display name (defaults to slug)')
+  .option('--name <name>', 'Display name (defaults to the slug)')
   .option('--description <text>', 'Workspace description')
-  .option('--team-id <uuid>', 'Make this a team-owned workspace (the team id from `rip team list`; team owners and admins only)')
+  .option('--team <team>', 'Make this a team-owned workspace: the team slug or id (team owners and admins only)')
+  .allowExcessArguments(false)
   .description('Create a workspace')
   .addHelpText('after', `
 EXAMPLES:
   $ rip workspace create research --name "Research"
-  $ rip workspace create roadmap --team-id 7c9e6679-7425-40de-944b-e07fc1f90ae7
+  $ rip workspace create roadmap --team acme
 `)
   .action(wrapCommand(async (slug, options) => {
     const { workspaceCreate } = await import('./commands/workspace.js');
@@ -1961,7 +1924,7 @@ workspace
   .command('show')
   .argument('<workspace>', 'Workspace id (UUID)')
   .description('Show workspace identity and capabilities')
-  .addOption(retired('--session-cursor <cursor>'))
+  .allowExcessArguments(false)
   .action(wrapCommand(async (ws) => {
     const { workspaceShow } = await import('./commands/workspace.js');
     await workspaceShow(ws);
@@ -1986,35 +1949,38 @@ withWhy(workspace
 
 // workspace member subgroup
 const workspaceMember = workspace.command('member').description('Invite people to a workspace and manage their access');
-const memberTargetHelp = 'Member row id (from `member list`), account id, or email address (its person\'s primary-account row, or the row an add or invite by it made)';
+const memberTargetHelp = 'Member row id (from `member list`; it stands alone), or an account id, alias or email address with --workspace-id (its person\'s primary-account row, or the row an add or invite by it made)';
 withWhy(workspaceMember
   .command('set-role'))
-  .argument('<workspace>', 'Workspace UUID')
   .argument('<member>', memberTargetHelp)
-  .requiredOption('--role <role>', 'viewer | editor')
+  .option('--workspace-id <id>', 'The workspace, when <member> is an account id, alias or email')
+  .option('--role <role>', 'viewer | editor; kept when omitted')
   .option('--membership <membership>', 'internal (sees everything) | external (shared items only); kept when omitted')
-  .description('Change a member\'s or invite\'s access (workspace admins only)')
-  .action(wrapCommand(async (ws, member, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(ws, member, options.role, options); }));
+  .allowExcessArguments(false)
+  .description('Change a member\'s or invite\'s role, membership, or both (workspace admins only)')
+  .action(wrapCommand(async (member, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(member, options); }));
 withWhy(workspaceMember
   .command('add'))
   .argument('<workspace>', 'Workspace id (UUID)')
-  .argument('<account>', 'Email, alias or account id. An email with no Tokenrip account becomes an invite')
+  .argument('<member>', 'Email, alias or account id. An email with no Tokenrip account becomes an invite')
   .option('--membership <membership>', 'internal (sees everything) | external (shared items only) (default internal)')
   .option('--role <role>', 'viewer | editor (default editor)')
   .option('--note <text>', 'A short note for the invite email (at most 280 characters)')
+  .allowExcessArguments(false)
   .description('Add or invite someone (internal admins and editors). Tokenrip emails invites and adds by address, naming your verified address; an add by alias or id is emailed only when both accounts have one verified person')
-  .action(wrapCommand(async (ws, account, options) => {
+  .action(wrapCommand(async (ws, member, options) => {
     const { workspaceMemberAdd } = await import('./commands/workspace.js');
-    await workspaceMemberAdd(ws, account, options);
+    await workspaceMemberAdd(ws, member, options);
   }));
 withWhy(workspaceMember
   .command('remove'))
-  .argument('<workspace>', 'Workspace id (UUID)')
   .argument('<member>', memberTargetHelp)
+  .option('--workspace-id <id>', 'The workspace, when <member> is an account id, alias or email')
+  .allowExcessArguments(false)
   .description('Remove a member or cancel an invite (workspace admins only)')
-  .action(wrapCommand(async (ws, member, options) => {
+  .action(wrapCommand(async (member, options) => {
     const { workspaceMemberRemove } = await import('./commands/workspace.js');
-    await workspaceMemberRemove(ws, member, options);
+    await workspaceMemberRemove(member, options);
   }));
 workspaceMember
   .command('list')
@@ -2028,25 +1994,29 @@ workspaceMember
 withWhy(workspace
   .command('adopt'))
   .argument('<workspace>', 'Workspace UUID')
-  .argument('<item>', 'Artifact identifier or folder UUID')
-  .requiredOption('--audience <audience>', 'internal | shared')
-  .option('--kind <kind>', 'artifact | folder', 'artifact')
-  .option('--destination-folder-id <uuid>', 'Destination workspace folder UUID')
-  .addOption(retired('--workspace-session-id <id>'))
+  .argument('[artifacts...]', 'Standalone artifacts to move in: ids, aliases or URLs')
+  .option('--folder <folder>', 'Move in one of your personal folders with its files instead: its id or slug')
+  .option('--audience <audience>', 'internal | shared (default internal; shared for an external editor)')
+  .option('--destination-folder-id <uuid>', 'With artifacts: the workspace folder to file them in')
+  .allowExcessArguments(false)
   .description('Move standalone content into workspace authority; sharing exposes full artifact history')
-  .action(wrapCommand(async (ws, item, options) => { const { workspaceAdopt } = await import('./commands/workspace.js'); await workspaceAdopt(ws, item, options); }));
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip workspace adopt <workspace-id> brief-alias 7c9e6679-7425-40de-944b-e07fc1f90ae7 --why "Bring the launch notes into the project"
+  $ rip workspace adopt <workspace-id> --folder research --why "Bring the research into the project"
+`)
+  .action(wrapCommand(async (ws, artifacts, options) => { const { workspaceAdopt } = await import('./commands/workspace.js'); await workspaceAdopt(ws, artifacts, options); }));
 
-const workspacePinGroup = workspace.command('pin').description('Manage ordered markdown context pins');
-workspacePinGroup.command('add').argument('<workspace>').argument('<artifact-id>').option('--position <n>').action(wrapCommand(async (ws, artifactId, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(ws, artifactId, options); }));
-workspacePinGroup.command('remove').argument('<workspace>').argument('<artifact-id>').action(wrapCommand(async (ws, artifactId) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(ws, artifactId); }));
+// A pin names the artifact alone: its workspace is the pin's.
+const workspacePinGroup = workspace.command('pin').description('Manage ordered markdown context pins (in the artifact\'s workspace)');
+workspacePinGroup.command('add').argument('<artifact>', 'Markdown artifact in a workspace: id, alias or URL').option('--position <n>').allowExcessArguments(false).action(wrapCommand(async (artifact, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(artifact, options); }));
+workspacePinGroup.command('remove').argument('<artifact>', 'Pinned artifact: id, alias or URL').allowExcessArguments(false).action(wrapCommand(async (artifact) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(artifact); }));
 
-workspace.command('load').argument('<workspace>').addOption(retired('--operation-id <id>')).addOption(retired('--session-id <id>')).option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').description('Load bounded context: pins, artifacts, open tasks, recent changes, recent sessions (steps: each goal with the changes made for it), handoff notes, and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor, handoffOffset: options.handoffOffset }); }));
-const workspaceSession = workspace.command('session').description('Retired: sessions record themselves; read them with `rip workspace sessions`');
-workspaceSession.command('end').argument('<workspace>').argument('<session-id>').option('--summary <text>').option('--handoff-artifact-id <id>').description('Retired: sessions record themselves; prints the server refusal. Leave a note with `rip artifact publish --handoff`').action(wrapCommand(async (ws, sessionId, options) => { const { workspaceSessionEnd } = await import('./commands/workspace.js'); await workspaceSessionEnd(ws, sessionId, options); }));
+workspace.command('load').argument('<workspace>').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').allowExcessArguments(false).description('Load bounded context: pins, artifacts, open tasks, recent changes, recent sessions (steps: each goal with the changes made for it), handoff notes, and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor, handoffOffset: options.handoffOffset }); }));
 const workspaceView = workspace.command('view').description('Inspect or explicitly navigate a paired browser view');
-// Addressed by workspace: the view follows the caller's key. An old invocation's session id (plan D7) is an excess positional, ignored with one notice.
-workspaceView.command('context').argument('<workspace>').allowExcessArguments(true).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws, _options, command) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws, command.args[1]); }));
-workspaceView.command('open').argument('<workspace>').argument('<artifact-id>').allowExcessArguments(true).requiredOption('--operation-id <id>').requiredOption('--expected-context-generation <n>').description("Ask the browser tab paired to this agent's key to open an artifact").action(wrapCommand(async (ws, artifactId, options, command) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); const legacy = command.args.length > 2; await workspaceViewOpen(ws, legacy ? command.args[2] : artifactId, options.operationId, options.expectedContextGeneration, legacy ? artifactId : undefined); }));
+// The view follows the caller's key; open needs only the artifact, whose workspace is the view's.
+workspaceView.command('context').argument('<workspace>').allowExcessArguments(false).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws); }));
+workspaceView.command('open').argument('<artifact>', 'Artifact in a workspace: id, alias or URL').requiredOption('--expected-context-generation <n>', 'contextGeneration from your last `view context`').option('--operation-id <id>', 'Optional idempotency key: a retry with the same key returns the same receipt').allowExcessArguments(false).description("Ask the browser tab paired to this agent's key to open an artifact").action(wrapCommand(async (artifact, options) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); await workspaceViewOpen(artifact, options); }));
 workspace.command('sessions').argument('<workspace>').option('--cursor <cursor>', 'Continue from a previous page').description('Recent sessions, newest first: who worked (you or someone else, their agent or the browser), from which harness, and steps: each goal with the changes made for it').action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
 workspace.command('changes').argument('<workspace>').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them: who made each, why, and the item by title and id').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
 workspace.command('ack').argument('<workspace>').requiredOption('--delivery-token <token>').description('Acknowledge one delivered workspace change page').action(wrapCommand(async (ws, options) => { const { workspaceChangesAck } = await import('./commands/workspace.js'); await workspaceChangesAck(ws, options.deliveryToken); }));
@@ -2056,13 +2026,18 @@ const folder = program
   .command('folder')
   .description('Manage folders');
 
+const FOLDER_ARGUMENT = 'Folder id (any kind), or slug: in --workspace-id, else --team, else your personal folders';
+const FOLDER_SCOPE_NOTE = `
+A folder id names one folder alone; a slug is found in --workspace-id when given,
+else in --team, else among your personal folders.`;
+
 withWhy(folder
   .command('create'))
+  .allowExcessArguments(false)
   .argument('<slug>', 'Folder slug (lowercase, alphanumeric, hyphens)')
   .option('--team <slug>', 'Create as a team folder')
-  .option('--workspace <workspace-id>', 'Create inside a workspace; no expected revision required')
-  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace)')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--workspace-id <workspace-id>', 'Create inside a workspace; no expected revision required')
+  .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id)')
   .description('Create a new folder')
   .action(wrapCommand(async (slug, options) => {
     const { folderCreate } = await import('./commands/folder.js');
@@ -2071,8 +2046,9 @@ withWhy(folder
 
 folder
   .command('list')
+  .allowExcessArguments(false)
   .option('--team <slug>', 'List team folders')
-  .option('--workspace <workspace-id>', 'List visible folders in a workspace')
+  .option('--workspace-id <workspace-id>', 'List visible folders in a workspace')
   .description('List folders')
   .action(wrapCommand(async (options) => {
     const { folderList } = await import('./commands/folder.js');
@@ -2081,68 +2057,80 @@ folder
 
 folder
   .command('show')
-  .argument('<slug>', 'Folder slug')
-  .option('--team <slug>', 'Show a team folder')
+  .allowExcessArguments(false)
+  .argument('<folder>', FOLDER_ARGUMENT)
+  .option('--team <slug>', 'The team a folder slug belongs to')
+  .option('--workspace-id <workspace-id>', 'The workspace a folder slug is in')
   .description('Show folder details')
-  .action(wrapCommand(async (slug, options) => {
+  .addHelpText('after', FOLDER_SCOPE_NOTE)
+  .action(wrapCommand(async (folderRef, options) => {
     const { folderShow } = await import('./commands/folder.js');
-    await folderShow(slug, options);
+    await folderShow(folderRef, options);
   }));
 
-folder
-  .command('delete')
-  .argument('<slug>', 'Folder slug')
-  .option('--team <slug>', 'Delete a team folder')
+withWhy(folder
+  .command('delete'))
+  .allowExcessArguments(false)
+  .argument('<folder>', FOLDER_ARGUMENT)
+  .option('--team <slug>', 'The team a folder slug belongs to')
+  .option('--workspace-id <workspace-id>', 'The workspace a folder slug is in')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the workspace folder changed since this revision')
   .description('Move a folder and the artifacts in it to the trash (restorable for 30 days)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip folder delete drafts
   $ rip folder delete research --team my-team
+  $ rip folder delete 7c9e6679-7425-40de-944b-e07fc1f90ae7 --why "Clear out the old drafts"
 
 NOTE:
   The folder and every artifact in it leave listings; reads of those
   artifacts answer 410 through the folder. Restoring the folder brings them
   back filed as they were. The slug stays held while it is in the trash.
-`)
-  .action(wrapCommand(async (slug, options) => {
+  A workspace folder's delete needs --why.
+${FOLDER_SCOPE_NOTE}`)
+  .action(wrapCommand(async (folderRef, options) => {
     const { folderDelete } = await import('./commands/folder.js');
-    await folderDelete(slug, options);
+    await folderDelete(folderRef, options);
   }));
 
-folder
-  .command('rename')
-  .argument('<old-slug>', 'Current folder slug')
+withWhy(folder
+  .command('rename'))
+  .allowExcessArguments(false)
+  .argument('<folder>', FOLDER_ARGUMENT)
   .argument('<new-slug>', 'New folder slug')
-  .option('--team <slug>', 'Rename a team folder')
-  .description('Rename a folder')
-  .action(wrapCommand(async (oldSlug, newSlug, options) => {
+  .option('--team <slug>', 'The team a folder slug belongs to')
+  .option('--workspace-id <workspace-id>', 'The workspace a folder slug is in')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the workspace folder changed since this revision')
+  .description('Rename a folder (any kind; a workspace folder\'s rename needs --why)')
+  .addHelpText('after', FOLDER_SCOPE_NOTE)
+  .action(wrapCommand(async (folderRef, newSlug, options) => {
     const { folderRename } = await import('./commands/folder.js');
-    await folderRename(oldSlug, newSlug, options);
+    await folderRename(folderRef, newSlug, options);
   }));
 
 withWhy(folder
   .command('update'))
-  .argument('<folder-id>', 'Workspace folder UUID')
-  .requiredOption('--workspace <workspace-id>', 'Workspace UUID')
+  .allowExcessArguments(false)
+  .argument('<folder>', 'Workspace folder id, or its slug with --workspace-id')
+  .option('--workspace-id <workspace-id>', 'The workspace a folder slug is in (an id needs none)')
   .requiredOption('--audience <audience>', 'internal | shared')
-  .requiredOption('--expected-workspace-revision <n>', 'Live folder workspace revision')
-  .addOption(retired('--workspace-session-id <id>'))
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
   .description('Change a workspace folder audience')
-  .action(wrapCommand(async (folderId, options) => {
+  .action(wrapCommand(async (folderRef, options) => {
     const { folderUpdate } = await import('./commands/folder.js');
-    await folderUpdate(folderId, options);
+    await folderUpdate(folderRef, options);
   }));
 
 withWhy(folder
   .command('share-contents'))
-  .argument('<folder-id>', 'Workspace folder UUID')
-  .requiredOption('--workspace <workspace-id>', 'Workspace UUID')
-  .requiredOption('--expected-workspace-revision <n>', 'Live folder workspace revision')
-  .addOption(retired('--workspace-session-id <id>'))
+  .allowExcessArguments(false)
+  .argument('<folder>', 'Workspace folder id, or its slug with --workspace-id')
+  .option('--workspace-id <workspace-id>', 'The workspace a folder slug is in (an id needs none)')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
   .description('Atomically share a workspace folder and all current child artifacts')
-  .action(wrapCommand(async (folderId, options) => {
+  .action(wrapCommand(async (folderRef, options) => {
     const { folderShareContents } = await import('./commands/folder.js');
-    await folderShareContents(folderId, options);
+    await folderShareContents(folderRef, options);
   }));
 
 // ── trash commands ──────────────────────────────────────────────────
@@ -2152,9 +2140,10 @@ const trash = program
 
 trash
   .command('list')
-  .option('--workspace <workspace-id>', "A workspace's trash: the artifacts and folders deleted in it")
+  .option('--workspace-id <workspace-id>', "A workspace's trash: the artifacts and folders deleted in it")
   .option('--team <slug-or-id>', "A team's trash: its folders and workspaces")
   .option('--account <id-or-alias>', "Another account's own trash (platform admins only)")
+  .option('--type <type>', 'One type only: artifact | bundle | folder | workspace (one that trash holds)')
   .option('--limit <n>', 'Page size (max 100, default 50)')
   .option('--offset <n>', 'Skip this many entries (the nextOffset of the previous page)')
   .description('List the trash, newest first (default: your own)')
@@ -2162,14 +2151,15 @@ trash
 EXAMPLES:
   $ rip trash list
   $ rip trash list --team acme
-  $ rip trash list --workspace 3f1a2b4c-5d6e-4f70-8901-23456789abcd
+  $ rip trash list --workspace-id 3f1a2b4c-5d6e-4f70-8901-23456789abcd
+  $ rip trash list --type folder
   $ rip trash list --account sam
 
 NOTES:
   Your own trash holds your standalone artifacts, bundles, personal folders and
   personal workspaces. A deleted folder or workspace is one entry: restoring it
   brings back everything that went with it. Each entry says when it purges.
-  Pass at most one of --workspace, --team and --account. A platform admin reads
+  Pass at most one of --workspace-id, --team and --account. A platform admin reads
   any team's or workspace's trash, and another account's with --account.
 `)
   .action(wrapCommand(async (options) => {
@@ -2179,54 +2169,57 @@ NOTES:
 
 withWhy(trash
   .command('restore'))
-  .argument('<type>', 'artifact | bundle | folder | workspace (from `rip trash list`)')
-  .argument('<id>', 'The entry id from `rip trash list`')
-  .option('--expected-workspace-revision <n>', "Required for a workspace artifact or folder: the entry's workspace revision")
-  .addOption(retired('--workspace-session-id <id>'))
+  .argument('<id>', 'The entry id from `rip trash list` (an artifact alias or your bundle slug works too)')
+  .option('--expected-workspace-revision <n>', "Optional: refuse if the item changed since this revision (the entry's workspace revision)")
   .description('Bring an item back from the trash')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip trash restore artifact 550e8400-e29b-41d4-a716-446655440000
-  $ rip trash restore folder 3f1a2b4c-5d6e-4f70-8901-23456789abcd --expected-workspace-revision 4
+  $ rip trash restore 550e8400-e29b-41d4-a716-446655440000
+  $ rip trash restore 3f1a2b4c-5d6e-4f70-8901-23456789abcd --expected-workspace-revision 4
 
 NOTES:
-  Restoring needs the same authority as deleting. The item returns to its folder,
-  workspace and name. A file whose folder is still in the trash comes back
-  unfiled; one whose workspace is in the trash is refused until the workspace is
-  restored. Restoring a live item does nothing.
+  The id alone names the item: the server finds whether it is an artifact,
+  bundle, folder or workspace. Restoring needs the same authority as deleting.
+  The item returns to its folder, workspace and name. A file whose folder is
+  still in the trash comes back unfiled; one whose workspace is in the trash is
+  refused until the workspace is restored. Restoring a live item does nothing.
+  A workspace item needs --why.
 `)
-  .action(wrapCommand(async (type, id, options) => {
+  .action(wrapCommand(async (id, options) => {
     const { trashRestore } = await import('./commands/trash.js');
-    await trashRestore(type, id, options);
+    await trashRestore(id, options);
   }));
 
 withWhy(trash
   .command('purge'))
-  .argument('[type]', 'artifact | bundle | folder | workspace (from `rip trash list`)')
-  .argument('[id]', 'The entry id from `rip trash list`')
+  .argument('[id]', 'The entry id from `rip trash list` (an artifact alias or your bundle slug works too)')
   .option('--all', 'Empty a whole trash instead of one entry (default: your own)')
   .option('--team <slug-or-id>', "With --all: a team's trash")
-  .option('--workspace <workspace-id>', "With --all: a workspace's trash")
+  .option('--workspace-id <workspace-id>', "With --all: a workspace's trash")
   .option('--account <id-or-alias>', "With --all: another account's own trash (platform admins only)")
+  .option('--type <type>', 'With --all: one type only (artifact | bundle | folder | workspace)')
+  .option('--deleted-before <iso-time>', 'With --all: only what was deleted at or before this instant (ISO 8601)')
   .description('Delete for good from the trash: one entry, or everything with --all (frees storage)')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip trash purge artifact 550e8400-e29b-41d4-a716-446655440000
+  $ rip trash purge 550e8400-e29b-41d4-a716-446655440000
   $ rip trash purge --all
   $ rip trash purge --all --team acme
-  $ rip trash purge --all --workspace 3f1a2b4c-5d6e-4f70-8901-23456789abcd --why "Clear the old drafts"
+  $ rip trash purge --all --type artifact --deleted-before 2026-10-01T00:00:00Z
+  $ rip trash purge --all --workspace-id 3f1a2b4c-5d6e-4f70-8901-23456789abcd --why "Clear the old drafts"
 
 NOTES:
   Purging is permanent: nothing purged can be restored. It frees the storage the
-  items used. Pass one entry (it must be in the trash) or --all with at most one
-  of --team, --workspace and --account. --all takes what was in the trash when it
-  began, page by page until done, and lists what it left and why (forbidden,
-  restored, gone, failed). It needs the same authority as deleting each item.
-  A workspace artifact or folder, and --workspace, need --why.
+  items used. Pass one entry by its id (it must be in the trash; the server finds
+  its type) or --all with at most one of --team, --workspace-id and --account,
+  and optionally --type and --deleted-before. --all takes what was in the trash
+  when it began, page by page until done, and lists what it left and why
+  (forbidden, restored, gone, failed). It needs the same authority as deleting
+  each item. A workspace item, and --workspace-id, need --why.
 `)
-  .action(wrapCommand(async (type, id, options) => {
+  .action(wrapCommand(async (id, options) => {
     const { trashPurge } = await import('./commands/trash.js');
-    await trashPurge(type, id, options);
+    await trashPurge(id, options);
   }));
 
 // ── storage ─────────────────────────────────────────────────────────
@@ -2247,7 +2240,7 @@ NOTES:
   it); your standalone files and every version of your bundles count toward your
   account. Every kept version and table row counts, and so does the trash until it
   is emptied (rip trash purge --all, with --team <slug> for a team's, and
-  --workspace <id> for files deleted inside a workspace). Sizes are decimal
+  --workspace-id <id> for files deleted inside a workspace). Sizes are decimal
   (1 GB = 1,000,000,000 bytes), as the plans count them. The largest files list
   current and history bytes: deleting old versions frees history.
 `)

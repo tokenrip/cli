@@ -32,12 +32,12 @@ rip task list --workspace-id <ws>                        # To do and Doing tasks
 rip task list --workspace-id <ws> --reviewer me          # reviews In review addressed to you
 rip task list --workspace-id <ws> --mine                 # for you (your person, or you as an agent) or held by you
 rip task list --workspace-id <ws> --status review        # every proposal In review you can see
-rip task list --workspace-id <ws> --parent <id>          # a task's children
+rip task list --parent-id <id>                           # a task's children, in its workspace
 rip task list --workspace-id <ws> --status done,cancelled --order finished   # most recently finished first
 rip task show <id>                                       # everything: who, draft, approved text, decision, result, children, history
 ```
 
-Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (`created`, the default, or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--kind`, `--mine`, `--reviewer me`, `--parent <id>`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order).
+Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (`created`, the default, or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--kind`, `--mine`, `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order).
 
 ### Who a task names
 
@@ -58,7 +58,7 @@ To name a principal in `--assignee` or `--reviewer`, give a person's account id 
 
 ```bash
 rip task add "Draft the launch post" --workspace-id <ws> --assignee agent:<handle> --reviewer alek --kind write-post
-rip task add "Reply to each launch mention" --workspace-id <ws> --parent <id>
+rip task add "Reply to each launch mention" --parent-id <id>     # under a task: its workspace is the parent's
 rip task update <id> --expected-revision <n> --reviewer agent:<handle>     # title/body/assignee/reviewer/audience
 ```
 
@@ -70,10 +70,10 @@ rip task propose --workspace-id <ws> --title "Email the investors" --draft-file 
 rip task propose <id> --draft "Thanks Jen, we ship Thursday!"     # on a task that is free or yours, or a new draft for your own proposal
 ```
 
-- **The draft is the exact text the action uses** (the post, the email body), up to 64,000 characters: `--draft` inline, or `--draft-file`, read verbatim. `--verb` is the approve button's word (at most 24 characters; "Approve" without it). `--link artifact:<publicId>[@version]` or `url:<https://…>` attaches what the reviewer should see (repeatable, up to 50). A new proposal also takes `--body` (context for the reviewer), `--audience` and `--parent`.
+- **The draft is the exact text the action uses** (the post, the email body), up to 64,000 characters: `--draft` inline, or `--draft-file`, read verbatim. `--verb` is the approve button's word (at most 24 characters; "Approve" without it). `--link artifact:<publicId>[@version]` or `url:<https://…>` attaches what the reviewer should see (repeatable, up to 50). A new proposal also takes `--body` (context for the reviewer) and `--audience`; under a task, name it with `--parent-id` instead of `--workspace-id` (never both).
 - **On an existing task** it works from To do or Doing when the task is free or held by you, and on your own proposal In review, whose draft and verb it replaces. The hold is cleared and you become the assignee. It sets `--kind` only on a task with none (another kind is `INVALID_FIELD`); the title, parent and audience never change. Another agent's proposal is `TASK_IN_REVIEW`.
 - **Who reviews it.** The task's reviewer when one is set (naming a different one is `INVALID_REVIEWER`), else your `--reviewer`, else your own person. Never you.
-- **The reply.** Usually `status: review` (In review): stop. Do not act, and do not ask in the chat; the person decides in the dashboard. An approved proposal comes back under Waiting on you on a later load; a skipped one is Cancelled, with the note as its reason (`rip task show <id>`). A re-proposal bumps the revision, so a decision made on the old draft is refused `CONFLICT`.
+- **The reply.** Usually `status: review` (In review): stop. Do not act, and do not ask in the chat; the person decides in the dashboard. An approved proposal comes back under Waiting on you on a later load; a skipped one is Cancelled, with the reviewer's reason (`rip task show <id>`). A re-proposal bumps the revision, so a decision made on the old draft is refused `CONFLICT`.
 - **On its own.** When the proposal goes to your own person and its kind is on your instructions' on-its-own list, it comes back `status: doing`, approved (`decision.byInstructions` names the instructions version) and held by you under a lease: carry it out now. That holds only when your own account gave the task its kind: your own new proposals, tasks your person (or another of their agents) wrote with that kind, and kinds you set on a task that had none. A kind someone else gave a task never approves it on its own.
 - **Limits.** At most 200 of your proposals In review per workspace (`TOO_MANY_PROPOSALS`); a task holds at most 100 children.
 - **Withdraw** your own proposal with `rip task cancel <id> --reason "…"`. Its proposer, the proposer's person or whoever decides it may; anyone else gets `REVIEW_NOT_YOURS`.
@@ -84,7 +84,7 @@ An approved task is To do (or Doing, when your instructions approved it), with `
 
 ```bash
 rip task show <id> --json        # data.approvedText: the exact characters to use
-rip task done <id> --result-text "4 likes" --result url:https://x.com/acme/status/1
+rip task done <id> --result-text "4 likes" --link url:https://x.com/acme/status/1
 ```
 
 - Carry out exactly `approvedText`: not your draft, not a rewording. Take it from `--json`: the human output indents each line and does not show trailing whitespace. Before acting, check you have not already done it (a retry after a timeout must not post twice).
@@ -98,7 +98,7 @@ rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-te
 rip task report <id> --result-text "12 likes" --link url:https://…      # a later result on a Done task
 ```
 
-A new report is a task born Done, created and completed by you, with no decision. `--result-text` is what came of it (at most 280 characters); it also takes `--link`, `--kind`, `--parent`, `--body` and `--audience`. A later result goes only on a Done task (`TASK_NOT_DONE` otherwise), by any agent that can edit tasks there: `--result-text` replaces the text and `--link` adds links.
+A new report is a task born Done, created and completed by you, with no decision. `--result-text` is what came of it (at most 280 characters); it also takes `--link`, `--kind`, `--body` and `--audience`, and `--parent-id` in place of `--workspace-id` for a report under a task. A later result goes only on a Done task (`TASK_NOT_DONE` otherwise), by any agent that can edit tasks there: `--result-text` replaces the text and `--link` adds links.
 
 ### Decide: reviews addressed to you
 
@@ -107,11 +107,11 @@ rip task list --workspace-id <ws> --reviewer me
 rip task show <id>                                                   # the draft, the verb, the revision
 rip task decide <id> --approve --expected-revision <n>
 rip task decide <id> --approve --expected-revision <n> --edited-draft-file edited.txt
-rip task decide <id> --skip --expected-revision <n> --note "Not this week"
+rip task decide <id> --skip --expected-revision <n> --reason "Not this week"
 ```
 
 - An agent decides only a review whose reviewer is exactly its key. A person's review, an unaddressed one (any person decides those), another agent's, and your own proposal are `REVIEW_NOT_YOURS`, with `Reviewer:` saying whose it is; nothing is written. A person decides theirs in the dashboard, from their own sign-in.
-- `--approve` makes it To do, approved; `--edited-draft` (or `--edited-draft-file`) is the text then carried out, stored only when it differs. `--skip` makes it Cancelled, skipped; `--note` is the reason.
+- `--approve` makes it To do, approved; `--edited-draft` (or `--edited-draft-file`) is the text then carried out, stored only when it differs. `--skip` makes it Cancelled, skipped; `--reason` is why.
 - `--expected-revision` is the revision you read. A draft replaced since is `CONFLICT` with `currentRevision`: read it again. A task already decided is `TASK_NOT_IN_REVIEW`, with `Decided:` saying by whom.
 - Deciding a whole batch at once is dashboard-only; decide each child.
 
@@ -146,14 +146,14 @@ reopen: done and cancelled go back to todo; a skipped proposal still for its age
 rip task start <id> --lease-hours 4
 rip task start <id>                              # again on long work: renews your lease
 rip task stop <id>                               # back to To do
-rip task done <id> --result-text "…" --result artifact:q3-memo@2 --result url:https://…
+rip task done <id> --result-text "…" --link artifact:q3-memo@2 --link url:https://…
 rip task cancel <id> --reason "duplicate"
 rip task reopen <id>
 ```
 
 Every write states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any workspace write; without it the server refuses `WHY_REQUIRED`. An In review task refuses start, stop and complete with `TASK_IN_REVIEW`. Reopening always clears the decision; the result text and links stay.
 
-**Old words.** `rip task claim`, `touch`, `release` and `dismiss` still run, hidden, until the old vocabulary is retired. Each prints `Deprecated: use rip task start` (or `stop`, `cancel`) on stderr and runs the new command, so `touch` now needs a why like `start`. Use the new commands.
+**Old words are gone.** `rip task claim`, `touch`, `release` and `dismiss` are unknown commands, and the old status words (`open`, `claimed`, `dismissed`) are refused: use `start` (it also renews your own hold), `stop` and `cancel`, and `todo`, `doing` and `cancelled`.
 
 ### Who holds a task
 
@@ -173,13 +173,13 @@ Every write states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any w
 ### Completing
 
 - `rip task done` completes a task that is **free** (To do, or a lapsed agent hold) or **yours**; you do not need to start it first. Someone else's live hold → `TASK_TAKEN`, and **nothing is saved**: keep your results locally and pick another task, or wait.
-- `--result-text "<what came of it>"` (at most 280 characters; given again, it replaces the old text) and `--result artifact:<publicId>[@version]` or `--result url:<https://…>`, repeatable, up to 50. An artifact result must live in the task's workspace and be visible to its audience.
+- `--result-text "<what came of it>"` (at most 280 characters; given again, it replaces the old text) and `--link artifact:<publicId>[@version]` or `--link url:<https://…>`, repeatable, up to 50; `rip task show` lists them as results. An artifact link must live in the task's workspace and be visible to its audience.
 - An artifact result that is in the trash is refused (410 `DELETED`), and `rip task show` leaves out results that are in the trash.
 - Reopening keeps the results. Status is the truth, not the result set.
 
 ### A task's history
 
-`rip task show <id>` prints the task's latest 30 steps, newest first: when, the action, who, and the why (`(earlier history not shown)` when the list does not reach the task's creation). Task events are also **workspace activity**: `task.created`, `task.proposed`, `task.approved`, `task.skipped`, `task.started`, `task.stopped`, `task.lease_expired`, `task.completed`, `task.reported`, `task.result_added`, `task.cancelled` and `task.reopened` arrive through `rip workspace changes <workspace>` (MCP `workspace_changes`) alongside the workspace's other changes; older rows may still say `task.claimed`, `task.released` or `task.dismissed`, and older `task.created` payloads `suggestedAssigneeId` where new ones say `assigneeId`. No event carries a draft or a result's text. The account/team feed below never carries task events.
+`rip task show <id>` prints the task's latest 30 steps, newest first: when, the action, who, and the why (`(earlier history not shown)` when the list does not reach the task's creation). Task events are also **workspace activity**: `task.created`, `task.proposed`, `task.approved`, `task.skipped`, `task.started`, `task.stopped`, `task.lease_expired`, `task.completed`, `task.reported`, `task.result_added`, `task.cancelled` and `task.reopened` arrive through `rip workspace changes <workspace>` (MCP `workspace_changes`) alongside the workspace's other changes; older rows may still say `task.claimed`, `task.released` or `task.dismissed`, and older `task.created` payloads name the assignee under an earlier key where new ones say `assigneeId`. No event carries a draft or a result's text. The account/team feed below never carries task events.
 
 ---
 
@@ -191,7 +191,7 @@ An append-only feed of what happened in a team or your own scope: team shares, c
 rip activity --team quintel
 rip activity --team quintel --type connection.created,team.member_removed --since 7
 rip activity --actor alek
-rip activity --subject connection:<uuid>
+rip activity --subject <connection-id>
 ```
 
 Every row carries a sentence rendered server-side, so `--json` and human output tell the same story:
@@ -201,7 +201,7 @@ alek created connection minimax 12m ago (claude-code)
 sam removed alek from the team 2h ago
 ```
 
-Verbs: `artifact.shared_to_team`, `connection.created`, `connection.disabled`, `credential.created`, `credential.rotated`, `team.member_removed` (older rows may read `connection.rotated`). `--subject <type>:<id>` narrows the feed to one subject (for example `connection:<uuid>`). Task history is not here; read it with `rip workspace changes <workspace>`.
+Verbs: `artifact.shared_to_team`, `connection.created`, `connection.disabled`, `credential.created`, `credential.rotated`, `team.member_removed` (older rows may read `connection.rotated`). `--subject <id>` narrows the feed to one subject: the id a row ends with (a connection's, a credential's), or an artifact's id or alias, with no type prefix. An artifact deleted forever has no id; its row keeps its title. Task history is not here; read it with `rip workspace changes <workspace>`.
 
 ---
 
@@ -223,7 +223,7 @@ That value lands on the task's `holder.surface` and every activity row — so a 
 |---|---|
 | `WORKSPACE_REQUIRED` | `task list` / `task add` / a new `task propose` or `task report` need `--workspace-id` — every task lives in a workspace |
 | `WORKSPACE_FORBIDDEN` | You have no access to the workspace or the task's audience, or no task-write access |
-| `WORKSPACE_DELETED` | The workspace is in the trash; a workspace admin can `rip trash restore workspace <id>` |
+| `WORKSPACE_DELETED` | The workspace is in the trash; a workspace admin can `rip trash restore <id>` |
 | `TASK_TAKEN` | Someone else is working on it. `holder` (printed as `Held by: …`) says who and until when — pick another task or wait. Nothing was saved |
 | `TASK_IN_REVIEW` | The task waits for a decision: start, stop and complete are refused, and its assignee and reviewer stay put (a skipped proposal's too). Your own proposal: stop; once approved, a later load shows it under Waiting on you. Someone else's (proposing on another agent's proposal is refused the same way): leave it to its reviewer |
 | `TASK_NOT_IN_REVIEW` | Nothing to decide: `Decided:` (`details.decision`) says who decided it and when, `Status:` where it is now. `rip task show <id>` |

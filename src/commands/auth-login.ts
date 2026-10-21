@@ -48,8 +48,9 @@ export async function authLogin(options: { email: string; code?: string; name?: 
     return;
   }
 
-  const name = options.name ?? (process.env.CLAUDECODE ? 'Claude Code' : 'CLI');
-  const { data } = await client.post('/v0/auth/sign-in', { email, code: options.code, name });
+  // Without --name the server names the key after this harness (X-Tokenrip-Surface), as for any agent.
+  const name = options.name;
+  const { data } = await client.post('/v0/auth/sign-in', { email, code: options.code, ...(name === undefined ? {} : { name }) });
   const signedIn = data.data as SignedIn;
   if (!signedIn?.api_key || !signedIn.account_id) {
     throw new CliError('SIGN_IN_INVALID_RESPONSE', 'Unexpected sign-in response from the server.');
@@ -85,7 +86,7 @@ export async function authLogin(options: { email: string; code?: string; name?: 
             idle_timeout_seconds: signedIn.idle_timeout_seconds,
             renew_url: signedIn.renew_url,
           }
-        : { name }),
+        : name === undefined ? {} : { name }),
       ...(previousKey ? { previous_key: previousKey.status } : {}),
       ...(previousKey?.id ? { previous_key_id: previousKey.id } : {}),
       ...(overriddenBy ? { overridden_by: overriddenBy } : {}),

@@ -21,7 +21,7 @@ import {
   formatSkillShared,
 } from '../formatters.js';
 
-/** The owner as the API returns it (`GET /v0/skills`, `GET /v0/skills/:id`). */
+/** The owner as the API returns it (`GET /v0/skills`, `GET /v0/skills/:skillId`). */
 export type SkillOwner = { kind: 'operator'; alias: string | null } | { kind: 'team'; slug: string; name: string };
 
 export interface SkillCatalogEntry {
@@ -80,16 +80,17 @@ export function skillIdFromLink(ref: string): string | null {
   return id.toLowerCase();
 }
 
-/** A team flag as the catalog names teams: an alias or a cached team id becomes the slug. */
-function teamSlug(team: string): string {
+/**
+ * A team flag as the catalog names teams: an alias or a cached team id becomes the slug. A team id
+ * not in the local cache is looked up (`GET /v0/teams/:team`), since the server accepts either.
+ */
+async function teamSlug(client: AxiosInstance, team: string): Promise<string> {
   const resolved = resolveTeam(team);
   const cached = Object.values(loadTeams()).find((t) => t.id === resolved.toLowerCase());
   if (cached) return cached.slug;
-  // The catalog names teams by slug only, so an id must come through the local team cache.
-  if (UUID_RE.test(resolved)) {
-    throw new CliError('INVALID_ARGS', `Team ${resolved} is not in the local team cache. Pass the team slug (rip team list shows it).`);
-  }
-  return resolved;
+  if (!UUID_RE.test(resolved)) return resolved;
+  const { data } = await client.get(`/v0/teams/${encodeURIComponent(resolved)}`);
+  return (data.data as { slug: string }).slug;
 }
 
 /** Who the CLI is acting as, for messages that depend on reach. */
@@ -145,7 +146,7 @@ async function locate(ref: string, team: string | undefined, requireAuth: boolea
     return { client: requireAuth ? requireAuthClient().client : optionalAuthClient().client, id: linked };
   }
   const { client } = requireAuthClient();
-  const slug = team ? teamSlug(team) : undefined;
+  const slug = team ? await teamSlug(client, team) : undefined;
   const entries = await fetchCatalog(client);
   const entry = findEntry(entries, ref, slug, 'read');
   if (!entry) throw notFound(entries, ref, slug);
@@ -223,9 +224,9 @@ async function writeSkillDir(client: AxiosInstance, view: SkillView, dir: string
 /** `rip skill list` — every skill in reach (personal, then each team); `--team` keeps one team's. */
 export async function skillList(options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
+  const slug = options.team ? await teamSlug(client, options.team) : undefined;
   let skills = await fetchCatalog(client);
-  if (options.team) {
-    const slug = teamSlug(options.team);
+  if (slug !== undefined) {
     skills = skills.filter((s) => s.owner.kind === 'team' && s.owner.slug === slug);
   }
   outputSuccess({ skills }, formatSkillList);
@@ -316,8 +317,8 @@ export async function skillPublish(folder: string, options: { team?: string; exp
     throw new CliError('INVALID_SKILL', `${ENTRY_FILE} needs a frontmatter block that starts the file (---, with no byte-order mark before it) and holds a name: line.`, { reason: 'frontmatter' });
   }
 
-  const slug = options.team ? teamSlug(options.team) : undefined;
   const { client } = requireAuthClient();
+  const slug = options.team ? await teamSlug(client, options.team) : undefined;
   const current = findEntry(await fetchCatalog(client), name, slug, 'publish');
   const apiUrl = apiUrlOf(client);
   const checkout = current ? findSkillCheckout(root, apiUrl) : null;

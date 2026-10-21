@@ -21,7 +21,8 @@ Every item has an `audience`: `internal` (the owner, the team and internal membe
 - "what changed since I last looked" → `rip workspace changes <workspace-id>`, then `rip workspace ack <workspace-id> --delivery-token <token>`
 - "this document the operator is looking at" → `rip workspace view context <workspace-id>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
 - "open that document in their browser" → `rip workspace view open …` and read the receipt (`queued` / `deferred` / `applied` / `disconnected`)
-- "share this with the client" → `rip workspace adopt … --audience shared` for standalone content, `rip artifact patch <id> --audience shared --expected-workspace-revision <n>` for a workspace artifact, `rip folder share-contents` for a folder and everything in it
+- "share this with the client" → `rip workspace adopt … --audience shared` for standalone content, `rip artifact patch <id> --audience shared` for a workspace artifact, `rip folder share-contents` for a folder and everything in it
+- "send this to someone who has no account" → `rip artifact patch <id> --visibility link` (anyone with the URL can read it; `--visibility private` turns it off). Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be
 - "invite bob@example.com to this" → `rip workspace member add <workspace-id> bob@example.com --why "<the goal>"`, then read the row's `status`: `invited` (no account holds the address) → tell the person "invited" and give the `inviteUrl`; `member` (a verified address, alias or id) → they are in, and `inviteUrl` is null ([Members and invites](#members-and-invites))
 - "give the client read access to what we share" → `rip workspace member add <workspace-id> <email> --membership external --role viewer --why "<the goal>"`
 - "bring an existing artifact or folder into the workspace" → `rip workspace adopt`
@@ -30,26 +31,26 @@ Every item has an `audience`: `internal` (the owner, the team and internal membe
 ## Lifecycle and members
 
 ```bash
-rip workspace create <slug> --name "Roadmap" [--description <text>] [--team-id <team-uuid>] --why "<the goal>"
+rip workspace create <slug> [--name "Roadmap"] [--description <text>] [--team <team-slug-or-id>] --why "<the goal>"
 rip workspace list                                   # names, ids, membership/role
 rip workspace show <workspace-id>                    # adds Can: (capabilities) and audiences
 rip workspace update <workspace-id> [--name <name>] [--description <text>]
 rip workspace delete <workspace-id>                  # admins; moves it and everything in it to the trash for 30 days
-rip trash restore workspace <workspace-id>           # bring it back, as it was, until its purge date
+rip trash restore <workspace-id> --why "<goal>"     # bring it back, as it was, until its purge date
 
 rip workspace member list <workspace-id>             # members and pending invites; owner and team access are not listed
 rip workspace member add <workspace-id> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]
-rip workspace member set-role <workspace-id> <member> --role viewer|editor [--membership internal|external]
-rip workspace member remove <workspace-id> <member>
+rip workspace member set-role <member> [--workspace-id <workspace-id>] [--role viewer|editor] [--membership internal|external]
+rip workspace member remove <member> [--workspace-id <workspace-id>]
 ```
 
-`--team-id` takes the team's UUID (`rip team list` prints it); only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`), nor can a team on a paid plan (`TEAM_HAS_PLAN`).
+`--name` defaults to the slug. `--team` takes the team's slug or id; only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`), nor can a team on a paid plan (`TEAM_HAS_PLAN`).
 
-A team-owned workspace needs the Team plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore workspace`, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit, count and the Billing link (`details.billingUrl` with `--json`). For a team without a plan, give the person the link to subscribe; at the maximum, delete a workspace. Nothing was created or restored.
+A team-owned workspace needs the Team plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore` of a workspace, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit, count and the Billing link (`details.billingUrl` with `--json`). For a team without a plan, give the person the link to subscribe; at the maximum, delete a workspace. Nothing was created or restored.
 
 Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-every-write-says-what-it-is-for)).
 
-Deleting a workspace needs `deleteWorkspace` (internal admins) and nothing else: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore workspace <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. `rip trash purge workspace <id>` removes it for good now (permanent; only when your person asks), as Delete forever does in the dashboard.
+Deleting a workspace needs `deleteWorkspace` (internal admins) and nothing else: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. `rip trash purge <id>` removes it for good now (permanent; only when your person asks), as Delete forever does in the dashboard.
 
 ## Members and invites
 
@@ -59,7 +60,7 @@ Bring someone in by their email address, whether or not they use Tokenrip. `memb
 - **The invite is claimed by signing in.** When the person signs in with the six-digit code Tokenrip emails to that address (in the browser, or through an agent following `https://tokenrip.com/setup`), every invite waiting on the address becomes their membership. There is no accept step. The row then reads `status: "member"` with their `accountId`.
 - **Someone who already uses Tokenrip** (their verified address, alias or account id) is added at once: the row comes back with `status: "member"` and `inviteUrl: null`. An add by address emails them that they were added; an add by alias or id emails them only when their account has one verified person and yours has one to send from. Their agents see the workspace on their next `rip workspace list`.
 
-Adding the same person again with the same access changes nothing, except that it resends a pending invite. Adding them with different access needs an admin. `set-role` and `remove` take the member row's `id` from `member list`, an account id, or an email address. An address finds the row of the person who holds it, on their primary account, or the row an add or invite by that address made; for a member on another of their accounts, use the row `id`. Removing an invite cancels it.
+Adding the same person again with the same access changes nothing, except that it resends a pending invite. Adding them with different access needs an admin. `set-role` and `remove` take the member row's `id` from `member list`, which stands alone, or an account id, alias or email address with `--workspace-id`. `set-role` changes `--role`, `--membership` or both; what you leave out is kept. An alias or account id that names no account is `ACCOUNT_NOT_FOUND`; removing someone with no row in the workspace changes nothing. An address finds the row of the person who holds it, on their primary account, or the row an add or invite by that address made; for a member on another of their accounts, use the row `id`. Removing an invite cancels it.
 
 An add by email needs a verified person behind your account to send from: without one it is refused `NO_OPERATOR` (or `OPERATOR_AMBIGUOUS` when several people share the account). An add by alias or id then goes ahead with no email, and a `--note` is refused, since nothing carries it. Invite emails are limited per person: by default 20 an hour across all your accounts, one per invite an hour, and one per address an hour; past them the add is refused `RATE_LIMITED`, except that an add of an existing account by alias or id without a note goes ahead without the email.
 
@@ -68,44 +69,50 @@ Adding someone who is already internal (the owner or a member of the owning team
 ## Adopt existing content
 
 ```bash
-rip workspace adopt <workspace-id> <artifact-id> --audience internal|shared [--destination-folder-id <uuid>]
-rip workspace adopt <workspace-id> <folder-id> --kind folder --audience internal|shared   # brings its current artifacts
+rip workspace adopt <workspace-id> <artifact-id>... [--audience internal|shared] [--destination-folder-id <uuid>]
+rip workspace adopt <workspace-id> --folder <folder-id-or-slug> [--audience internal|shared]   # one of your personal folders, with its current artifacts
 ```
 
-Adoption is atomic, makes no copy, and keeps identity and history. You must own the content; its team shares are removed. Refused before any effect: `MIXED_OWNERSHIP`, `ALREADY_IN_WORKSPACE`, `INELIGIBLE_STORAGE` (public assets, independently hosted content, public history), `WORKSPACE_BULK_LIMIT` (more than 500 items). Sharing an adopted artifact exposes its **whole** version history. There is no move-out. A destination folder must belong to the same workspace (`CROSS_WORKSPACE_MOVE`).
+`--audience` defaults to `internal` (`shared` for an external editor). Adoption is atomic, makes no copy, and keeps identity and history. You must own the content; its team shares are removed. Refused before any effect: `MIXED_OWNERSHIP`, `ALREADY_IN_WORKSPACE`, `INELIGIBLE_STORAGE` (public assets, independently hosted content, public history), `WORKSPACE_BULK_LIMIT` (more than 500 items). Sharing an adopted artifact exposes its **whole** version history. There is no move-out. A destination folder must belong to the same workspace (`CROSS_WORKSPACE_MOVE`).
 
 ## Content inside a workspace — the ordinary commands
 
-Workspace content is written with the normal commands plus workspace flags. New artifacts and folders need no expected revision. Existing content uses the applicable precondition the read reported; insert-only table rows need none unless they expand the schema. The server answers `PRECONDITION_REQUIRED` when it is missing and `CONFLICT` (with `currentVersionId` / `currentRevision` / `currentWorkspaceRevision`) when it is stale. Re-read on stale guards and correct the request; never overwrite. Creation audience and `--handoff` require explicit workspace identity. Omit standalone visibility, team grants and legacy folder slugs, including private visibility; workspace access is governed by membership and audience.
+Workspace content is written with the normal commands plus workspace flags. New artifacts and folders need no expected revision. A precondition is **required** only where your request was composed from what you read: replacing a document body (`--expected-version-id`), updating a row (`--expected-revision`), patching `--description` or `--metadata` (`--expected-workspace-revision`), and updating or deciding a task (`--expected-revision`). Without it the server answers `PRECONDITION_REQUIRED`. Everything else states its whole outcome (delete, prune, move, restore, audience, title, alias, folder audience and share-contents, row delete, upsert, schema widening), so its revision is optional: send it to refuse if the item changed since you read it. A stale precondition, required or optional, is `CONFLICT` (with `currentVersionId` / `currentRevision` / `currentWorkspaceRevision`). Re-read on a conflict and correct the request; never overwrite. Creation audience and `--handoff` require a workspace: `--workspace-id`, or a `--folder` that is a workspace folder (it implies its workspace). Beside `--workspace-id`, `--folder` names a folder in that workspace. Omit standalone visibility and team grants when creating, including private visibility; workspace access is governed by membership and audience. To open one file to anyone with its URL, patch it afterwards with `--visibility link`.
 
 ```bash
 # create in the workspace
 rip artifact publish <file> --type markdown --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"
 rip artifact publish --type table --title "..." --schema '<json>' --workspace-id <ws>
 rip artifact upload <file> --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>]
-rip folder create <slug> --workspace <ws> [--audience internal|shared]
+rip folder create <slug> --workspace-id <ws> [--audience internal|shared]
 rip task add "<title>" --workspace-id <ws> [--audience internal|shared]
 
 # replace a document body (the artifact's current version id is the precondition; keeps the audience)
-rip artifact update <id> <file> --type markdown --expected-version-id <version-id>
+rip artifact update <id> <file> --expected-version-id <version-id>
 
-# metadata / audience without a new version (the artifact's workspaceRevision is the precondition)
-rip artifact patch <id> --audience shared --expected-workspace-revision <n>
-rip artifact move <id> --folder-id <workspace-folder-uuid> --expected-workspace-revision <n>   # or --unfiled
-rip artifact delete <id> --expected-workspace-revision <n>         # to the trash for 30 days (needs deleteContent)
-rip artifact delete-version <id> <version-id> --expected-workspace-revision <n>   # permanent; no trash
-rip artifact prune-versions <id> [--keep <n>] --expected-workspace-revision <n>   # old versions, all but the current and newest --keep; permanent
-rip artifact bulk delete --ids "<id>,<id>" --expected-workspace-revisions '{"<id>": <n>, "<id>": <n>}'
+# description or metadata without a new version: the artifact's workspaceRevision is required
+rip artifact patch <id> --description "..." --expected-workspace-revision <n>
+# the rest states its outcome; --expected-workspace-revision <n> is optional on each
+rip artifact patch <id> --audience shared
+rip artifact patch <id> --visibility link|private          # link: anyone with the URL reads it, no login, and its earlier versions (prune-versions first if they shouldn't be); makes it shared; internal editors; no --why needed
+rip artifact move <id> --folder <workspace-folder-id-or-slug>   # or --unfiled
+rip artifact delete <id>                                     # to the trash for 30 days (needs deleteContent)
+rip artifact delete-version <version-id>                     # permanent; no trash; the version names its artifact
+rip artifact prune-versions <id> [--keep <n>]                # old versions, all but the current and newest --keep; permanent
+rip artifact bulk delete --ids "<id>,<id>" [--expected-workspace-revisions '{"<id>": <n>}']
 
-# tables (the row revision for a row; the workspaceRevision for schema-expanding appends)
-rip table append <table-id> --data '{...}' [--upsert-on <col>] [--expected-workspace-revision <n>]
-rip table update <table-id> <row-id> --data '{...}' --expected-revision <row-rev>
-rip table delete <table-id> --rows <id,id> --expected-revisions '{"<row-id>": <rev>}'
+# tables (a row update needs the row revision; the rest takes revisions optionally)
+rip table append <table-id> --data '{...}' [--upsert] [--expected-workspace-revision <n>]
+rip table update <row-id> --data '{...}' --expected-revision <row-rev>
+rip table delete --row-ids <id,id> [--expected-revisions '{"<row-id>": <rev>}']
 
-# folders
-rip folder list --workspace <ws>
-rip folder update <folder-id> --workspace <ws> --audience internal|shared --expected-workspace-revision <n>
-rip folder share-contents <folder-id> --workspace <ws> --expected-workspace-revision <n>   # folder + all current children, atomically
+# folders (--expected-workspace-revision <n> is optional)
+rip folder list --workspace-id <ws>
+rip folder update <folder-id> --audience internal|shared   # the folder names its workspace
+rip folder share-contents <folder-id>   # folder + all current children, atomically
+rip folder rename <folder-id> <new-slug>
+rip folder delete <folder-id>          # the folder and its files to the trash (needs deleteContent)
+# a folder slug instead of its id takes --workspace-id <ws>
 
 # tasks
 rip task list --workspace-id <ws>
@@ -124,9 +131,8 @@ Every workspace document is indexed by meaning when it is written. A workspace s
 A deleted workspace file answers 410 `DELETED` to members who could read it. A file in a deleted folder answers the same with `via: { type: "folder", id }`. Deleting a workspace folder (from the dashboard) takes its files to the trash with it. To bring something back:
 
 ```bash
-rip trash list --workspace <ws>                       # files and folders deleted in this workspace, by audience
-rip trash restore artifact <id> --expected-workspace-revision <n>   # the entry's workspaceRevision
-rip trash restore folder <folder-id> --expected-workspace-revision <n>
+rip trash list --workspace-id <ws>                    # files and folders deleted in this workspace, by audience
+rip trash restore <id>                                # the entry's id (file or folder); optional --expected-workspace-revision <n>: the entry's workspaceRevision
 ```
 
 Restoring needs `deleteContent`, like deleting. The entry and, for a restorer, the 410 both carry `workspaceId` and `workspaceRevision`. A file whose folder is still in the trash comes back unfiled; restore the folder instead to bring back everything that went with it. While the workspace itself is in the trash, restoring one of its files or folders answers 409 `WORKSPACE_DELETED`: restore the workspace first.
@@ -172,14 +178,14 @@ You · laptop (Claude Code)  2026-10-10T14:14:00.000Z → 2026-10-10T14:20:00.00
     created  task  Follow up with Acme on volume tiers  [<task id>]
     created, edited  artifact  Competitor pricing  [<publicId>]  v1 v2
     edited  artifact  Q4 proposal  [<publicId>]  v3 v4 v5
-      rip artifact diff <publicId> --from <firstVersionId> --version-id <lastVersionId>
+      rip artifact diff --version-id <lastVersionId> --from-version-id <firstVersionId>
     rows_changed  artifact  Price list  [<publicId>]  +12 ~3 -0 rows
     created  artifact  Pricing research: next steps  [<publicId>]  v1  handoff  rip artifact cat <publicId>
 ```
 
-The first line is who, when, and `unread` when the session holds changes after your acknowledged position. Your own work reads `You` with your agent's key name and tool (`You · <tool>` without a key, plain `You` without a tool, or `You · in the browser`); someone else's reads `~<alias>'s agent · <tool>` or `~<alias> · in the browser` (their full account id when they have no alias; another account's key names are never shown). Then come the **steps**: each stated why, oldest first ("no stated goal" for older writes, "in the browser" for a person's edits), followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, `moved`, `details_changed`, `audience_changed`, `version_deleted`, …; older writes read `updated`), the item, its id, the versions it created (`(deleted)` for one deleted since), row counts, and a handoff note's read command. An edit gets one `rip artifact diff <id> --from <first> --version-id <last>` command that shows everything the step changed in that file; a file the step created gets none (it is all new), and so does a shortened list whose first version was deleted (its range is unknown). Up to 10 steps and 20 changes per step are kept (the latest), and 5 versions per change (the first and the latest four, `…` between them, so the diff range stays known); "… earlier steps not shown" and "… earlier changes in this step not shown" mark the rest. An item no longer in your reach prints `(gone)`. You see only sessions built from events you may read: an external member sees shared work only. `sessions` is newest first, 20 per page; `--cursor` continues (`INVALID_CURSOR` for a malformed one). A read scans the workspace's latest 1,000 events, so a very long session can appear split, marked "earlier activity of this session not shown".
+The first line is who, when, and `unread` when the session holds changes after your acknowledged position. Your own work reads `You` with your agent's key name and tool (`You · <tool>` without a key, plain `You` without a tool, or `You · in the browser`); someone else's reads `~<alias>'s agent · <tool>` or `~<alias> · in the browser` (their full account id when they have no alias; another account's key names are never shown). Then come the **steps**: each stated why, oldest first ("no stated goal" for older writes, "in the browser" for a person's edits), followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, `moved`, `details_changed`, `audience_changed`, `version_deleted`, …; older writes read `updated`), the item, its id, the versions it created (`(deleted)` for one deleted since), row counts, and a handoff note's read command. An edit gets one `rip artifact diff --version-id <last> --from-version-id <first>` command that shows everything the step changed in that file; a file the step created gets none (it is all new), and so does a shortened list whose first version was deleted (its range is unknown). Up to 10 steps and 20 changes per step are kept (the latest), and 5 versions per change (the first and the latest four, `…` between them, so the diff range stays known); "… earlier steps not shown" and "… earlier changes in this step not shown" mark the rest. An item no longer in your reach prints `(gone)`. You see only sessions built from events you may read: an external member sees shared work only. `sessions` is newest first, 20 per page; `--cursor` continues (`INVALID_CURSOR` for a malformed one). A read scans the workspace's latest 1,000 events, so a very long session can appear split, marked "earlier activity of this session not shown".
 
-With `--json`, each session carries `id` (opaque; it stays the same as the session grows), `account { id, alias }`, `agent`, `surface`, `inBrowser`, `mine`, `unread`, `startedAt`, `lastAt`, and `steps[]` (`why`, `at`, `changes[]` with `subject { type, id, title, gone? }`, `actions` as full verbs such as `artifact.edited`, `versions[] { id, number }`, `rows?`, `handoff?`, `events`; `changesTruncated`) with `stepsTruncated`. The older `goals`, `items` and `handoffs` fields are deprecated: still returned for now, removed in a later release.
+With `--json`, each session carries `id` (opaque; it stays the same as the session grows), `account { id, alias }`, `agent`, `surface`, `inBrowser`, `mine`, `unread`, `startedAt`, `lastAt`, and `steps[]` (`why`, `at`, `changes[]` with `subject { type, id, title, gone? }`, `actions` as full verbs such as `artifact.edited`, `versions[] { id, number }`, `rows?`, `handoff?`, `events`; `changesTruncated`) with `stepsTruncated`.
 
 **Handoff notes** are optional. The session is recorded anyway; a note is where you put decisions and loose ends when you have some. Publish markdown with `--handoff`:
 
@@ -192,15 +198,15 @@ It needs `--workspace-id` (`INVALID_SCOPE`), markdown (`INVALID_HANDOFF`), and t
 **Pins or skills?** If instructions only make sense inside one workspace, pin them; if an agent needs them to start a job, publish a skill (`references/skills.md`). An agent sees a pin only after someone tells it which workspace to load; a skill reaches every agent of its operator or team.
 
 ```bash
-rip workspace pin add <workspace-id> <artifact-id-or-alias> [--position <n>]   # internal editors; markdown only; max 20
-rip workspace pin remove <workspace-id> <artifact-id-or-alias>
+rip workspace pin add <artifact-id-or-alias> [--position <n>]   # in the artifact's workspace; internal editors; markdown only; max 20
+rip workspace pin remove <artifact-id-or-alias>
 ```
 
 ## The operator's browser
 
 ```bash
 rip workspace view context <workspace-id>
-rip workspace view open <workspace-id> <artifact-id> --operation-id <stable-id> --expected-context-generation <n>
+rip workspace view open <artifact-id> --expected-context-generation <n> [--operation-id <stable-id>]
 ```
 
 The person opens your load's `Browser:` link; that tab pairs to **your agent key** in this workspace (one tab per key per workspace, same account only). Revoking the key, losing access, or another of the person's agents taking the tab over disconnects it.
@@ -214,7 +220,7 @@ The person opens your load's `Browser:` link; that tab pairs to **your agent key
 - `applied` — the browser acknowledged it
 - `disconnected` — no tab follows your key
 
-The same `--operation-id` replays the receipt. Ordinary writes never move the tab, and nothing you do can discard a draft.
+The same `--operation-id` replays the receipt; without one the server makes a key, so a retry is a new request. Ordinary writes never move the tab, and nothing you do can discard a draft.
 
 ## Changes and acknowledgment
 
@@ -232,7 +238,7 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 ## Rules worth memorising
 
 - **Why on every write.** One sentence on the person's goal, restated each time; never a description of the edit.
-- **Retry identity.** `view open` replays its original receipt with the same operation id. Loading again is always safe.
+- **Retry identity.** `view open` replays its original receipt when you send the same `--operation-id`. Loading again is always safe.
 - **Preconditions are mandatory.** No workspace write succeeds without the expected version, row revision, or workspace revision it needs.
 - **The browser link is not a credential.** It names your key only so the person's tab can pair; pairing needs their own sign-in to the same account.
 - **Audience is per item and independent of versions.** Changing it rewrites nothing; narrowing removes future external access but cannot recall bytes already downloaded.
@@ -242,23 +248,23 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 | Error | Meaning |
 |---|---|
 | `WORKSPACE_FORBIDDEN` | No access to the workspace, the item's audience, or that write |
-| `WORKSPACE_DELETED` | 410: the workspace is in the trash until `purgeAt`; an admin can `rip trash restore workspace <id>`. 409 on a restore: the item's workspace is in the trash, so restore the workspace first |
-| `DELETED` | 410: the file or folder (or, with `via`, its folder) is in the trash; `rip trash restore <type> <id> --expected-workspace-revision <n>` |
+| `WORKSPACE_DELETED` | 410: the workspace is in the trash until `purgeAt`; an admin can `rip trash restore <id>`. 409 on a restore: the item's workspace is in the trash, so restore the workspace first |
+| `DELETED` | 410: the file or folder (or, with `via`, its folder) is in the trash; `rip trash restore <id>` (optionally `--expected-workspace-revision <n>`) |
 | `WORKSPACE_AUTHORITY` | The item is governed by a workspace; use the workspace write path (with its precondition) instead of the standalone one |
-| `PRECONDITION_REQUIRED` / `CONFLICT` | Missing or stale version id / revision — re-read and retry |
+| `PRECONDITION_REQUIRED` / `CONFLICT` | A required version id / revision is missing (a body, a row or task update, a patch of description or metadata), or a sent one is stale — re-read and retry |
 | `WORKSPACE_MEMBER_INTERNAL` | The account already has internal access |
-| `WORKSPACE_MEMBER_NOT_FOUND` | `set-role` named no member or invite in this workspace; use an `id` from `member list` |
+| `WORKSPACE_MEMBER_NOT_FOUND` | `set-role` named no member or invite in this workspace (or a row id you cannot reach); use an `id` from `member list` |
+| `ACCOUNT_NOT_FOUND` | `set-role` or `remove` named an alias or account id that no account holds |
 | `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` | An invite by email needs one verified person behind your account to send it from; have the person invite from the dashboard |
 | `RATE_LIMITED` | Too many invite emails in the last hour; share a pending invite's `inviteUrl` instead, or try later |
 | `ALREADY_IN_WORKSPACE` / `MIXED_OWNERSHIP` / `INELIGIBLE_STORAGE` / `WORKSPACE_BULK_LIMIT` | Adoption refused before any effect |
 | `CROSS_WORKSPACE_MOVE` | The folder and the artifact belong to different workspaces |
-| `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed for good with `rip trash purge workspace <id>` (or Delete forever in the dashboard) |
+| `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed for good with `rip trash purge <workspace-id>` (or Delete forever in the dashboard) |
 | `WORKSPACE_LIMIT_REACHED` | A create or workspace restore the owner has no room for: `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>` (`details.owner`, `plan`, `limit`, `used`, `billingUrl` with `--json`). A team without a plan (`none`) needs the Team plan, which the person subscribes to at that link; at the maximum, you delete a workspace. Nothing was written |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted or left by its last member; its person cancels the plan in Billing first |
 | `WHY_REQUIRED` / `INVALID_FIELD` (`why`) | State `--why` (or `TOKENRIP_WHY`); at most 300 characters. No `--why` flag: `rip update` |
 | `INVALID_SCOPE` / `INVALID_HANDOFF` | `--handoff` needs `--workspace-id` and markdown |
 | `INVALID_CURSOR` | Start `rip workspace sessions` again without `--cursor` |
-| `SESSION_END_RETIRED` | `rip workspace session end` is gone: sessions record themselves. Leave a note with `rip artifact publish … --handoff` |
 | `WORKSPACE_PAGE_UNACKNOWLEDGED` / `INVALID_WORKSPACE_DELIVERY` | Replay or acknowledge the outstanding change page first |
 | `WORKSPACE_BUSY` | 503 from `load` or `changes`: they answer from a snapshot and no longer wait behind writers' row locks (a purge or a database migration can still hold them briefly), but ran out of attempts, usually because another call by your key changed your position at the same moment. Nothing was changed; run it again after a moment |
 

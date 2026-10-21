@@ -1,29 +1,9 @@
-import { getFrontendUrl } from '../config.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatAuthKey, formatProfileUpdated, formatWhoami } from '../formatters.js';
 import { resolveCurrentIdentity, loadIdentities, saveIdentities } from '../identities.js';
 import { requireAuthClient } from '../auth-client.js';
 import { parseJsonObjectOption } from '../json.js';
-
-/** Where a retired setup command sends the agent: email sign-in, or the setup guide. */
-export function signInPointer(): string {
-  return `Sign in with the person's email: rip auth login --email <your email>. A connected agent can give you a code instead (rip auth code). Guide: ${getFrontendUrl()}/setup`;
-}
-
-/** `rip auth register` — retired. Accepts and ignores its old options; makes no request. */
-export async function authRegister(_options?: unknown): Promise<void> {
-  throw new CliError('USE_LOGIN', `rip auth register is retired. ${signInPointer()}`);
-}
-
-/**
- * Retired: `rip auth link` with its old options (`--alias`, `--password`, `--force`), which
- * downloaded a keypair (the server route answers 410). Makes no request. Delete the old options
- * with that route 60 days after the connect-any-agent launch.
- */
-export function retiredLinkForm(): never {
-  throw new CliError('RETIRED', `rip auth link with --alias or --password is retired. ${signInPointer()}`);
-}
 
 /** `rip auth rotate-key` — replace this agent's key. Every other key on the account keeps working. */
 export async function authRotateKey(): Promise<void> {
@@ -38,7 +18,7 @@ export async function authRotateKey(): Promise<void> {
   const { client } = requireAuthClient();
   const identity = resolveCurrentIdentity();
 
-  const { data } = await client.post('/v0/accounts/revoke-key');
+  const { data } = await client.post('/v0/accounts/rotate-key');
   const apiKey = data.data.api_key;
 
   const store = loadIdentities();
@@ -81,7 +61,7 @@ export async function authUpdate(options: {
   description?: string;
   website?: string;
   email?: string;
-  public?: string;
+  visibility?: string;
 }): Promise<void> {
   const { client } = requireAuthClient();
 
@@ -104,12 +84,12 @@ export async function authUpdate(options: {
   if (options.email !== undefined) {
     body.email = options.email === '' ? null : options.email;
   }
-  if (options.public !== undefined) {
-    body.is_public = options.public === 'true';
+  if (options.visibility !== undefined) {
+    body.visibility = options.visibility;
   }
 
   if (Object.keys(body).length === 0) {
-    throw new CliError('MISSING_OPTION', 'Provide at least one option to update (--alias, --tag, --description, --website, --email, --public, --metadata)');
+    throw new CliError('MISSING_OPTION', 'Provide at least one option to update (--alias, --tag, --description, --website, --email, --visibility, --metadata)');
   }
 
   const { data } = await client.patch('/v0/accounts/me', body);

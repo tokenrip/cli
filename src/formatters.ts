@@ -91,12 +91,15 @@ export const formatArtifactCreated: Formatter = (data) => {
 
 export const formatArtifactPatched: Formatter = (data) => {
   const lines = [`Patched: ${data.id}`];
-  if (data.title) lines.push(`  Title:    ${data.title}`);
-  if (data.description) lines.push(`  Desc:     ${data.description}`);
-  if (data.alias) lines.push(`  Alias:    ${data.alias}`);
-  if (data.url) lines.push(`  URL:      ${data.url}`);
-  if (data.metadata) lines.push(`  Metadata: ${JSON.stringify(data.metadata)}`);
-  if (data.updatedAt) lines.push(`  Updated:  ${data.updatedAt}`);
+  if (data.title) lines.push(`  Title:      ${data.title}`);
+  if (data.description) lines.push(`  Desc:       ${data.description}`);
+  if (data.alias) lines.push(`  Alias:      ${data.alias}`);
+  if (data.url) lines.push(`  URL:        ${data.url}`);
+  // `link` = anyone with the URL can read it; a workspace artifact also has its audience.
+  if (data.visibility) lines.push(`  Visibility: ${data.visibility}`);
+  if (data.workspaceId && data.audience) lines.push(`  Audience:   ${data.audience}`);
+  if (data.metadata) lines.push(`  Metadata:   ${JSON.stringify(data.metadata)}`);
+  if (data.updatedAt) lines.push(`  Updated:    ${data.updatedAt}`);
   return lines.join('\n');
 };
 
@@ -163,7 +166,7 @@ export const formatStorageUsage: Formatter = (data) => {
     lines.push(`Trash: ${formatDecimalBytes(d.trashBytes)}${d.trashBytes > 0 ? ' (counts until emptied)' : ''}`);
     if (d.trashBytes > 0) {
       lines.push(`  Empty it: rip trash purge --all${payer.kind === 'team' ? ` --team ${payer.id}` : ''}`);
-      lines.push("  Files deleted inside a workspace are in that workspace's trash: rip trash purge --all --workspace <id>");
+      lines.push("  Files deleted inside a workspace are in that workspace's trash: rip trash purge --all --workspace-id <id>");
     }
   }
   lines.push('');
@@ -180,7 +183,7 @@ export const formatStorageUsage: Formatter = (data) => {
     lines.push(`    current ${formatDecimalBytes(a.currentBytes)}, history ${formatDecimalBytes(a.historyBytes)}, ${a.versionCount} version${a.versionCount === 1 ? '' : 's'}${home}`);
     if (a.url) lines.push(`    ${a.url}`);
   }
-  lines.push('', `Free space: delete old versions (rip artifact prune-versions), or delete files and empty the trash (rip trash purge --all${payer.kind === 'team' ? ` --team ${payer.id}` : ''}, and --workspace <id> for a workspace's); keep growing records in a table.`);
+  lines.push('', `Free space: delete old versions (rip artifact prune-versions), or delete files and empty the trash (rip trash purge --all${payer.kind === 'team' ? ` --team ${payer.id}` : ''}, and --workspace-id <id> for a workspace's); keep growing records in a table.`);
   return lines.join('\n');
 };
 
@@ -194,7 +197,8 @@ export const formatVersionCreated: Formatter = (data) => {
 };
 
 export const formatVersionDeleted: Formatter = (data) => {
-  return `Deleted version ${data.versionId} from artifact ${data.artifactId}`;
+  if (data.dryRun) return `Would delete version ${data.versionId}`;
+  return `Deleted version ${data.versionId}`;
 };
 
 export const formatVersionsPruned: Formatter = (data) => {
@@ -227,7 +231,7 @@ export const formatActivity: Formatter = (data) => {
   const events = ((data as any).events ?? []) as Array<{
     createdAt: string;
     text: string;
-    subject?: { type?: string; id?: string };
+    subject?: { type?: string; id?: string | null };
   }>;
   if (events.length === 0) return 'No activity.';
 
@@ -241,10 +245,10 @@ export const formatActivity: Formatter = (data) => {
       lines.push(d);
       day = d;
     }
-    // The sentence names the thing; the ref is what you paste into the next command
-    // (e.g. `--subject connection:<id>`). Whole, never a prefix — see
-    // CLAUDE.md §Output correctness.
-    const ref = e.subject?.type && e.subject?.id ? `  ${e.subject.type}:${e.subject.id}` : '';
+    // The sentence names the thing; the id is what you paste into the next command
+    // (`--subject <id>`). Whole, never a prefix — see CLAUDE.md §Output correctness.
+    // An artifact purged forever has no id: its sentence still names it by title.
+    const ref = e.subject?.type && e.subject?.id ? `  ${e.subject.type} ${e.subject.id}` : '';
     lines.push(`  ${e.text}${ref}`);
   }
 
@@ -282,7 +286,8 @@ export const formatArtifactMetadata: Formatter = (data) => {
   if (data.description) lines.push(`  Description: ${data.description}`);
   if (data.versionCount !== undefined) lines.push(`  Versions:    ${data.versionCount}`);
   if (data.creatorContext) lines.push(`  Context:     ${data.creatorContext}`);
-  if (data.isPublic !== undefined) lines.push(`  Public:      ${data.isPublic ? 'yes' : 'no'}`);
+  if (data.visibility) lines.push(`  Visibility:  ${data.visibility}`);
+  if (data.workspaceId && data.audience) lines.push(`  Audience:    ${data.audience}`);
 
   const folder = data.folder as { slug: string; teamSlug?: string } | null | undefined;
   if (folder) {
@@ -291,11 +296,12 @@ export const formatArtifactMetadata: Formatter = (data) => {
   }
 
   const teams = data.teams as string[] | undefined;
-  if (Array.isArray(teams) && teams.length > 0) {
-    lines.push(`  Teams:       ${teams.join(', ')}`);
-    lines.push(`  Modifiable:  all team members`);
-  } else {
-    lines.push(`  Modifiable:  owner only`);
+  if (Array.isArray(teams) && teams.length > 0) lines.push(`  Teams:       ${teams.join(', ')}`);
+  // What the reader may do, when the reply says; a workspace artifact's editors are its members.
+  if (typeof data.canEdit === 'boolean') {
+    lines.push(`  Modifiable:  ${data.canEdit ? 'yes' : 'no'}${data.access ? ` (your access: ${data.access})` : ''}`);
+  } else if (!data.workspaceId) {
+    lines.push(`  Modifiable:  ${Array.isArray(teams) && teams.length > 0 ? 'all team members' : 'owner only'}`);
   }
 
   if (data.createdAt) lines.push(`  Created:     ${data.createdAt}`);
@@ -789,9 +795,6 @@ export const formatConnection: Formatter = (data) => {
   }
   lines.push(`  limits:   ${c.rateLimitPerMin}/min, ${c.dailyQuota}/day`);
   if (typeof c.canCall === 'boolean') lines.push(`  can call: ${c.canCall ? 'yes' : 'no'}`);
-  if (Array.isArray(c.sharedWith) && c.sharedWith.length) {
-    lines.push(`  also rotated for: ${c.sharedWith.map((x: Record<string, any>) => `${x.name} [${x.id}]`).join(', ')}`);
-  }
   if (c.disabledAt) lines.push(`  disabled: ${c.disabledAt}`);
   return lines.join('\n');
 };
@@ -1039,7 +1042,7 @@ function capabilityList(capabilities: unknown): string | null {
 /** A delete reply: the item is in the trash, restorable until `purgeAt`, and the command that restores it. */
 export const formatTrashed: Formatter = (data) => {
   const reply = data as Record<string, any>;
-  return `Moved to trash. Restorable until ${reply.purgeAt}.\nRestore with: rip trash restore ${reply.type} ${reply.id}`;
+  return `Moved to trash. Restorable until ${reply.purgeAt}.\nRestore with: rip trash restore ${reply.id}`;
 };
 
 /** `rip trash list`: one line per entry, newest first, with every id needed to restore it. */
@@ -1055,7 +1058,7 @@ export const formatTrashList: Formatter = (data) => {
     if (item.workspaceId) lines.push(`    workspace ${item.workspaceId}, revision ${item.workspaceRevision}`);
   }
   if (d.nextOffset !== null && d.nextOffset !== undefined) lines.push('', `More: rip trash list --offset ${d.nextOffset}`);
-  lines.push('', 'Restore with: rip trash restore <type> <id>');
+  lines.push('', 'Restore with: rip trash restore <id>');
   return lines.join('\n');
 };
 
@@ -1194,7 +1197,8 @@ function subjectWords(subject: Record<string, any> | undefined): string {
   let title = subject.title;
   if (title == null) title = '(gone)';
   else if (subject.gone) title = `${title} (gone)`;
-  return `${subject.type ?? '-'}  ${title}  [${subject.id}]`;
+  // An artifact purged or out of reach has no id to print.
+  return `${subject.type ?? '-'}  ${title}${subject.id ? `  [${subject.id}]` : ''}`;
 }
 
 /**
@@ -1228,14 +1232,14 @@ function sessionChangeLines(change: Record<string, any>, indent: string): string
   if (edited && rangeKnown && !actions.includes('artifact.created') && subject.type === 'artifact' && reachable && !subject.gone && remaining.length) {
     const first = remaining[0]!;
     const last = remaining[remaining.length - 1]!;
-    lines.push(`${indent}  rip artifact diff ${subject.id}${first.id === last.id ? '' : ` --from ${first.id}`} --version-id ${last.id}`);
+    // A version id names its artifact: the hint names the versions alone.
+    lines.push(`${indent}  rip artifact diff --version-id ${last.id}${first.id === last.id ? '' : ` --from-version-id ${first.id}`}`);
   }
   return lines;
 }
 
 /** A computed session: who and when, then each stated reason with the changes made for it. */
 function sessionLines(session: Record<string, any>, indent = ''): string[] {
-  if (!Array.isArray(session.steps)) return legacySessionLines(session, indent);
   const who = whoWords({
     mine: Boolean(session.mine), alias: session.account?.alias, accountId: session.account?.id,
     agentName: session.agent?.name, surface: session.surface, inBrowser: Boolean(session.inBrowser),
@@ -1244,38 +1248,12 @@ function sessionLines(session: Record<string, any>, indent = ''): string[] {
   if (session.stepsTruncated) lines.push(`${indent}  … earlier steps not shown`);
   // A browser session that named another harness reads by it, and still states no goal by design.
   const viaBrowser = Boolean(session.viaBrowser ?? session.inBrowser);
-  for (const step of session.steps as Array<Record<string, any>>) {
+  for (const step of (Array.isArray(session.steps) ? session.steps : []) as Array<Record<string, any>>) {
     lines.push(`${indent}  ${step.why ?? (viaBrowser ? 'in the browser' : 'no stated goal')}`);
     if (step.changesTruncated) lines.push(`${indent}    … earlier changes in this step not shown`);
     const changes: Array<Record<string, any>> = Array.isArray(step.changes) ? step.changes : [];
     for (const change of changes) lines.push(...sessionChangeLines(change, `${indent}    `));
   }
-  if (session.earlierActivityNotShown) lines.push(`${indent}  (earlier activity of this session not shown)`);
-  return lines;
-}
-
-/**
- * A session from a server without `steps` (before session-log M2), printed as 2.5.0 did. Delete
- * with the first CLI release after production serves `steps`.
- */
-function legacySessionLines(session: Record<string, any>, indent: string): string[] {
-  const goals: string[] = Array.isArray(session.goals) ? session.goals : [];
-  const items: Array<Record<string, any>> = Array.isArray(session.items) ? session.items : [];
-  const handoffs: Array<Record<string, any>> = Array.isArray(session.handoffs) ? session.handoffs : [];
-  const goalText = goals.length ? goals.join(' → ') : session.inBrowser ? 'in the browser' : 'no stated goal';
-  const who = session.account?.alias ? `~${session.account.alias}` : (session.account?.id ?? '-');
-  const tool = [session.agent?.name, session.surface].filter(Boolean).join(', ');
-  const lines = [
-    `${indent}${tool ? `${who} (${tool})` : who}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}  ${session.eventCount ?? 0} change${session.eventCount === 1 ? '' : 's'}`,
-    `${indent}  Goals: ${session.goalsTruncated ? '… → ' : ''}${goalText}`,
-  ];
-  for (const item of items) {
-    const version = item.versionId ? `  version ${item.versionId}` : '';
-    lines.push(`${indent}  ${item.type ?? '-'}  ${item.title ?? '(gone)'}  [${item.id}]  ×${item.changes ?? 1}${version}`);
-  }
-  if (session.itemsTruncated) lines.push(`${indent}  … earlier items not shown`);
-  for (const note of handoffs) lines.push(`${indent}  Handoff: ${note.title ?? '(untitled)'}  [${note.artifactId}]  rip artifact cat ${note.artifactId}`);
-  if (session.handoffsTruncated) lines.push(`${indent}  … earlier handoffs not shown`);
   if (session.earlierActivityNotShown) lines.push(`${indent}  (earlier activity of this session not shown)`);
   return lines;
 }

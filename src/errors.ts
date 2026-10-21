@@ -16,7 +16,7 @@ export interface DomainErrorDetails {
   deletedAt?: string;
   purgeAt?: string;
   via?: { type: string; id: string };
-  /** Only for callers who may restore it: `rip trash restore <type> <id>`. */
+  /** Only for callers who may restore it: `rip trash restore <id>`. */
   restorable?: true;
   deletedBy?: { id: string; alias: string | null } | null;
   /** Also only for a restorer, of a workspace file or folder: `--expected-workspace-revision` for `rip trash restore`. */
@@ -99,7 +99,8 @@ export function safeTransportErrorDetails(value: unknown): TransportErrorDetails
   const body = value as Record<string, unknown>;
   const details: TransportErrorDetails = {};
   for (const field of ['elapsedMs', 'timeoutMs'] as const) {
-    if (typeof body[field] === 'number' && Number.isFinite(body[field]) && body[field] >= 0) details[field] = body[field];
+    const ms = body[field];
+    if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) details[field] = ms;
   }
   if (typeof body.transportCode === 'string' && TRANSPORT_CODES.has(body.transportCode)) details.transportCode = body.transportCode;
   if (typeof body.responseReceived === 'boolean') details.responseReceived = body.responseReceived;
@@ -139,7 +140,7 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     && ['expectedVersionId', 'expectedRevision', 'expectedRevisions', 'expectedWorkspaceRevision'].includes(body.field)) details.field = body.field;
   else if (code === 'INVALID_SCOPE' && body.field === 'workspaceId') details.field = body.field;
   else if ((code === 'WORKSPACE_AUTHORITY' || code === 'INELIGIBLE_STORAGE') && Array.isArray(body.fields)) {
-    const allowed = code === 'INELIGIBLE_STORAGE' ? ['publicAsset', 'public_asset'] : ['visibility', 'public', 'isPublic', 'is_public', 'team', 'teams', 'teamId', 'teamIds', 'folder', 'folderSlug'];
+    const allowed = code === 'INELIGIBLE_STORAGE' ? ['publicAsset'] : ['visibility', 'team', 'teams', 'folder'];
     const fields = [...new Set(body.fields.filter((field): field is string => typeof field === 'string' && allowed.includes(field)))].slice(0, 8);
     if (fields.length) details.fields = fields;
   } else if (code === 'INVALID_SKILL' && typeof body.reason === 'string' && SKILL_INVALID_REASONS.has(body.reason)) details.reason = body.reason;
@@ -160,7 +161,7 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     if (counts.every((value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
       && typeof plan === 'string' && PLAN_KEYS.has(plan)) {
       Object.assign(details, { usedBytes, limitBytes, addedBytes, plan });
-      // The payer's own refusal names where its person adds storage.
+      // The payer's own refusal names its next step, and the Billing link when the step is bought there.
       if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
     }
   } else if (code === 'TASK_NOT_IN_REVIEW') {

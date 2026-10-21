@@ -12,11 +12,11 @@ import { formatMailbox, formatNoticeSettings } from '../formatters.js';
  * none of these takes `--why`.
  */
 
-/** `rip notify [--workspace <id>] [--for-person]` */
-export async function notifyShow(options: { workspace?: string; forPerson?: boolean }): Promise<void> {
+/** `rip notify [--workspace-id <id>] [--for-person]` */
+export async function notifyShow(options: { workspaceId?: string; forPerson?: boolean }): Promise<void> {
   const { client } = requireAuthClient();
   const params: Record<string, string> = {};
-  if (options.workspace !== undefined) params.workspaceId = options.workspace;
+  if (options.workspaceId !== undefined) params.workspaceId = options.workspaceId;
   if (options.forPerson) params.for = 'person';
   const { data } = await client.get('/v0/notifications', { params });
   outputSuccess(data.data, formatNoticeSettings);

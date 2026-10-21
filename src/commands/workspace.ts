@@ -3,6 +3,7 @@ import { outputSuccess } from '../output.js';
 import { formatTrashed, formatWorkspace, formatWorkspaceList, formatWorkspaceChanges, formatWorkspaceLoad, formatWorkspaceSessions, formatWorkspaceViewReceipt } from '../formatters.js';
 import { parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
+import { parseArtifactId } from '../parse-artifact-id.js';
 
 export interface WorkspaceSummary {
   id: string; slug: string; name: string; description: string | null;
@@ -19,9 +20,10 @@ interface WhyOption { why?: string }
 /** A DELETE states why in its body, and sends no body when there is none. */
 const deleteBody = (options: WhyOption) => (options.why !== undefined ? { data: { why: options.why } } : undefined);
 
-export async function workspaceCreate(slug: string, options: { name?: string; description?: string; teamId?: string } & WhyOption): Promise<void> {
+/** `name` defaults to the slug on the server; `team` (slug or id) makes it a team workspace. */
+export async function workspaceCreate(slug: string, options: { name?: string; description?: string; team?: string } & WhyOption): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/workspaces', { slug, name: options.name ?? slug, description: options.description, teamId: options.teamId, why: options.why });
+  const { data } = await client.post('/v0/workspaces', { slug, name: options.name, description: options.description, team: options.team, why: options.why });
   outputSuccess(data.data, formatWorkspace);
 }
 export async function workspaceList(): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get('/v0/workspaces'); outputSuccess(data.data, formatWorkspaceList); }
@@ -36,15 +38,40 @@ function parseMembership(value: string | undefined): string | undefined {
   throw new CliError('INVALID_ARGUMENT', `--membership must be ${WORKSPACE_MEMBERSHIPS.join(' or ')}`);
 }
 /** Add or invite by email, alias or account id. `note` goes in the invite email. */
-export async function workspaceMemberAdd(workspace: string, account: string, options: { role?: string; membership?: string; note?: string } & WhyOption): Promise<void> { const membership = parseMembership(options.membership); const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { account, role: options.role, membership, note: options.note, why: options.why }); outputSuccess(data.data); }
-/** `member` is the member row id, an account id, or an email address (resolved by the server). */
-export async function workspaceMemberSetRole(workspace: string, member: string, role: string, options: { membership?: string } & WhyOption = {}): Promise<void> { const membership = parseMembership(options.membership); const { client } = requireAuthClient(); const { data } = await client.patch(`${workspacePath(workspace)}/members/${encodeURIComponent(member)}`, { role, membership, why: options.why }); outputSuccess(data.data); }
-export async function workspaceMemberRemove(workspace: string, account: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); await client.delete(`${workspacePath(workspace)}/members/${encodeURIComponent(account)}`, deleteBody(options)); outputSuccess({ ok: true }); }
+export async function workspaceMemberAdd(workspace: string, member: string, options: { role?: string; membership?: string; note?: string } & WhyOption): Promise<void> { const membership = parseMembership(options.membership); const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { member, role: options.role, membership, note: options.note, why: options.why }); outputSuccess(data.data); }
+/** A member row id stands alone; an account id, alias or email names a member in `--workspace-id`. */
+interface MemberTarget { workspaceId?: string }
+const memberPath = (member: string) => `/v0/workspace-members/${encodeURIComponent(member)}`;
+/** Change role, membership, or both (at least one); what is omitted is kept. */
+export async function workspaceMemberSetRole(member: string, options: { role?: string; membership?: string } & MemberTarget & WhyOption = {}): Promise<void> {
+  const membership = parseMembership(options.membership);
+  if (options.role === undefined && membership === undefined) throw new CliError('INVALID_ARGUMENT', 'Pass --role, --membership, or both');
+  const { client } = requireAuthClient();
+  const { data } = await client.patch(memberPath(member), { workspaceId: options.workspaceId, role: options.role, membership, why: options.why });
+  outputSuccess(data.data);
+}
+export async function workspaceMemberRemove(member: string, options: MemberTarget & WhyOption = {}): Promise<void> {
+  const { client } = requireAuthClient();
+  const body = { ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}), ...(options.why !== undefined ? { why: options.why } : {}) };
+  await client.delete(memberPath(member), Object.keys(body).length ? { data: body } : undefined);
+  outputSuccess({ ok: true });
+}
 export async function workspaceMemberList(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/members`); outputSuccess(data.data); }
 
-export async function workspaceAdopt(workspace: string, item: string, options: { kind?: 'artifact' | 'folder'; audience: 'internal' | 'shared'; destinationFolderId?: string } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const kind = options.kind ?? 'artifact'; const { data } = await client.post(`${workspacePath(workspace)}/adopt`, { kind, ...(kind === 'artifact' ? { artifactId: item } : { folderId: item }), audience: options.audience, destinationFolderId: options.destinationFolderId, why: options.why }); outputSuccess(data.data); }
-export async function workspacePin(workspace: string, artifactId: string, options: { position?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/pins`, { artifactId, ...(options.position === undefined ? {} : { position: parseNonNegativeInteger(options.position, '--position') }) }); outputSuccess(data.data); }
-export async function workspaceUnpin(workspace: string, artifactId: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(`${workspacePath(workspace)}/pins/${encodeURIComponent(artifactId)}`); outputSuccess({ ok: true }); }
+/** Standalone artifacts (one or more, ids, aliases or URLs) or one personal folder (`--folder`, id or slug) move in. */
+export async function workspaceAdopt(workspace: string, artifacts: string[], options: { folder?: string; audience?: 'internal' | 'shared'; destinationFolderId?: string } & WhyOption): Promise<void> {
+  if ((artifacts.length === 0) === (options.folder === undefined)) throw new CliError('INVALID_ARGUMENT', 'Name the artifacts to move in, or --folder, one of them');
+  if (options.folder !== undefined && options.destinationFolderId !== undefined) throw new CliError('INVALID_ARGUMENT', '--destination-folder-id goes with artifacts; a folder moves in as it is');
+  const { client } = requireAuthClient();
+  const { data } = await client.post(`${workspacePath(workspace)}/adopt`, {
+    ...(options.folder !== undefined ? { folder: options.folder } : { artifactIds: artifacts.map(parseArtifactId) }),
+    audience: options.audience, destinationFolderId: options.destinationFolderId, why: options.why,
+  });
+  outputSuccess(data.data);
+}
+/** The pin's workspace is the artifact's (`POST /v0/pins`). */
+export async function workspacePin(artifact: string, options: { position?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post('/v0/pins', { artifactId: parseArtifactId(artifact), ...(options.position === undefined ? {} : { position: parseNonNegativeInteger(options.position, '--position') }) }); outputSuccess(data.data); }
+export async function workspaceUnpin(artifact: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(`/v0/pins/${encodeURIComponent(parseArtifactId(artifact))}`); outputSuccess({ ok: true }); }
 /** Bounded workspace context. Load takes no selector: sessions record themselves. */
 export async function workspaceLoad(workspace: string, options: { artifactOffset?: string; taskCursor?: string; activityCursor?: string; handoffOffset?: string }): Promise<void> {
   const body = {
@@ -57,31 +84,20 @@ export async function workspaceLoad(workspace: string, options: { artifactOffset
   const { data } = await client.post(`${workspacePath(workspace)}/load`, body);
   outputSuccess(data.data, formatWorkspaceLoad);
 }
-export async function workspaceSessionEnd(workspace: string, sessionId: string, options: { summary?: string; handoffArtifactId?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/sessions/${encodeURIComponent(sessionId)}/end`, options); outputSuccess(data.data); }
-/**
- * Printed once when an old invocation still passes a retired session flag (plan D7): `workspace load
- * --operation-id / --session-id`, `workspace show --session-cursor`, and every writer's
- * `--workspace-session-id`. The flags are hidden from help and nothing of them is sent.
- */
-export function retiredFlagsNotice(flags: readonly string[]): string {
-  return `Note: ${flags.join(' and ')} ${flags.length === 1 ? 'is' : 'are'} deprecated and ignored: sessions record themselves.`;
-}
-/** Printed once when an old invocation still passes a session id (plan D7): the view follows the caller's key. */
-export const IGNORED_VIEW_SESSION_NOTICE = 'Note: the session id is deprecated and ignored; the browser view follows your agent key.';
-
-/** The browser tab paired to this agent's key in the workspace. A leftover session id is ignored with one notice. */
-export async function workspaceViewContext(workspace: string, legacySessionId?: string): Promise<void> {
-  if (legacySessionId !== undefined) console.error(IGNORED_VIEW_SESSION_NOTICE);
+/** The browser tab paired to this agent's key in the workspace. */
+export async function workspaceViewContext(workspace: string): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(`${workspacePath(workspace)}/view`);
   outputSuccess(data.data, formatWorkspaceViewReceipt);
 }
-/** Ask the tab paired to this agent's key to open an artifact. A leftover session id is ignored with one notice. */
-export async function workspaceViewOpen(workspace: string, artifactId: string, operationId: string, expectedContextGeneration: string, legacySessionId?: string): Promise<void> {
-  const generation = parseNonNegativeInteger(expectedContextGeneration, '--expected-context-generation');
-  if (legacySessionId !== undefined) console.error(IGNORED_VIEW_SESSION_NOTICE);
+/**
+ * Ask the tab paired to this agent's key in the artifact's workspace to open it (`POST /v0/views/open`).
+ * `--operation-id` is an optional idempotency key: without one the server makes one.
+ */
+export async function workspaceViewOpen(artifact: string, options: { expectedContextGeneration: string; operationId?: string }): Promise<void> {
+  const generation = parseNonNegativeInteger(options.expectedContextGeneration, '--expected-context-generation');
   const { client } = requireAuthClient();
-  const { data } = await client.post(`${workspacePath(workspace)}/view/open`, { artifactId, operationId, expectedContextGeneration: generation });
+  const { data } = await client.post('/v0/views/open', { artifactId: parseArtifactId(artifact), expectedContextGeneration: generation, ...(options.operationId !== undefined ? { operationId: options.operationId } : {}) });
   outputSuccess(data.data, formatWorkspaceViewReceipt);
 }
 /** Recent computed sessions (`GET /v0/workspaces/:id/sessions`), newest first; `--cursor` continues. */

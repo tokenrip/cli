@@ -6,10 +6,12 @@ import { formatRestored, formatTrashList, formatTrashPurged } from '../formatter
 import { CliError, toCliError } from '../errors.js';
 
 export interface TrashListOptions {
-  workspace?: string;
+  workspaceId?: string;
   team?: string;
   /** Another account's own trash, by id or alias (platform admins only). */
   account?: string;
+  /** One type only: artifact, bundle, folder or workspace. */
+  type?: string;
   limit?: string;
   offset?: string;
 }
@@ -17,9 +19,10 @@ export interface TrashListOptions {
 /** `GET /v0/trash` query from the `rip trash list` flags: personal by default, or one team, workspace or account. */
 export function trashListQuery(options: TrashListOptions): string {
   const q = new URLSearchParams();
-  if (options.workspace) q.set('workspaceId', options.workspace);
+  if (options.workspaceId) q.set('workspaceId', options.workspaceId);
   if (options.team) q.set('team', resolveTeam(options.team));
   if (options.account) q.set('account', options.account);
+  if (options.type) q.set('type', options.type);
   if (options.limit !== undefined) q.set('limit', String(parseNonNegativeInteger(options.limit, '--limit')));
   if (options.offset !== undefined) q.set('offset', String(parseNonNegativeInteger(options.offset, '--offset')));
   const qs = q.toString();
@@ -38,10 +41,10 @@ export interface TrashRestoreOptions {
   why?: string;
 }
 
-/** Bring an item back from the trash: the type and id a `rip trash list` entry shows. */
-export async function trashRestore(type: string, id: string, options: TrashRestoreOptions = {}): Promise<void> {
+/** Bring an item back from the trash: the id a `rip trash list` entry shows (the server finds its type). */
+export async function trashRestore(id: string, options: TrashRestoreOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const body: { type: string; id: string; expectedWorkspaceRevision?: number; why?: string } = { type, id };
+  const body: { id: string; expectedWorkspaceRevision?: number; why?: string } = { id };
   if (options.expectedWorkspaceRevision !== undefined) {
     body.expectedWorkspaceRevision = parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   }
@@ -54,14 +57,19 @@ export interface TrashPurgeOptions {
   /** Empty a whole trash instead of one entry. */
   all?: boolean;
   team?: string;
-  workspace?: string;
+  workspaceId?: string;
   /** Another account's own trash, by id or alias (platform admins only). */
   account?: string;
+  /** With --all: one type only. */
+  type?: string;
+  /** With --all: only what was deleted at or before this instant (ISO 8601). */
+  deletedBefore?: string;
   why?: string;
 }
 
 type PurgeBody = {
-  type?: string; id?: string; all?: true; workspaceId?: string; team?: string; account?: string; cursor?: string; why?: string;
+  id?: string; all?: true; workspaceId?: string; team?: string; account?: string;
+  type?: string; deletedBefore?: string; cursor?: string; why?: string;
 };
 
 interface PurgeReply {
@@ -70,25 +78,24 @@ interface PurgeReply {
   nextCursor: string | null;
 }
 
-/** The `POST /v0/trash/purge` body from `rip trash purge`: one entry, or `--all` with at most one scope. */
-export function trashPurgeBody(type: string | undefined, id: string | undefined, options: TrashPurgeOptions): PurgeBody {
+/** The `POST /v0/trash/purge` body from `rip trash purge`: one entry by its id, or `--all` with at most one scope and the filters. */
+export function trashPurgeBody(id: string | undefined, options: TrashPurgeOptions): PurgeBody {
   const invalid = (message: string) => new CliError('INVALID_ARGS', message);
-  const scopes = [options.team, options.workspace, options.account].filter((value) => value !== undefined);
-  const entry = type !== undefined || id !== undefined;
-  if (entry && options.all) throw invalid('Pass an entry (<type> <id>) or --all, not both.');
-  if (!options.all && scopes.length) throw invalid('--team, --workspace and --account go with --all.');
-  if (!entry && !options.all) throw invalid('Pass an entry (<type> <id>) or --all.');
+  const scopes = [options.team, options.workspaceId, options.account].filter((value) => value !== undefined);
+  const filters = [options.type, options.deletedBefore].filter((value) => value !== undefined);
+  if (id !== undefined && options.all) throw invalid('Pass an entry (<id>) or --all, not both.');
+  if (!options.all && (scopes.length || filters.length)) throw invalid('--team, --workspace-id, --account, --type and --deleted-before go with --all.');
+  if (id === undefined && !options.all) throw invalid('Pass an entry (<id>, as `rip trash list` shows it) or --all.');
   const why = options.why !== undefined ? { why: options.why } : {};
-  if (entry) {
-    if (type === undefined || id === undefined) throw invalid('An entry needs both <type> and <id>, as `rip trash list` shows them.');
-    return { type, id, ...why };
-  }
-  if (scopes.length > 1) throw invalid('Pass at most one of --team, --workspace and --account.');
+  if (id !== undefined) return { id, ...why };
+  if (scopes.length > 1) throw invalid('Pass at most one of --team, --workspace-id and --account.');
   return {
     all: true,
-    ...(options.workspace !== undefined ? { workspaceId: options.workspace } : {}),
+    ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
     ...(options.team !== undefined ? { team: resolveTeam(options.team) } : {}),
     ...(options.account !== undefined ? { account: options.account } : {}),
+    ...(options.type !== undefined ? { type: options.type } : {}),
+    ...(options.deletedBefore !== undefined ? { deletedBefore: options.deletedBefore } : {}),
     ...why,
   };
 }
@@ -136,13 +143,13 @@ function partialPurgeError(err: unknown, total: PurgeReply, pages: number): CliE
 }
 
 /**
- * Purge from the trash, for good: one entry, or with `--all` a whole trash. The server examines
- * at most `TRASH_PURGE_PER_CALL` entries per call and answers `nextCursor` while more remain;
- * this repeats until it is null and prints the totals. A failed call reports what earlier pages
+ * Purge from the trash, for good: one entry by its id, or with `--all` a whole trash. The server
+ * examines at most `TRASH_PURGE_PER_CALL` entries per call and answers `nextCursor` while more
+ * remain; this repeats with the same body and the cursor until it is null and prints the totals. A failed call reports what earlier pages
  * purged with the error (`partialPurgeError`); a cursor the server repeats stops the loop.
  */
-export async function trashPurge(type: string | undefined, id: string | undefined, options: TrashPurgeOptions = {}): Promise<void> {
-  const body = trashPurgeBody(type, id, options);
+export async function trashPurge(id: string | undefined, options: TrashPurgeOptions = {}): Promise<void> {
+  const body = trashPurgeBody(id, options);
   const { client } = requireAuthClient();
   const total: PurgeReply = { purged: [], skipped: [], nextCursor: null };
   let cursor: string | null = null;

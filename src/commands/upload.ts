@@ -8,7 +8,7 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatArtifactCreated } from '../formatters.js';
 import { getFrontendUrl } from '../config.js';
-import { resolveTeam, resolveTeams } from '../teams.js';
+import { addHomeFields } from './publish.js';
 
 export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string; workspaceId?: string; audience?: 'internal' | 'shared'; why?: string }): Promise<void> {
   assertWorkspaceCreationScope(options);
@@ -30,19 +30,17 @@ export async function upload(filePath: string, options: { title?: string; parent
 
   const form = new FormData();
   form.append('file', fs.createReadStream(absPath));
-  form.append('type', 'file');
-  form.append('mimeType', mimeType);
   form.append('title', title);
 
   if (options.parent) form.append('parentArtifactId', options.parent);
   if (options.context) form.append('creatorContext', options.context);
   if (options.refs) form.append('inputReferences', JSON.stringify(options.refs.split(',').map((r) => r.trim())));
-  if (options.team) {
-    const teamSlugs = options.team.split(',').map((t) => t.trim());
-    form.append('teams', JSON.stringify(resolveTeams(teamSlugs)));
-    form.append('team', resolveTeam(teamSlugs[0]));
-  }
-  if (options.folder) form.append('folder', options.folder);
+  // Array fields travel as JSON text in a form; the same home rules as publish (`addHomeFields`).
+  const home: Record<string, unknown> = {};
+  addHomeFields(home, options);
+  if (home.teams) form.append('teams', JSON.stringify(home.teams));
+  if (home.folder) form.append('folder', home.folder as string);
+  if (home.team) form.append('team', home.team as string);
   if (options.workspaceId) form.append('workspaceId', options.workspaceId);
   if (options.audience) form.append('audience', options.audience);
   if (options.why !== undefined) form.append('why', options.why);

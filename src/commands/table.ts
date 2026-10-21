@@ -1,15 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { requireAuthClient } from '../auth-client.js';
+import { optionalAuthClient, requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatTableRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
 import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
+import { parseArtifactId } from '../parse-artifact-id.js';
 
 export async function tableAppend(
-  uuid: string,
-  options: { data?: string; file?: string; upsertOn?: string; expectedWorkspaceRevision?: string; why?: string },
+  identifier: string,
+  options: { data?: string; file?: string; upsert?: boolean; expectedWorkspaceRevision?: string; why?: string },
 ): Promise<void> {
+  const uuid = parseArtifactId(identifier);
   let rows: Record<string, unknown>[];
 
   if (options.file) {
@@ -26,7 +28,8 @@ export async function tableAppend(
 
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = { rows };
-  if (options.upsertOn) body.upsertOn = options.upsertOn;
+  // Upsert matches on the table's key (its unique: true column); a table without one refuses NO_TABLE_KEY.
+  if (options.upsert) body.upsert = true;
   if (options.expectedWorkspaceRevision) body.expectedWorkspaceRevision = Number(options.expectedWorkspaceRevision);
   if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, body);
@@ -34,7 +37,7 @@ export async function tableAppend(
 }
 
 export async function tableRows(
-  uuid: string,
+  identifier: string,
   options: {
     limit?: string;
     after?: string;
@@ -46,7 +49,9 @@ export async function tableRows(
     includeTotal?: boolean;
   },
 ): Promise<void> {
-  const { client } = requireAuthClient();
+  const uuid = parseArtifactId(identifier);
+  // A table anyone may read (link or public) reads without signing in, as the route does.
+  const { client } = optionalAuthClient();
   const params: Record<string, string> = {};
   if (options.limit) params.limit = options.limit;
   if (options.after) params.after = options.after;
@@ -54,7 +59,7 @@ export async function tableRows(
   if (options.sortBy) params.sort_by = options.sortBy;
   if (options.sortOrder) params.sort_order = options.sortOrder;
   if (options.fields) params.fields = options.fields;
-  if (options.includeTotal) params.include_total = '1';
+  if (options.includeTotal) params.include_total = 'true';
   if (options.filter) {
     for (const f of options.filter) {
       // Split on the first '=' so an operator suffix in the key survives:
@@ -68,28 +73,29 @@ export async function tableRows(
   outputSuccess(data.data, formatTableRows);
 }
 
+/** `PUT /v0/rows/:rowId`: the row id names its table. */
 export async function tableUpdate(
-  uuid: string,
   rowId: string,
   options: { data: string; expectedRevision?: string; expectedWorkspaceRevision?: string; why?: string },
 ): Promise<void> {
   const parsed = parseJsonObjectOption(options.data, '--data');
   const { client } = requireAuthClient();
-  const { data } = await client.put(`/v0/artifacts/${uuid}/rows/${rowId}`, { data: parsed, expectedRevision: options.expectedRevision === undefined ? undefined : Number(options.expectedRevision), expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), why: options.why });
+  const { data } = await client.put(`/v0/rows/${encodeURIComponent(rowId)}`, { data: parsed, expectedRevision: options.expectedRevision === undefined ? undefined : Number(options.expectedRevision), expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), why: options.why });
   outputSuccess(data.data, formatRowUpdated);
 }
 
+/** `DELETE /v0/rows`: rows of one table by their own ids. */
 export async function tableDelete(
-  uuid: string,
-  options: { rows: string; expectedRevisions?: string; why?: string },
+  options: { rowIds: string; expectedRevisions?: string; why?: string },
 ): Promise<void> {
-  const ids = options.rows.split(',').map((s) => s.trim());
+  const ids = options.rowIds.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
   const { client } = requireAuthClient();
   let expectedRevisions: Record<string, number> | undefined;
   if (options.expectedRevisions) {
     try { expectedRevisions = JSON.parse(options.expectedRevisions); }
     catch { throw new CliError('INVALID_JSON', '--expected-revisions is not valid JSON.'); }
   }
-  await client.delete(`/v0/artifacts/${uuid}/rows`, { data: { row_ids: ids, expectedRevisions, why: options.why } });
-  outputSuccess({ deleted: ids.length }, formatRowsDeleted);
+  // The server's count: an id that names no row you can read is skipped, not deleted.
+  const { data } = await client.delete('/v0/rows', { data: { rowIds: ids, expectedRevisions, why: options.why } });
+  outputSuccess({ deleted: (data as { data: { deleted: number } }).data.deleted }, formatRowsDeleted);
 }

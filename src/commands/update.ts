@@ -1,27 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import FormData from 'form-data';
-import mime from 'mime-types';
 import { requireAuthClient } from '../auth-client.js';
+import { parseArtifactId } from '../parse-artifact-id.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatVersionCreated } from '../formatters.js';
 
-const VALID_TYPES = ['markdown', 'html', 'chart', 'code', 'text', 'json', 'csv'] as const;
-type ContentType = (typeof VALID_TYPES)[number];
-
+/**
+ * A new version of the artifact's own type (AR-1: no `--type`). A text artifact (markdown, html,
+ * csv, …) takes the file's text as `content`; a file artifact takes the file as an upload. The
+ * artifact is read first to tell which.
+ */
 export async function update(
-  uuid: string,
+  identifier: string,
   filePath: string,
-  options: { type?: string; description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; why?: string; dryRun?: boolean },
+  options: { description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; why?: string; dryRun?: boolean },
 ): Promise<void> {
+  const uuid = parseArtifactId(identifier);
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
-  }
-
-  if (options.type && !VALID_TYPES.includes(options.type as ContentType)) {
-    throw new CliError('INVALID_TYPE', `Type must be one of: ${VALID_TYPES.join(', ')}`);
   }
 
   if (options.dryRun) {
@@ -30,12 +29,14 @@ export async function update(
   }
 
   const { client } = requireAuthClient();
+  const { data: current } = await client.get(`/v0/artifacts/${uuid}`);
+  const fileArtifact = current?.data?.type === 'file';
 
   let result: Record<string, unknown>;
-  if (options.type) {
-    // Content publish mode
+  if (!fileArtifact) {
+    // A text artifact: the version is the file's text, of the artifact's own type.
     const content = fs.readFileSync(absPath, 'utf-8');
-    const body: Record<string, unknown> = { type: options.type, content };
+    const body: Record<string, unknown> = { content };
     if (options.description) body.description = options.description;
     if (options.context) body.creatorContext = options.context;
     if (options.expectedVersionId) body.expectedVersionId = options.expectedVersionId;
@@ -44,7 +45,7 @@ export async function update(
     const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
     result = data.data;
   } else {
-    // File upload mode
+    // A file artifact: upload the file as it is.
     const form = new FormData();
     form.append('file', fs.createReadStream(absPath));
     if (options.description) form.append('description', options.description);

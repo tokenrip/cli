@@ -27,9 +27,14 @@ export interface ConnectionCreateOptions extends ConnectionSecretOptions {
   dailyQuota?: string;
 }
 
-/** Route to the personal or team connection collection. */
-function connectionsBase(team?: string): string {
-  return team ? `/v0/teams/${encodeURIComponent(resolveTeam(team))}/connections` : '/v0/connections';
+/** `team` for a team's connections (a list or a create), or to scope a connection name. Local aliases resolve to the slug. */
+function teamField(team?: string): { team?: string } {
+  return team ? { team: resolveTeam(team) } : {};
+}
+
+/** One connection: its id (personal, or a team's you belong to), or its name (in `--team` when given). */
+function connectionPath(connection: string): string {
+  return `/v0/connections/${encodeURIComponent(connection)}`;
 }
 
 /** Resolve the secret from a literal, an env var, or stdin (never from argv history). */
@@ -99,45 +104,35 @@ export async function connectionCreate(options: ConnectionCreateOptions): Promis
   if (defaultQuery) body.defaultQuery = defaultQuery;
   if (options.rateLimitPerMin !== undefined) body.rateLimitPerMin = Number(options.rateLimitPerMin);
   if (options.dailyQuota !== undefined) body.dailyQuota = Number(options.dailyQuota);
-  const { data } = await client.post(connectionsBase(options.team), body);
+  const { data } = await client.post('/v0/connections', { ...teamField(options.team), ...body });
   outputSuccess(data.data, formatConnection);
 }
 
 export async function connectionList(options: { team?: string; includeDisabled?: boolean }): Promise<void> {
   const { client } = requireAuthClient();
-  const q = options.includeDisabled ? '?include_disabled=true' : '';
-  const { data } = await client.get(`${connectionsBase(options.team)}${q}`);
+  const params = { ...teamField(options.team), ...(options.includeDisabled ? { includeDisabled: 'true' } : {}) };
+  const { data } = await client.get('/v0/connections', { params });
   outputSuccess(data.data, formatConnectionList);
 }
 
-export async function connectionGet(id: string, options: { team?: string }): Promise<void> {
+export async function connectionGet(connection: string, options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.get(`${connectionsBase(options.team)}/${encodeURIComponent(id)}`);
+  const { data } = await client.get(connectionPath(connection), { params: teamField(options.team) });
   outputSuccess(data.data, formatConnection);
 }
 
-/** Deprecated: rotates the connection's credential, which every connection using it then sends. */
-export async function connectionRotate(id: string, options: ConnectionSecretOptions & { team?: string }): Promise<void> {
-  console.error('rip connection rotate-secret is deprecated; use rip credential rotate <credential>');
+export async function connectionDisable(connection: string, options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const secret = resolveSecret(options);
-  const { data } = await client.post(
-    `${connectionsBase(options.team)}/${encodeURIComponent(id)}/rotate-secret`,
-    { secret },
-  );
+  const { data } = await client.post(`${connectionPath(connection)}/disable`, teamField(options.team));
   outputSuccess(data.data, formatConnection);
 }
 
-export async function connectionDisable(id: string, options: { team?: string }): Promise<void> {
+export async function connectionRemove(connection: string, options: { team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(`${connectionsBase(options.team)}/${encodeURIComponent(id)}/disable`);
-  outputSuccess(data.data, formatConnection);
-}
-
-export async function connectionRemove(id: string, options: { team?: string }): Promise<void> {
-  const { client } = requireAuthClient();
-  await client.delete(`${connectionsBase(options.team)}/${encodeURIComponent(id)}`);
-  outputSuccess({ id, message: `Connection ${id} removed` });
+  const body = teamField(options.team);
+  await client.delete(connectionPath(connection), Object.keys(body).length ? { data: body } : {});
+  // The reference as given (an id or a name), under its own key: a name never reads as an id.
+  outputSuccess({ connection, message: `Connection ${connection} removed` });
 }
 
 export interface ConnectionCallOptions {

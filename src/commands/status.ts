@@ -2,7 +2,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { formatArtifactList } from '../formatters.js';
 
-export async function status(options: { since?: string; limit?: string; type?: string; folder?: string; unfiled?: boolean; team?: string }): Promise<void> {
+export async function status(options: { since?: string; limit?: string; type?: string; folder?: string; unfiled?: boolean; team?: string; workspaceId?: string }): Promise<void> {
   const { client } = requireAuthClient();
 
   const params: Record<string, string> = {};
@@ -12,6 +12,7 @@ export async function status(options: { since?: string; limit?: string; type?: s
   if (options.folder) params.folder = options.folder;
   if (options.unfiled) params.unfiled = 'true';
   if (options.team) params.team = options.team;
+  if (options.workspaceId) params.workspaceId = options.workspaceId;
 
   const { data } = await client.get('/v0/artifacts/status', { params });
 

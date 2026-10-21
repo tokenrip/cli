@@ -6,8 +6,8 @@ import { CliError } from '../errors.js';
 import { formatTask, formatTaskList } from '../formatters.js';
 
 export interface TaskListOptions {
-  /** Required: every task lives in a workspace. */
-  workspaceId: string;
+  /** The workspace, or `parentId` alone (its children, in its workspace). */
+  workspaceId?: string;
   status?: string;
   kind?: string;
   mine?: boolean;
@@ -19,18 +19,18 @@ export interface TaskListOptions {
   /** `me`: reviews In review addressed to you. */
   reviewer?: string;
   /** Only this task's children. */
-  parent?: string;
+  parentId?: string;
 }
 
 export interface TaskAddOptions {
-  /** Required: every task lives in a workspace. */
-  workspaceId: string;
+  /** The workspace, or `parentId` alone (the parent's workspace). */
+  workspaceId?: string;
   /** A person (account id or alias) or `agent:<handle>`, a handle from `rip workspace load`. */
   assignee?: string;
   /** Who decides its proposal, named as the assignee is; never the assignee. */
   reviewer?: string;
-  /** A task in the same workspace this one belongs under. */
-  parent?: string;
+  /** A task this one belongs under: its workspace is the new task's. */
+  parentId?: string;
   kind?: string;
   body?: string;
   due?: string;
@@ -58,6 +58,20 @@ function attribution(options: TaskWriteOptions): Record<string, string> {
   return options.why !== undefined ? { why: options.why } : {};
 }
 
+function invalid(message: string): CliError {
+  return new CliError('INVALID_ARGUMENT', message);
+}
+
+/** A task's home: `--workspace-id`, or `--parent-id` alone (the parent's workspace), never both. */
+function home(options: { workspaceId?: string; parentId?: string }, needed: string): Record<string, string> {
+  if (options.workspaceId !== undefined && options.parentId !== undefined) {
+    throw invalid('Give --workspace-id or --parent-id, not both: a parent names its workspace.');
+  }
+  if (options.parentId !== undefined) return { parentId: options.parentId };
+  if (options.workspaceId !== undefined) return { workspaceId: options.workspaceId };
+  throw invalid(`${needed} needs --workspace-id, or --parent-id for a task under another one.`);
+}
+
 function taskPath(id?: string, verb?: string): string {
   let p = '/v0/tasks';
   if (id) p += `/${encodeURIComponent(id)}`;
@@ -67,8 +81,7 @@ function taskPath(id?: string, verb?: string): string {
 
 export async function taskList(options: TaskListOptions): Promise<void> {
   const { client } = requireAuthClient();
-  const q = new URLSearchParams();
-  q.set('workspaceId', options.workspaceId);
+  const q = new URLSearchParams(home(options, 'A task list'));
   if (options.status) q.set('status', options.status);
   if (options.kind) q.set('kind', options.kind);
   if (options.mine) q.set('assignee', 'me');
@@ -77,7 +90,6 @@ export async function taskList(options: TaskListOptions): Promise<void> {
   if (options.cursor) q.set('cursor', options.cursor);
   if (options.order) q.set('order', options.order);
   if (options.reviewer) q.set('reviewer', options.reviewer);
-  if (options.parent) q.set('parentId', options.parent);
   const qs = q.toString();
   const { data } = await client.get(`${taskPath()}${qs ? `?${qs}` : ''}`);
   outputSuccess(data.data, formatTaskList);
@@ -90,14 +102,13 @@ export async function taskShow(id: string): Promise<void> {
 }
 
 export async function taskAdd(title: string, options: TaskAddOptions): Promise<void> {
+  const body: Record<string, unknown> = { title, ...home(options, 'A new task') };
   const { client } = requireAuthClient();
-  const body: Record<string, unknown> = { title, workspaceId: options.workspaceId };
   if (options.audience) body.audience = options.audience;
   if (options.why !== undefined) body.why = options.why;
   // Account ids, aliases and agent:<handle> pass through; the server resolves them.
   if (options.assignee) body.assignee = options.assignee;
   if (options.reviewer) body.reviewer = options.reviewer;
-  if (options.parent) body.parentId = options.parent;
   if (options.kind) body.kind = options.kind;
   if (options.body) body.body = options.body;
   if (options.due) body.due = options.due;
@@ -150,8 +161,8 @@ export async function taskStop(id: string, options: TaskWriteOptions = {}): Prom
   outputSuccess(data.data, formatTask);
 }
 
-/** `--result artifact:<publicId>[@<version>]` or `--result url:<https://…>` (repeatable); `--link` takes the same. */
-export function parseResultFlags(raw: string[] | undefined, flag = '--result'): Array<{ type: string; id: string; version?: number }> {
+/** `--link artifact:<publicId>[@<version>]` or `--link url:<https://…>` (repeatable). */
+export function parseResultFlags(raw: string[] | undefined, flag = '--link'): Array<{ type: string; id: string; version?: number }> {
   return (raw ?? []).map((item) => {
     const colon = item.indexOf(':');
     if (colon < 1) throw new CliError('INVALID_RESULT', `${flag} expects type:id, got "${item}".`);
@@ -171,11 +182,11 @@ export function parseResultFlags(raw: string[] | undefined, flag = '--result'): 
   });
 }
 
-/** Complete with what the work produced: links (`--result`) and what came of it (`--result-text`, at most 280 characters). */
-export async function taskDone(id: string, options: { result?: string[]; resultText?: string } & TaskWriteOptions): Promise<void> {
+/** Complete with what the work produced: links (`--link`) and what came of it (`--result-text`, at most 280 characters). */
+export async function taskDone(id: string, options: { link?: string[]; resultText?: string } & TaskWriteOptions): Promise<void> {
+  const links = parseResultFlags(options.link);
   const { client } = requireAuthClient();
-  const results = parseResultFlags(options.result);
-  const body = { ...(results.length ? { results } : {}), ...(options.resultText !== undefined ? { result: options.resultText } : {}), ...attribution(options) };
+  const body = { ...(links.length ? { links } : {}), ...(options.resultText !== undefined ? { result: options.resultText } : {}), ...attribution(options) };
   const { data } = await client.post(taskPath(id, 'complete'), body);
   outputSuccess(data.data, formatTask);
 }
@@ -193,10 +204,6 @@ export async function taskReopen(id: string, options: TaskWriteOptions = {}): Pr
   outputSuccess(data.data, formatTask);
 }
 
-function invalid(message: string): CliError {
-  return new CliError('INVALID_ARGUMENT', message);
-}
-
 /** Text given inline or read from a file, at most one of the two; a file is read verbatim, as the exact text. */
 function textFrom(inline: string | undefined, file: string | undefined, flag: string): string | undefined {
   if (inline !== undefined && file !== undefined) throw invalid(`Give --${flag} or --${flag}-file, not both.`);
@@ -209,9 +216,8 @@ function textFrom(inline: string | undefined, file: string | undefined, flag: st
 /** The fields only a new task takes; on an existing task each is refused before any request. */
 function newTaskFields(id: string | undefined, options: Record<string, unknown>, fields: Record<string, string>, verb: string): void {
   if (id === undefined) {
-    if (!options.workspaceId || !options.title) {
-      throw invalid(`A new ${verb} needs --workspace-id and --title; to ${verb} on an existing task, pass its id.`);
-    }
+    if (!options.title) throw invalid(`A new ${verb} needs --title, and --workspace-id or --parent-id; to ${verb} on an existing task, pass its id.`);
+    home(options, `A new ${verb}`);
     return;
   }
   const given = Object.entries(fields).filter(([key]) => options[key] !== undefined).map(([, flag]) => flag);
@@ -219,12 +225,12 @@ function newTaskFields(id: string | undefined, options: Record<string, unknown>,
 }
 
 export interface TaskProposeOptions extends TaskWriteOptions {
-  /** A new proposal: the workspace and the title. */
+  /** A new proposal: the workspace (or the parent, alone) and the title. */
   workspaceId?: string;
+  parentId?: string;
   title?: string;
   body?: string;
   audience?: 'internal' | 'shared';
-  parent?: string;
   /** The exact text the action uses: inline, or read from a file. */
   draft?: string;
   draftFile?: string;
@@ -244,16 +250,15 @@ export interface TaskProposeOptions extends TaskWriteOptions {
  * allow its kind (carry out its approved text now).
  */
 export async function taskPropose(id: string | undefined, options: TaskProposeOptions): Promise<void> {
-  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parent: '--parent', audience: '--audience', body: '--body' }, 'proposal');
+  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body' }, 'proposal');
   const draft = textFrom(options.draft, options.draftFile, 'draft');
   const links = parseResultFlags(options.link, '--link');
   const body: Record<string, unknown> = {};
   if (id === undefined) {
-    body.workspaceId = options.workspaceId;
+    Object.assign(body, home(options, 'A new proposal'));
     body.title = options.title;
     if (options.body !== undefined) body.body = options.body;
     if (options.audience !== undefined) body.audience = options.audience;
-    if (options.parent !== undefined) body.parentId = options.parent;
   }
   if (draft !== undefined) body.draft = draft;
   if (options.verb !== undefined) body.approveVerb = options.verb;
@@ -266,12 +271,12 @@ export async function taskPropose(id: string | undefined, options: TaskProposeOp
 }
 
 export interface TaskReportOptions extends TaskWriteOptions {
-  /** A new report: the workspace and the title. */
+  /** A new report: the workspace (or the parent, alone) and the title. */
   workspaceId?: string;
+  parentId?: string;
   title?: string;
   body?: string;
   audience?: 'internal' | 'shared';
-  parent?: string;
   kind?: string;
   /** What came of it, at most 280 characters; a later result replaces the text. */
   resultText?: string;
@@ -280,15 +285,14 @@ export interface TaskReportOptions extends TaskWriteOptions {
 
 /** Report work already done that needed no approval: a new task born Done, or a later result on a Done task. */
 export async function taskReport(id: string | undefined, options: TaskReportOptions): Promise<void> {
-  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parent: '--parent', audience: '--audience', body: '--body', kind: '--kind' }, 'report');
+  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body', kind: '--kind' }, 'report');
   const links = parseResultFlags(options.link, '--link');
   const body: Record<string, unknown> = {};
   if (id === undefined) {
-    body.workspaceId = options.workspaceId;
+    Object.assign(body, home(options, 'A new report'));
     body.title = options.title;
     if (options.body !== undefined) body.body = options.body;
     if (options.audience !== undefined) body.audience = options.audience;
-    if (options.parent !== undefined) body.parentId = options.parent;
     if (options.kind !== undefined) body.kind = options.kind;
   }
   if (options.resultText !== undefined) body.result = options.resultText;
@@ -307,7 +311,7 @@ export interface TaskDecideOptions extends TaskWriteOptions {
   editedDraft?: string;
   editedDraftFile?: string;
   /** Skip only: why not. */
-  note?: string;
+  reason?: string;
 }
 
 /** Decide a review addressed to you: approve (optionally with an edited draft) or skip. */
@@ -316,12 +320,12 @@ export async function taskDecide(id: string, options: TaskDecideOptions): Promis
   if (Boolean(options.approve) === Boolean(options.skip)) throw invalid('Give exactly one of --approve and --skip.');
   const edited = options.editedDraft !== undefined || options.editedDraftFile !== undefined;
   if (edited && !options.approve) throw invalid('An edited draft goes with --approve: it is the text then carried out.');
-  if (options.note !== undefined && !options.skip) throw invalid('A note goes with --skip: it says why not.');
+  if (options.reason !== undefined && !options.skip) throw invalid('A reason goes with --skip: it says why not.');
   const expectedRevision = parseRevision(options.expectedRevision);
   const editedDraft = textFrom(options.editedDraft, options.editedDraftFile, 'edited-draft');
   const body: Record<string, unknown> = { expectedRevision, decision: options.approve ? 'approve' : 'skip' };
   if (editedDraft !== undefined) body.editedDraft = editedDraft;
-  if (options.note !== undefined) body.note = options.note;
+  if (options.reason !== undefined) body.reason = options.reason;
   const { client } = requireAuthClient();
   const { data } = await client.post(taskPath(id, 'decide'), { ...body, ...attribution(options) });
   outputSuccess(data.data, formatTask);
