@@ -626,27 +626,32 @@ export const formatTeamDetails: Formatter = (data) => {
       lines.push(`    ${label}`);
     }
   }
-  return lines.join('\n');
-};
-
-export const formatTeamInvite: Formatter = (data) => {
-  const lines = ['Invite token generated (pass it on; the recipient runs rip team accept-invite <token>)'];
-  if (data.token) lines.push(`  Token:   ${data.token}`);
-  if (data.expires_in) lines.push(`  Expires: ${data.expires_in}`);
-  return lines.join('\n');
-};
-
-export const formatTeamMemberAdded: Formatter = (data) => {
-  if (!data.invited) return 'Agent added to the team.';
-  const lines = ['Invite created (the agent belongs to another operator, so it was not added directly).'];
-  if (data.inviteToken) {
-    lines.push(`  Token:   ${data.inviteToken}`);
-    lines.push('  Expires: 7 days');
-    lines.push('');
-    lines.push('Send the token to the agent. It joins with:');
-    lines.push(`  rip team accept-invite ${data.inviteToken}`);
+  // Pending invites: present only for a member reading the team. The id is what `rip team remove`
+  // cancels by when the invite names neither an address nor an alias (an add by account id).
+  const invites = data.invites as Array<{ id: string; email: string | null; alias: string | null; invite_url: string }> | undefined;
+  if (Array.isArray(invites) && invites.length > 0) {
+    lines.push(`  Invited (${invites.length}):`);
+    for (const invite of invites) {
+      lines.push(`    ${invite.email ?? invite.alias ?? 'an account with no alias'}  id ${invite.id}  ${invite.invite_url}`);
+    }
   }
   return lines.join('\n');
+};
+
+/**
+ * `rip team add`: an account of the caller's own person joins at once; anyone else gets an invite.
+ * The reply does not echo the member, so the formatter is made with the one the caller typed.
+ */
+export const formatTeamMemberAdded = (member: string): Formatter => (data) => {
+  if (data.status !== 'invited') return 'Added to the team.';
+  return [
+    `Invited ${member}.`,
+    `  Invite link: ${data.inviteUrl}`,
+    '',
+    'The link is safe to share: it signs nobody in. An address new to Tokenrip joins',
+    'when it signs in with the emailed code; someone who already uses Tokenrip joins',
+    'by pressing Join on the invite page in their own browser.',
+  ].join('\n');
 };
 
 export const formatSelfUpdate: Formatter = (data) => {
@@ -809,6 +814,49 @@ export const formatConnectionList: Formatter = (data) => {
       const dis = c.disabledAt ? '  (disabled)' : '';
       return `${String(c.name).padEnd(20)} ${scope.padEnd(8)} ${c.baseUrl}  [${c.id}]${dis}`;
     })
+    .join('\n');
+};
+
+/** An operation's class with the kinds that decide it: `read`, `write (adds)`. */
+function operationClass(o: Record<string, any>): string {
+  const kinds = Array.isArray(o.kinds) && o.kinds.length ? ` (${o.kinds.join(', ')})` : '';
+  return `${o.class}${kinds}`;
+}
+
+/** `rip connection operation add|get|update` — one operation, with the tool name hosts list it under. */
+export const formatConnectionOperation: Formatter = (data) => {
+  const o = data as Record<string, any>;
+  const lines = [
+    `${o.name}  [${o.id}]`,
+    `  tool:     ${o.toolName}`,
+    `  title:    ${o.title}`,
+    `  call:     ${o.method} ${o.path}`,
+    `  class:    ${operationClass(o)}`,
+  ];
+  const properties = o.inputSchema?.properties;
+  if (properties && Object.keys(properties).length) {
+    const required = new Set<string>(Array.isArray(o.inputSchema.required) ? o.inputSchema.required : []);
+    const fields = Object.entries(properties as Record<string, any>)
+      .map(([field, schema]) => `${field}${required.has(field) ? '' : '?'}: ${schema?.type ?? 'any'}`);
+    lines.push(`  input:    ${fields.join(', ')}`);
+  } else {
+    lines.push('  input:    none');
+  }
+  if (o.fixedBody) lines.push(`  body:     ${JSON.stringify(o.fixedBody)}`);
+  if (o.placements && Object.keys(o.placements).length) {
+    lines.push(`  places:   ${Object.entries(o.placements).map(([field, pointer]) => `${field} → ${pointer}`).join(', ')}`);
+  }
+  lines.push(`  returns:  ${o.responsePointer ?? 'the whole answer'}`);
+  lines.push(`  ${o.description}`);
+  return lines.join('\n');
+};
+
+/** `rip connection operation list` — one row per operation. */
+export const formatConnectionOperationList: Formatter = (data) => {
+  const rows = data as unknown as Array<Record<string, any>>;
+  if (!Array.isArray(rows) || rows.length === 0) return 'No operations.';
+  return rows
+    .map((o) => `${String(o.toolName).padEnd(32)} ${`${o.method} ${o.path}`.padEnd(40)} ${String(o.class).padEnd(9)} ${o.title}  [${o.id}]`)
     .join('\n');
 };
 

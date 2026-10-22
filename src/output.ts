@@ -1,4 +1,4 @@
-import { CliError, toCliError } from './errors.js';
+import { CliError, INPUT_REFUSAL_CODES, toCliError } from './errors.js';
 import { principalWho, taskHolderLine, type Formatter } from './formatters.js';
 
 let forceJson = false;
@@ -49,7 +49,12 @@ export function outputError(err: CliError): never {
       if (details.currentRevision) console.error(`Current revision: ${details.currentRevision}`);
       if (details.currentWorkspaceRevision) console.error(`Current workspace revision: ${details.currentWorkspaceRevision}`);
       if (err.code === 'CONFLICT') console.error('Read the current resource and reconcile your changes before another write.');
-      if (err.code === 'PRECONDITION_REQUIRED' && details.field) console.error(`Required field: ${details.field}. Read the current resource to obtain its value, then correct the request.`);
+      // The server's message names the read that supplies the token; the line adds only the field.
+      if (err.code === 'PRECONDITION_REQUIRED' && details.field) console.error(`Required field: ${details.field}.`);
+      if (INPUT_REFUSAL_CODES.has(err.code) && details.field) console.error(`Field: ${details.field}${details.path ? ` (${details.path})` : ''}`);
+      if (details.available) console.error(`Available columns: ${details.available.join(', ') || '(none)'}${details.availableTruncated ? " (more in the table's schema)" : ''}`);
+      if (details.column !== undefined) console.error(`Header column ${details.column}`);
+      if (details.resource) console.error(`Not found: ${details.resource}. Name it by ${NOT_FOUND_NAMING[details.resource] ?? 'the id its list returns'}.`);
       if (err.code === 'INVALID_SCOPE' && details.field) console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
@@ -75,6 +80,12 @@ export function outputError(err: CliError): never {
 
   process.exit(1);
 }
+
+/** How each kind of reference is named, as the server's `UNAVAILABLE` message says it; any other kind by its id. */
+const NOT_FOUND_NAMING: Readonly<Record<string, string>> = {
+  artifact: 'its full id, alias or page URL',
+  folder: 'its id or slug',
+};
 
 export function wrapCommand<T extends (...args: any[]) => Promise<void>>(fn: T): T {
   const wrapped = async (...args: any[]) => {

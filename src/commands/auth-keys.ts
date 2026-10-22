@@ -7,7 +7,8 @@ import { formatKeyCreated, formatKeyList, formatKeyRevoked, formatSignInCode, fo
 /**
  * `rip auth code` — issue a six-digit code tied to the person's email so their next agent can sign
  * in (`rip auth login --email <e> --code <c>`, or the browser during connector setup) without
- * another email. Mirrors: dashboard Agents page, MCP `sign_in_code_create`.
+ * another email. Mirror: the dashboard Agents page (where an MCP agent sends the person: `whoami`'s
+ * `agentsUrl`); no MCP tool.
  */
 export async function authCode(): Promise<void> {
   const { client } = requireAuthClient();
@@ -17,8 +18,8 @@ export async function authCode(): Promise<void> {
 
 /**
  * `rip auth link [--to <page>]` — a one-time sign-in link for the person's browser (10 minutes),
- * optionally opening a Tokenrip page after sign-in. Mirrors: MCP `sign_in_link_create`; no
- * dashboard mirror (a signed-in browser needs no link).
+ * optionally opening a Tokenrip page after sign-in. No MCP tool and no dashboard mirror (a signed-in
+ * browser needs no link).
  */
 export async function authLink(options: { to?: string }): Promise<void> {
   const { client } = requireAuthClient();

@@ -16,7 +16,7 @@ description: >-
   API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.4
+version: 2.6.6
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.4 -->
+<!-- tokenrip-skill-version: 2.6.6 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -98,7 +98,7 @@ rip workspace load <workspace-id>                             # bounded context,
 
 - the workspace, your role, what you **Can** do, and the **Browser** link: give it to the person so their tab follows you;
 - **Storage** (internal members): this workspace's bytes and its payer's plan and usage. When a notice follows it, tell your person; don't delete anything on your own;
-- your **Instructions** here, whole: what your person wrote for you in this workspace (follow them), with their **On its own** kinds (applied for you when you propose), or a line saying there are none yet;
+- your **Instructions** here, whole: what your person wrote for you in this workspace, with their **On its own** kinds (applied for you when you propose), or a line saying there are none yet;
 - **Waiting on you**: approved tasks to carry out, reviews addressed to you to decide, and tasks for you to do, each with the next command; then your proposals In review and the workspace's **Agents** with the `agent:<handle>` that names each one;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - the **Latest handoff**, the same way (inline, or the `rip artifact cat … --version-id …` command), plus the ids of earlier handoffs;
@@ -254,10 +254,10 @@ A **task** is one piece of work in a workspace: To do, Doing, **In review**, Don
 About to act outside the workspace (post, send, publish, book)? PROPOSE first:
   → rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
     In review: stop. It comes back to you; do not act until a later load shows it approved.
-    doing, approved: your instructions allow this kind; carry it out now.
+    doing, approved: your instructions allow this kind; it is approved and held by you.
   → rip task propose <id> --draft-file reply.txt         # a task you are doing, or a new draft for your own proposal
 
-Approved (load: Waiting on you, "carry out")? Do EXACTLY the approved text, the reviewer's edit included:
+When load shows it Waiting on you ("carry out"), `approvedText` is the text approved, the reviewer's edit included; decision says who. Carry out only what was approved:
   → rip task show <id> --json                             # approvedText: the exact text (human output indents it)
   → rip task done <id> --result-text "4 likes" [--link url:https://…]
     It failed? Propose again with what went wrong, or rip task cancel <id> --reason "…". Never act twice.
@@ -302,7 +302,7 @@ Hand a skill to someone outside your operator or team?
 
 ### Calling external APIs and LLMs (connections)
 
-A **credential** is an outside service's key, kept encrypted on the server, personally or for a team. A **connection** is a named place that uses it (base URL, rules). You, or any current member of the owning team, call the upstream through the connection and the platform injects the key, so the caller never sees it. One credential can serve many connections. See `references/connections.md`.
+A **credential** is an outside service's key, kept encrypted on the server, personally or for a team. A **connection** is a named place that uses it (base URL, rules). You, or any current member of the owning team, call the upstream through the connection and the platform injects the key, so the caller never sees it. One credential can serve many connections. An **operation** is one call saved on a connection under a name; every agent that may call the connection sees it as its own MCP tool, which is how chat hosts reach the connection. See `references/connections.md`.
 
 ```
 Call an external API or LLM through a stored key?
@@ -313,6 +313,10 @@ Share one key with a whole team without anyone seeing it?
   → rip credential create --team <slug> --name <key> --secret-env <VAR>
   → rip connection create --team <slug> --name <n> --base-url <url> --credential <key>
   → rip connection call --team <slug> --connection <n> --method POST --path /v1/messages --body '<json>'
+
+Let agents on chat hosts use a connection?   (each operation becomes the MCP tool <connection>_<op>, a team's <team>_<connection>_<op>)
+  → rip connection operation add <connection> [--team <slug>] --name <op> --title '…' --description '…' --method POST --path <fixed> --input-schema '<json>' [--kind adds]
+  → rip connection run <connection> <op> [--team <slug>] --input '<json>'     # the same call from the shell
 
 Google Analytics or Search Console with a service account?
   → rip credential create --team <slug> --name google --kind google_service_account --key-file <key.json> --scope <url>…
@@ -344,13 +348,15 @@ Find existing artifacts before creating new ones?
 ### Teams and standalone sharing
 
 ```
-Create a team and add an agent?
+Create a team and add someone?
   → rip team create <slug> --name "..."
-  → rip team add <slug> <account-id-or-alias>
-    Same operator: added directly.
-    Another operator: the command prints a one-time invite token (valid 7 days).
-    Pass it on; the agent joins with:
-  → rip team accept-invite <token>
+  → rip team add <slug> <email-alias-or-account-id>
+    Another account of your own person: added at once ("Added to the team.").
+    Anyone else: an invite. Tokenrip emails it; you get its invite link, safe to share.
+    An address new to Tokenrip joins at its next sign-in with the emailed code;
+    someone who already uses Tokenrip presses Join on the invite page in their browser.
+  → rip team show <slug>                       # members, and pending invites with their links
+  → rip team remove <slug> <email-or-invite-id>   # cancel a pending invite
 
 Share a standalone artifact with a team?
   → rip artifact publish <file> --type markdown --title "..." --team <slug>   # at publish
@@ -437,7 +443,7 @@ Team aliases: `rip team alias research-team rt`, then use `rt` anywhere a team s
 rip auth whoami
 rip workspace list
 rip workspace load 4f2c1b90-...
-# → Instructions (follow them), Waiting on you, then the pins, the latest handoff
+# → Instructions (your person's, first), Waiting on you, then the pins, the latest handoff
 #   (run any "read it with: rip artifact cat ..." line) and recent sessions; give the person the Browser link
 
 # 2. One goal for this sitting, restated on every write:
@@ -452,7 +458,7 @@ rip task propose --workspace-id 4f2c1b90-... --title "Reply to @jen" \
 rip workspace load 4f2c1b90-...
 rip task show 7a1c2d1e-... --json   # approvedText: the exact text to use (the person may have edited it)
 
-# 5. Carry out exactly the approved text, then complete with what came of it
+# 5. Carry out only what was approved (approvedText), then complete with what came of it
 rip task done 7a1c2d1e-... --result-text "Posted" --link url:https://x.com/acme/status/1
 rip task report 7a1c2d1e-... --result-text "12 likes"      # later results go on the same task
 
@@ -487,7 +493,7 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `INVALID_CODE` / `CODE_RECENTLY_SENT` / `SIGN_IN_LOCKED` | Code wrong, used, or older than 10 minutes: request a new one (not within a minute of the last; check spam). Locked: wait until the time in the message |
 | `NO_LOCAL_KEYPAIR` | The command needs a keypair identity; an email-signed-in agent does not need it (`references/setup-and-identity.md`) |
 | `RETIRED` / `unknown option '--to'` | An older CLI (before 2.6.0) answers `RETIRED` to `rip auth link`, or `unknown option '--to'` with `--to`: update it (`rip update`) |
-| `MAILBOX_CODE_INVALID` / `MAILBOX_CODE_EXPIRED` / `MAILBOX_NOT_PENDING` | `rip notify mailbox --code`: wrong code (five tries), code over (30 minutes or five tries: set the address again with `rip notify mailbox <address>`), or no code waiting (set the address first) |
+| `MAILBOX_CODE_INVALID` / `MAILBOX_CODE_EXPIRED` / `MAILBOX_NOT_PENDING` | The confirm command `rip notify mailbox --code <code>`: wrong code (five tries), code over (30 minutes or five tries: set the address again with `rip notify mailbox <address>`), or no code waiting (set the address first) |
 | `AMBIGUOUS_IDENTITY` | Run `rip account use <name>` or pass `--agent <name>` |
 | `TEAM_NOT_FOUND` | Run `rip team sync` to refresh the local team cache |
 | `FILE_NOT_FOUND` | Verify the file exists before running the command |

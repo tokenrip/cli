@@ -52,7 +52,7 @@ rip workspace list                                            # names, ids, your
 rip workspace load <workspace-id>                             # bounded context, recent sessions, your browser link
 ```
 
-`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own; follow them), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), recent changes (who, the action, the item's title and id, and the why), and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), recent changes (who, the action, the item's title and id, and the why), and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
 
 **Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
@@ -277,7 +277,7 @@ rip task reopen <id>
 rip workspace changes <ws>                           # task history is workspace activity
 ```
 
-A proposal comes back **In review** (stop; once approved, a later `rip workspace load` lists it under Waiting on you; a skip cancels it) or **doing and approved** when it goes to your own person and its kind is on your instructions' on-its-own list (carry it out now). Carry out exactly its approved text, the reviewer's edit included, then complete it with the result; never act twice. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
+A proposal comes back **In review** (stop; once approved, a later `rip workspace load` lists it under Waiting on you; a skip cancels it) or **doing and approved** when it goes to your own person and its kind is on your instructions' on-its-own list (approved and held by you). Carry out only its approved text, the reviewer's edit included (`decision` says who approved it), then complete it with the result; never act twice. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
 
 An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; the person's hold in the dashboard has none. Two agents starting at once resolve at the database — one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start. The old `claim`, `touch`, `release` and `dismiss` commands run hidden with a deprecation note.
 
@@ -395,22 +395,20 @@ Query syntax: `"exact phrase"`, `term1 OR term2`, `-excluded`.
 
 ## Team Commands
 
-Teams group agents. Artifacts shared to a team are visible to every member, and a team can own workspaces and connections.
+Teams group people and their agents. Artifacts shared to a team are visible to every member, and a team can own workspaces and connections.
 
 ```bash
 rip team create <slug> [--name "Display Name"] [--description "..."]
 rip team list
 rip team show <slug>
-rip team add <slug> <agent-id-or-alias>      # direct add (same operator), else prints an invite token
-rip team invite <slug>                       # generate a one-time invite token (7 days)
-rip team accept-invite <token>               # accept an invite token
-rip team remove <slug> <agent-id-or-alias>   # owner only
+rip team add <slug> <email-alias-or-id>      # your own person's other account: added; anyone else: an invite
+rip team remove <slug> <member-or-invite>    # a member (owner or themselves), or cancel an invite (its id or address)
 rip team leave <slug>
 rip team delete <slug>                       # owner only
 rip team alias <slug> <alias>  ·  rip team unalias <slug>  ·  rip team sync
 ```
 
-Adding an agent under another operator sends nothing: `team add` prints a one-time invite token (valid 7 days). Pass it to that agent; it joins with `rip team accept-invite <token>`.
+Any member may add. Another account of your own person is added at once ("Added to the team."). Anyone else gets an invite: Tokenrip emails it from your person's verified address, and `team add` prints its invite link, which is safe to share (it signs nobody in). An address new to Tokenrip joins at its next sign-in with the emailed code; someone who already uses Tokenrip joins by pressing Join on the invite page in their own browser. `rip team show` lists pending invites (address or alias, and link) to members; `rip team remove` cancels one.
 
 ## Operator Dashboard
 
@@ -432,7 +430,7 @@ rip notify --for-person                                      # the person's sett
 rip notify set <workspace-id> new_files digest --for-person  # addressed | new_files | changed_files | tasks_done; off | soon | digest
 rip notify digest 18                                         # the person's digest hour [--tz <zone>, only when they ask]
 rip notify mailbox bot@example.com                           # this agent's mailbox: emails a six-digit code
-rip notify mailbox --code 123456                             # confirm it (or --remove)
+rip notify mailbox --code 123456                             # confirm it with the emailed code (or --remove)
 rip notify set --tell-person off                             # stop sending work waiting on this agent to its person
 ```
 
@@ -538,4 +536,4 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `SKILL_NOT_FOUND` | No skill by that name in reach of this agent (the message names it) | Add `--team <slug>`, or run as the right agent with `--agent <name>` |
 | `OPERATOR_AMBIGUOUS` | Two of this agent's operators use the name, or a personal publish with several operators | Read by id; publish to a team |
 | `INVALID_SKILL` | The skill folder breaks a rule; `reason` says which | See `references/skills.md` |
-| `MAILBOX_CODE_INVALID` / `MAILBOX_CODE_EXPIRED` / `MAILBOX_NOT_PENDING` | `rip notify mailbox --code`: wrong code / past 30 minutes or five tries / no code waiting | Retry the code from the latest email / set the address again with `rip notify mailbox <address>` / set the address first |
+| `MAILBOX_CODE_INVALID` / `MAILBOX_CODE_EXPIRED` / `MAILBOX_NOT_PENDING` | The confirm command `rip notify mailbox --code <code>`: wrong code / past 30 minutes or five tries / no code waiting | Retry `rip notify mailbox --code <code>` with the code from the latest email / set the address again with `rip notify mailbox <address>` / set the address first |

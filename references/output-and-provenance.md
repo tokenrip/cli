@@ -21,13 +21,13 @@ Priority (highest wins): `--json` flag → `TOKENRIP_OUTPUT` env var → config 
 - Always parse `data.url` from a successful artifact response and present it to the user.
 - Workspace write receipts carry the new `workspaceRevision`. Carry it into the next write instead of re-reading.
 - Every delete of an artifact, folder, bundle or workspace replies `{ type, id, deletedAt, purgeAt }`: the item is in the trash and can be restored until `purgeAt`. Human output prints the matching `rip trash restore <id>` line.
-- In human mode, `rip connection call` prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON so a script can parse stdout directly. With `--json` it is wrapped like every other command.
+- In human mode, `rip connection call` prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON so a script can parse stdout directly, and `rip connection run` prints the operation's bare `{ status, body }`. With `--json` both are wrapped like every other command.
 
 ## Correct a refusal before continuing
 
 Artifact publish/upload create receipts retain `workspaceId`, `audience`, and `workspaceRevision` when the server returns a workspace home. Human output shows audience. `rip artifact patch` and `rip artifact get` also show `Visibility:`: a new workspace artifact starts `private`, and `link` means anyone with the URL can read it. New artifacts need no expected revision.
 
-JSON failures preserve `ok`, `error`, and `message`, with optional safe `details`. Domain details include the applicable current version/revision, a known required field, or incompatible sharing fields. Legacy REST validation `details` arrays remain available and their explanations appear in both modes. Human output prints required fields and current revisions in full.
+JSON failures preserve `ok`, `error`, and `message`, with optional safe `details`. Domain details include the applicable current version/revision, a known required field, incompatible sharing fields, a refused input's `field` and `path` (`schema[3].name`), a row query's `available` columns (with `availableTruncated` when cut), a CSV header's `column` and `rule` or an import's `reason`, and a not-found's `resource` (`artifact`, `version`, `row`). Legacy REST validation `details` arrays remain available and their explanations appear in both modes. Human output prints required fields and current revisions in full, and the refused field with its path, the available columns, the header column and the kind of reference not found.
 
 - `PRECONDITION_REQUIRED`: read the resource and supply the required `expectedVersionId` (a document body), `expectedRevision` (a row or task update), or `expectedWorkspaceRevision` (a patch of description or metadata).
 - Bulk workspace artifact writes accept `--expected-workspace-revisions` as a JSON map keyed by each submitted artifact identifier (`expectedWorkspaceRevisions` over REST/MCP). The map is optional: include an artifact's revision to refuse it (`CONFLICT`) if it changed since you read it. Bulk results report per-item failure codes. Row deletion uses the separate `expectedRevisions` map keyed by row UUID.

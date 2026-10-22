@@ -215,6 +215,14 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         reviewer?: unknown;
         /** `TASK_NOT_IN_REVIEW`: who decided it. */
         decision?: unknown;
+        /** An input refusal's place, valid columns and CSV header (`INVALID_FIELD`, the row-query and CSV codes). */
+        path?: unknown;
+        available?: unknown;
+        availableTruncated?: unknown;
+        column?: unknown;
+        rule?: unknown;
+        /** `NOT_FOUND`: the kind of reference. */
+        resource?: unknown;
         /** A trashed refusal's dates (`DELETED`, `WORKSPACE_DELETED`). */
         data?: unknown;
         errors?: Array<{ code?: string; message?: string }>;
@@ -252,7 +260,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
           ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'decision',
-            'usedBytes', 'limitBytes', 'addedBytes', 'plan', 'billingUrl']
+            'usedBytes', 'limitBytes', 'addedBytes', 'plan', 'billingUrl', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
         });
         for (const issue of Array.isArray(safeDetails) ? safeDetails : []) {

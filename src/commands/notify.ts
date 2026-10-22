@@ -6,10 +6,11 @@ import { formatMailbox, formatNoticeSettings } from '../formatters.js';
 /**
  * `rip notify …` — who hears about workspace work by email: this agent's notification settings
  * (the default) or its person's (`--for-person`), the person's digest hour, and this agent's own
- * mailbox. Rides agent REST (`GET/PATCH /v0/notifications`, `POST /v0/notifications/mailbox`);
- * mirrors: the dashboard's Settings and Agents pages, MCP `notification_settings_get`,
- * `notification_settings_set` and `notification_mailbox`. Settings are not workspace content, so
- * none of these takes `--why`.
+ * mailbox. Rides agent REST (`GET/PATCH /v0/notifications`, `POST /v0/notifications/mailbox` and
+ * `POST /v0/notifications/mailbox/confirm`); mirrors: the dashboard's Settings and Agents pages, MCP
+ * `notification_settings_get`, `notification_settings_set` and `notification_mailbox` (MCP sets and
+ * removes the mailbox; the code is confirmed here or on the Agents page, never over MCP). Settings
+ * are not workspace content, so none of these takes `--why`.
  */
 
 /** `rip notify [--workspace-id <id>] [--for-person]` */
@@ -66,20 +67,20 @@ export async function notifyDigest(hour: string, options: { tz?: string }): Prom
 
 /**
  * `rip notify mailbox <address> | --code <code> | --remove` — set this agent's mailbox (Tokenrip
- * emails it a six-digit code), confirm it with that code, or clear it.
+ * emails it a six-digit code; `POST /v0/notifications/mailbox`), confirm it with that code
+ * (`POST /v0/notifications/mailbox/confirm`), or clear it (`POST /v0/notifications/mailbox`).
  */
 export async function notifyMailbox(address: string | undefined, options: { code?: string; remove?: boolean }): Promise<void> {
   const given = [address !== undefined, options.code !== undefined, options.remove === true].filter(Boolean).length;
   if (given !== 1) {
     throw new CliError('INVALID_ARGUMENT', 'Give exactly one: an address (rip notify mailbox <address>), --code <code>, or --remove.');
   }
-  let body: Record<string, unknown>;
-  if (address !== undefined) body = { address };
-  else if (options.code !== undefined) body = { code: options.code };
-  else body = { remove: true };
+  const [route, body] = options.code !== undefined
+    ? ['/v0/notifications/mailbox/confirm', { code: options.code }]
+    : ['/v0/notifications/mailbox', address !== undefined ? { address } : { remove: true }];
   const { client } = requireAuthClient();
   try {
-    const { data } = await client.post('/v0/notifications/mailbox', body);
+    const { data } = await client.post(route, body);
     outputSuccess(data.data, formatMailbox);
   } catch (err) {
     // The general hints point at sign-in or `rip operator-link`; the person can simply set it.

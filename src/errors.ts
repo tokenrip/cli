@@ -47,6 +47,16 @@ export interface DomainErrorDetails {
   usedBytes?: number;
   limitBytes?: number;
   addedBytes?: number;
+  /** An input refusal ({@link INPUT_REFUSAL_CODES}): the place below `field` the rule broke (`schema[3].name`). */
+  path?: string;
+  /** A row-query refusal: the columns valid for `field` (`sort_by`, `filter` or `fields`), and whether the list was cut. */
+  available?: string[];
+  availableTruncated?: true;
+  /** `INVALID_SCHEMA` on a CSV header: its 1-based column and which rule it broke. */
+  column?: number;
+  rule?: string;
+  /** `NOT_FOUND`: which kind of reference named nothing the caller can read. */
+  resource?: string;
 }
 /** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
 export interface TaskPrincipalDetails {
@@ -115,6 +125,47 @@ const SKILL_INVALID_REASONS: ReadonlySet<string> = new Set([
   'duplicate_path', 'encoding', 'file_count', 'total_size', 'unknown_removal',
 ]);
 
+/**
+ * The refusals that name the input they refuse (agent refusals plan M8): the contract's `INVALID_FIELD`,
+ * the row-query codes and the CSV codes. Only these carry `field`, `path`, `available`, `column`,
+ * `rule` and the CSV `reason`.
+ */
+export const INPUT_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  'INVALID_FIELD', 'INVALID_SORT_COLUMN', 'INVALID_FILTER_COLUMN', 'INVALID_SCHEMA', 'INVALID_CSV',
+]);
+/** The server's CSV header rules (`csvColumnRefusal`, apps/backend/src/api/service/csv-parser.ts). */
+const CSV_COLUMN_RULES: ReadonlySet<string> = new Set(['column_name', 'duplicate_column']);
+/** The server's `INVALID_CSV` reasons (apps/backend/src/api/service/csv-parser.ts). */
+const CSV_REASONS: ReadonlySet<string> = new Set(['unbalanced_quote']);
+/** The server's `NOT_FOUND_RESOURCES` (apps/backend/src/execution/failure.ts). */
+const NOT_FOUND_RESOURCES: ReadonlySet<string> = new Set([
+  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection',
+]);
+/** The server's `ROW_QUERY_AVAILABLE_MAX` and `TABLE_COLUMN_NAME_MAX` (apps/backend/src/db/models/table-schema.ts). */
+const AVAILABLE_MAX = 259;
+const COLUMN_NAME_MAX = 256;
+/** At most `max` characters counted as code points, as the server's `withinCharacters` counts a column name. */
+function withinCharacters(text: string, max: number): boolean {
+  return text.length <= max || (text.length <= 2 * max && [...text].length <= max);
+}
+
+/** An input refusal's details, field by field: each copied when valid, dropped when malformed. */
+function inputRefusalDetails(body: Record<string, unknown>): DomainErrorDetails {
+  const details: DomainErrorDetails = {};
+  if (shortString(body.field)) details.field = body.field;
+  if (shortString(body.path)) details.path = body.path;
+  const { available } = body;
+  if (Array.isArray(available) && available.length <= AVAILABLE_MAX
+    && available.every((name) => typeof name === 'string' && withinCharacters(name, COLUMN_NAME_MAX))) {
+    details.available = available as string[];
+    if (body.availableTruncated === true) details.availableTruncated = true;
+  }
+  if (typeof body.column === 'number' && Number.isSafeInteger(body.column) && body.column > 0) details.column = body.column;
+  if (typeof body.rule === 'string' && CSV_COLUMN_RULES.has(body.rule)) details.rule = body.rule;
+  if (typeof body.reason === 'string' && CSV_REASONS.has(body.reason)) details.reason = body.reason;
+  return details;
+}
+
 /** The server owns refusal codes; only curated correction metadata is copied. */
 export function safeErrorDetails(code: string, value: unknown): DomainErrorDetails | ValidationDetail[] | undefined {
   if (Array.isArray(value)) {
@@ -144,6 +195,8 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     const fields = [...new Set(body.fields.filter((field): field is string => typeof field === 'string' && allowed.includes(field)))].slice(0, 8);
     if (fields.length) details.fields = fields;
   } else if (code === 'INVALID_SKILL' && typeof body.reason === 'string' && SKILL_INVALID_REASONS.has(body.reason)) details.reason = body.reason;
+  else if (INPUT_REFUSAL_CODES.has(code)) Object.assign(details, inputRefusalDetails(body));
+  else if (code === 'NOT_FOUND' && typeof body.resource === 'string' && NOT_FOUND_RESOURCES.has(body.resource)) details.resource = body.resource;
   else if (code === 'DELETED' || code === 'WORKSPACE_DELETED') Object.assign(details, trashedDetails(body));
   else if (code === 'TASK_TAKEN') {
     const holder = taskHolderDetails(body.holder);

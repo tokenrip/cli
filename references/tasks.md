@@ -10,10 +10,10 @@ A **task** is one piece of work in a workspace. It keeps the ask, the draft, the
 
 ### The protocol
 
-1. **Load the workspace first; your instructions come first.** `rip workspace load` opens with what your person wrote for you here. Follow the text; its on-its-own list is applied for you when you propose.
+1. **Load the workspace first; your instructions come first.** `rip workspace load` opens with what your person wrote for you here; its on-its-own list is applied for you when you propose.
 2. **Before acting outside the workspace** (post, send, publish, book), **propose** it: a title, the exact draft, the approve verb, a kind, and a reviewer if it is not your own person and the task names none.
-3. The reply is **In review** (stop; it comes back to you) or **doing and approved** (your instructions allow it; carry it out now).
-4. **Carry out exactly the approved text**, the reviewer's edit included, then complete with the result. If it fails, propose again with what went wrong, or cancel with the reason. Check that you have not already done it before acting.
+3. The reply is **In review** (stop; it comes back to you) or **doing and approved** (your instructions allow it; it is approved and held by you).
+4. **Carry out only what was approved**: the approved text, the reviewer's edit included (`decision` says who approved it); then complete with the result. If it fails, propose again with what went wrong, or cancel with the reason. Check that you have not already done it before acting.
 5. **Report** work worth knowing that needed no approval; later results go on the same task.
 6. Every run, **what's waiting on you comes first**: approved tasks to carry out, reviews addressed to you, tasks for you.
 
@@ -74,7 +74,7 @@ rip task propose <id> --draft "Thanks Jen, we ship Thursday!"     # on a task th
 - **On an existing task** it works from To do or Doing when the task is free or held by you, and on your own proposal In review, whose draft and verb it replaces. The hold is cleared and you become the assignee. It sets `--kind` only on a task with none (another kind is `INVALID_FIELD`); the title, parent and audience never change. Another agent's proposal is `TASK_IN_REVIEW`.
 - **Who reviews it.** The task's reviewer when one is set (naming a different one is `INVALID_REVIEWER`), else your `--reviewer`, else your own person. Never you.
 - **The reply.** Usually `status: review` (In review): stop. Do not act, and do not ask in the chat; the person decides in the dashboard. An approved proposal comes back under Waiting on you on a later load; a skipped one is Cancelled, with the reviewer's reason (`rip task show <id>`). A re-proposal bumps the revision, so a decision made on the old draft is refused `CONFLICT`.
-- **On its own.** When the proposal goes to your own person and its kind is on your instructions' on-its-own list, it comes back `status: doing`, approved (`decision.byInstructions` names the instructions version) and held by you under a lease: carry it out now. That holds only when your own account gave the task its kind: your own new proposals, tasks your person (or another of their agents) wrote with that kind, and kinds you set on a task that had none. A kind someone else gave a task never approves it on its own.
+- **On its own.** When the proposal goes to your own person and its kind is on your instructions' on-its-own list, it comes back `status: doing`, approved (`decision.byInstructions` names the instructions version) and held by you under a lease. That holds only when your own account gave the task its kind: your own new proposals, tasks your person (or another of their agents) wrote with that kind, and kinds you set on a task that had none. A kind someone else gave a task never approves it on its own.
 - **Limits.** At most 200 of your proposals In review per workspace (`TOO_MANY_PROPOSALS`); a task holds at most 100 children.
 - **Withdraw** your own proposal with `rip task cancel <id> --reason "…"`. Its proposer, the proposer's person or whoever decides it may; anyone else gets `REVIEW_NOT_YOURS`.
 
@@ -87,7 +87,7 @@ rip task show <id> --json        # data.approvedText: the exact characters to us
 rip task done <id> --result-text "4 likes" --link url:https://x.com/acme/status/1
 ```
 
-- Carry out exactly `approvedText`: not your draft, not a rewording. Take it from `--json`: the human output indents each line and does not show trailing whitespace. Before acting, check you have not already done it (a retry after a timeout must not post twice).
+- What was approved is `approvedText`, character for character: not your draft when the reviewer edited it, and not a rewording. Take it from `--json`: the human output indents each line and does not show trailing whitespace. Before acting, check you have not already done it (a retry after a timeout must not post twice).
 - If it fails, propose again on the same task with what went wrong (`rip task propose <id> --draft …`), or cancel it with the reason.
 - An approval is spent once used: reopening a Done task clears the decision.
 
@@ -123,7 +123,7 @@ Then `Waiting on you (<n>):` lists, in this order, up to 20 tasks for exactly th
 
 | Reason | Means | Next |
 |---|---|---|
-| `carry out` | approved, for you | `rip task show <id>`, carry out exactly its approved text, `rip task done <id> --result-text "…"` |
+| `carry out` | approved, for you | `rip task show <id>` (the approved text and who approved it), carry out only that, `rip task done <id> --result-text "…"` |
 | `decide` | a review addressed to you | `rip task decide <id> --approve\|--skip --expected-revision <n>` |
 | `do` | To do, for you, nothing decided | start it, or propose it if it acts outside the workspace |
 

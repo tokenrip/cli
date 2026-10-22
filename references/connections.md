@@ -1,10 +1,10 @@
 # Connections and credentials
 
-A **Connection** turns Tokenrip into a general **API / inference router**: a named place (base URL, rules, default headers) where you, or any current member of the owning team, call an upstream by name through `rip connection call` (MCP `connection_call`). The key it sends lives in a **credential**: encrypted on the server, injected **server-side** on every call, and never shown to the caller. One credential can serve many connections, and rotating it reaches all of them. Return to [SKILL.md](../SKILL.md) for decision trees and workflows. For the full model (proxy safeguards, SSRF defense, failure codes, REST endpoints) read `docs/architecture/connections.md`.
+A **Connection** turns Tokenrip into a general **API / inference router**: a named place (base URL, rules, default headers) where you, or any current member of the owning team, call an upstream through `rip connection call` (REST `POST /v0/connections/call`; this generic call is never an MCP tool). Calls saved on a connection as named **operations** run by name with `rip connection run`, and every agent that may call the connection, on a chat host too, sees each one as its own MCP tool (see [Operations](#operations--named-calls-and-the-tools-chat-hosts-see)). The key it sends lives in a **credential**: encrypted on the server, injected **server-side** on every call, and never shown to the caller. One credential can serve many connections, and rotating it reaches all of them. Return to [SKILL.md](../SKILL.md) for decision trees and workflows. For the full model (proxy safeguards, SSRF defense, failure codes, REST endpoints) read `docs/architecture/connections.md`.
 
 ## Why a Connection instead of a per-service tool
 
-Point one Connection at any provider whose key you hold and the caller supplies only `--method` + `--path` (+ body). No backend change per integration. The key stays encrypted at rest and is injected on every call, so a shared key can be *used* by people who never *see* it — the basis for team-owned connections and credentials.
+Point one Connection at any provider whose key you hold and the caller supplies only `--method` + `--path` (+ body). No backend change per integration. To reach the same provider from a chat host, save the calls agents need as operations: each is a tool with a fixed path, which the chat directories accept where they reject a tool that takes any method and path. The key stays encrypted at rest and is injected on every call, so a shared key can be *used* by people who never *see* it — the basis for team-owned connections and credentials.
 
 ## Ownership: personal vs team
 
@@ -148,6 +148,59 @@ rip connection call --team quintel --connection minimax \
 ```
 
 The x-api-key auth and the `anthropic-version` header are added server-side. **Output in human mode is the bare upstream response** `{ status, headers, body, bodyIsJson, latencyMs }` printed as JSON on stdout — so a skill can `JSON.parse(stdout)` directly. `--json` wraps that same object in the standard `{ ok, data }` envelope. Non-streaming responses only; a 30s timeout and a 5MB response cap apply.
+
+## Operations — named calls, and the tools chat hosts see
+
+An **operation** is one call saved on a connection under a name: a fixed method and path, a described input, and what it changes at the provider. Every agent that may call the connection can run it by name here, and on MCP sees it as its own tool named `<connection>_<operation>` (a team's: `<team>_<connection>_<operation>`, lowercased, `-` as `_`), for example `quintel_posthog_query`. Declaring, changing and removing take the connection's write right (its personal owner, or a team connection's creator or the team owner); any member may list and read them, and run them unless the credential is restricted to named members they are not among. The person can do the same from the connection's Operations section on the dashboard. MCP has no tool to declare one.
+
+```bash
+# Declare: POST to PostHog's query endpoint, the agent supplies only the query text
+rip connection operation add posthog --team quintel --name query \
+  --title 'Query PostHog' --description 'Runs a HogQL query and returns the result rows.' \
+  --method POST --path /api/projects/434992/query/ \
+  --input-schema '{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}' \
+  --fixed-body '{"query":{"kind":"HogQLQuery"}}' --place query=/query/query --response /results
+
+# An operation that changes something at the provider says so (here: Write)
+rip connection operation add minimax-image --team quintel --name generate \
+  --title 'Generate an image' --description 'Generates an image from a prompt and returns its URLs.' \
+  --method POST --path /v1/image_generation \
+  --input-schema '{"type":"object","properties":{"prompt":{"type":"string"}},"required":["prompt"]}' \
+  --fixed-body '{"model":"image-01","response_format":"url"}' --response /data/image_urls --kind adds
+
+rip connection operation list posthog --team quintel          # each with its toolName and class
+rip connection operation get posthog query --team quintel
+rip connection operation update posthog query --team quintel --title 'Query PostHog with HogQL'
+rip connection operation update minimax-image generate --team quintel --no-kind   # now a read
+rip connection operation rm posthog query --team quintel      # the tool leaves every agent's list
+```
+
+| Flag (`add`; all optional on `update`) | Meaning |
+|---|---|
+| `--name <name>` | Lowercase letters, digits and `_`, starting with a letter, at most 40; unique on the connection |
+| `--title`, `--description` | What hosts show in approval prompts (≤ 60 characters) and what the call does and returns (≤ 1,000) |
+| `--method`, `--path` | Fixed, under the base URL, and inside the connection's rules (`INVALID_OPERATION` `outside_rules` otherwise). A fixed query string is allowed; no path placeholders |
+| `--input-schema <json>` / `--input-schema-file <path>` | A JSON Schema object: fields of type `string`, `number`, `integer`, `boolean`, `array`, `object`, with `description`, `enum` and bounds; no `pattern`. At most 32 fields at the root and 4 levels below. Every object refuses unknown keys. A field whose name says it holds a secret (`api_key`, `token`, `password`, `secret`, `session`, `code`, `otp` and the like) is refused; `why` is reserved |
+| `--fixed-body <json>` | POST/PUT/PATCH: the body the inputs are placed into (≤ 16 KiB stored, as the schema) |
+| `--place <field=/pointer>` | Repeatable: where an input goes in the body; a field without one goes to the top level under its own name. GET and DELETE send inputs as query parameters instead |
+| `--response </pointer>` | The part of the provider's JSON answer to return; the whole answer by default |
+| `--kind <kind>` | Repeatable: `adds`, `modifies`, `destroys`, `widens`, `publishes`, `sends`. None means it only reads |
+| `--no-fixed-body`, `--no-place`, `--no-response`, `--no-kind` | `update` only: clear that part (`--no-kind` makes it a read) |
+
+**The class follows from the kinds**, and hosts use it to decide when to ask the person: none is **Read**; `adds`, `modifies` or `publishes` is **Write** (a change at the outside service); `destroys`, `widens` or `sends` is **Sensitive** (cannot be undone; hosts ask every time). The kinds are the declarer's honest statement: declare what the call does at the provider. Spending money is not a kind.
+
+**Run one by name:**
+
+```bash
+rip connection run posthog query --team quintel --input '{"query":"select count() from events"}'
+rip connection run minimax-image generate --team quintel --input-file ./prompt.json
+```
+
+The input is checked against the schema first (`400 INVALID_FIELD` on `input.<field>`, nothing sent), then the call goes through the connection's rules, limits and key injection like any other. Human mode prints the bare `{ status, body }` as JSON (`status` the provider's, inside a 200; `body` the part `--response` selects); `--json` wraps it in `{ ok, data }`. REST: `POST /v0/connections/:connection/operations/:operation/call` `{ team?, input? }`. Up to 5 MB; nothing from the answer is stored, and the audit names the operation.
+
+**On MCP.** A host sees a new, changed or removed operation on its next tool list (a reconnect, a refresh of the connector's tools or a new conversation, by host); Tokenrip sends no notice. A tool answers `{ status, body }` within about 31 KiB (larger is `RESPONSE_TOO_LARGE`: narrow the query or the response pointer); a provider error is `UPSTREAM_STATUS` with the status and the start of its answer. A writing operation also takes `why`. Agents without the `connections:execute` scope, or not named on a restricted credential, see none of these tools, and a disabled connection's operations are hidden.
+
+**Keeping them callable.** Changing the connection's base URL or rules so an operation falls outside them, renaming it so a tool name breaks, or giving it a default query key that a GET or DELETE operation's input already uses, is refused with `409 OPERATIONS_WOULD_BREAK` naming the operations: change or remove them first. Refusals on declare: `400 INVALID_OPERATION` with a `reason` (and `field`), `409 OPERATION_NAME_TAKEN` (on the connection, or the tool name among the owner's operations), `404 OPERATION_NOT_FOUND`.
 
 ## Related
 

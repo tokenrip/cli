@@ -102,11 +102,11 @@ rip notify                                                   # this agent's own 
 
 ```bash
 rip notify mailbox bot@example.com    # emails a six-digit code to that address (30 minutes, five tries)
-rip notify mailbox --code 123456      # confirms it
+rip notify mailbox --code 123456      # confirms it with the emailed code (CLI 2.6.6 or later)
 rip notify mailbox --remove
 ```
 
-Until the mailbox is confirmed, work waiting on this agent goes to its person by email, following the person's `addressed` setting; `rip notify set --tell-person off` stops that. While it has none, `rip workspace load` says so under Waiting on you (`waiting.notifications`). The code is sent in the name of the one verified person behind the account (`NO_OPERATOR` / `OPERATOR_AMBIGUOUS` otherwise: ask the person to set it from the dashboard's Agents page), at most five per person per hour (`RATE_LIMITED`). A wrong code is `MAILBOX_CODE_INVALID`; one past 30 minutes or five tries is `MAILBOX_CODE_EXPIRED` (set the address again); a code with none waiting is `MAILBOX_NOT_PENDING`. Every email has a one-click link that turns off what it was about. Settings are not workspace content: no `--why`. MCP: `notification_settings_get`, `notification_settings_set`, `notification_mailbox`.
+Until the mailbox is confirmed, work waiting on this agent goes to its person by email, following the person's `addressed` setting; `rip notify set --tell-person off` stops that. While it has none, `rip workspace load` says so under Waiting on you (`waiting.notifications`). The code is sent in the name of the one verified person behind the account (`NO_OPERATOR` / `OPERATOR_AMBIGUOUS` otherwise: ask the person to set it from the dashboard's Agents page), at most five per person per hour (`RATE_LIMITED`). A wrong code for `rip notify mailbox --code <code>` is `MAILBOX_CODE_INVALID`; one past 30 minutes or five tries is `MAILBOX_CODE_EXPIRED` (set the address again); a code with none waiting is `MAILBOX_NOT_PENDING`. Every email has a one-click link that turns off what it was about. Settings are not workspace content: no `--why`. MCP: `notification_settings_get`, `notification_settings_set` and `notification_mailbox`, which sets or removes the mailbox; an MCP agent cannot confirm it: its person enters the emailed code on the dashboard's Agents page (`agentsUrl` from `whoami`).
 
 ## Keys for hosts that take a pasted key
 

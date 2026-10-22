@@ -1,9 +1,12 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { CliError } from '../errors.js';
 import { resolveTeam } from '../teams.js';
-import { formatConnection, formatConnectionList } from '../formatters.js';
+import {
+  formatConnection, formatConnectionList, formatConnectionOperation, formatConnectionOperationList,
+} from '../formatters.js';
 
 export interface ConnectionSecretOptions {
   secret?: string;
@@ -146,6 +149,27 @@ export interface ConnectionCallOptions {
   header?: string[];
 }
 
+/** A JSON flag's value, or `INVALID_JSON` naming the flag. */
+function parseJson(text: string, flag: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new CliError('INVALID_JSON', `${flag} is not valid JSON.`);
+  }
+}
+
+/** JSON given inline (`--<flag>`) or in a file (`--<flag>-file`), at most one of the two. */
+function jsonFrom(inline: string | undefined, file: string | undefined, flag: string): unknown {
+  if (inline !== undefined && file !== undefined) {
+    throw new CliError('INVALID_ARGS', `Give --${flag} or --${flag}-file, not both.`);
+  }
+  if (inline !== undefined) return parseJson(inline, `--${flag}`);
+  if (file === undefined) return undefined;
+  const absPath = path.resolve(file);
+  if (!fs.existsSync(absPath)) throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
+  return parseJson(fs.readFileSync(absPath, 'utf8'), `--${flag}-file`);
+}
+
 export async function connectionCall(options: ConnectionCallOptions): Promise<void> {
   const { client } = requireAuthClient();
   const payload: Record<string, unknown> = {
@@ -153,20 +177,8 @@ export async function connectionCall(options: ConnectionCallOptions): Promise<vo
     method: options.method.toUpperCase(),
     path: options.path,
   };
-  if (options.body !== undefined) {
-    try {
-      payload.body = JSON.parse(options.body);
-    } catch {
-      throw new CliError('INVALID_JSON', '--body is not valid JSON.');
-    }
-  }
-  if (options.query !== undefined) {
-    try {
-      payload.query = JSON.parse(options.query);
-    } catch {
-      throw new CliError('INVALID_JSON', '--query is not valid JSON.');
-    }
-  }
+  if (options.body !== undefined) payload.body = parseJson(options.body, '--body');
+  if (options.query !== undefined) payload.query = parseJson(options.query, '--query');
   const headers = parseKvList(options.header, '--header');
   if (headers) payload.headers = headers;
   if (options.team) payload.team = resolveTeam(options.team);
@@ -174,5 +186,117 @@ export async function connectionCall(options: ConnectionCallOptions): Promise<vo
   // Emit the upstream { status, headers, body, bodyIsJson, latencyMs } as bare
   // JSON in human mode so a skill can `JSON.parse(stdout)`; --json wraps it in
   // the standard { ok, data } envelope.
+  outputSuccess(data.data, (d) => JSON.stringify(d));
+}
+
+// ── Operations: a connection's named calls (connection operations design §5.8) ──
+
+/**
+ * The declaration's flags. On `update` each is optional, and the `--no-*` forms arrive as `false`:
+ * they clear the fixed body, the placements or the response pointer, and `--no-kind` sets no kinds.
+ */
+export interface ConnectionOperationOptions {
+  team?: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  method?: string;
+  path?: string;
+  inputSchema?: string;
+  inputSchemaFile?: string;
+  fixedBody?: string | false;
+  place?: string[] | false;
+  response?: string | false;
+  kind?: string[] | false;
+}
+
+function operationsPath(connection: string, operation?: string): string {
+  const base = `${connectionPath(connection)}/operations`;
+  return operation === undefined ? base : `${base}/${encodeURIComponent(operation)}`;
+}
+
+/** The body fields the given flags name, in the contract's names (`connectionOperation.create` / `.update`). */
+function operationFields(o: ConnectionOperationOptions): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (o.name !== undefined) body.name = o.name;
+  if (o.title !== undefined) body.title = o.title;
+  if (o.description !== undefined) body.description = o.description;
+  if (o.method !== undefined) body.method = o.method.toUpperCase();
+  if (o.path !== undefined) body.path = o.path;
+  const inputSchema = jsonFrom(o.inputSchema, o.inputSchemaFile, 'input-schema');
+  if (inputSchema !== undefined) body.inputSchema = inputSchema;
+  if (o.fixedBody === false) body.fixedBody = null;
+  else if (o.fixedBody !== undefined) body.fixedBody = parseJson(o.fixedBody, '--fixed-body');
+  if (o.place === false) body.placements = null;
+  else {
+    const placements = parseKvList(o.place, '--place');
+    if (placements) body.placements = placements;
+  }
+  if (o.response === false) body.responsePointer = null;
+  else if (o.response !== undefined) body.responsePointer = o.response;
+  if (o.kind === false) body.kinds = [];
+  else if (o.kind && o.kind.length) body.kinds = o.kind;
+  return body;
+}
+
+/** Declare an operation on a connection (its writer: the personal owner, or a team connection's creator or the team owner). */
+export async function connectionOperationAdd(connection: string, options: ConnectionOperationOptions): Promise<void> {
+  const body = operationFields(options);
+  const { client } = requireAuthClient();
+  const { data } = await client.post(operationsPath(connection), { ...teamField(options.team), ...body });
+  outputSuccess(data.data, formatConnectionOperation);
+}
+
+export async function connectionOperationList(connection: string, options: { team?: string }): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.get(operationsPath(connection), { params: teamField(options.team) });
+  outputSuccess(data.data, formatConnectionOperationList);
+}
+
+export async function connectionOperationGet(connection: string, operation: string, options: { team?: string }): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.get(operationsPath(connection, operation), { params: teamField(options.team) });
+  outputSuccess(data.data, formatConnectionOperation);
+}
+
+/** Change an operation; the server judges the result whole. */
+export async function connectionOperationUpdate(
+  connection: string,
+  operation: string,
+  options: ConnectionOperationOptions,
+): Promise<void> {
+  const body = operationFields(options);
+  if (Object.keys(body).length === 0) {
+    throw new CliError(
+      'MISSING_OPTION',
+      'Provide at least one option to update (--name, --title, --description, --method, --path, --input-schema, --fixed-body, --place, --response, --kind, or a --no-* form).',
+    );
+  }
+  const { client } = requireAuthClient();
+  const { data } = await client.patch(operationsPath(connection, operation), { ...teamField(options.team), ...body });
+  outputSuccess(data.data, formatConnectionOperation);
+}
+
+export async function connectionOperationRemove(connection: string, operation: string, options: { team?: string }): Promise<void> {
+  const { client } = requireAuthClient();
+  const body = teamField(options.team);
+  await client.delete(operationsPath(connection, operation), Object.keys(body).length ? { data: body } : {});
+  // The references as given, as `connection rm` echoes them.
+  outputSuccess({ connection, operation, message: `Operation ${operation} removed from ${connection}` });
+}
+
+/** Call an operation by name with its input (`--input` or `--input-file`); the server checks the input against its schema. */
+export async function connectionRun(
+  connection: string,
+  operation: string,
+  options: { team?: string; input?: string; inputFile?: string },
+): Promise<void> {
+  const input = jsonFrom(options.input, options.inputFile, 'input');
+  const { client } = requireAuthClient();
+  const payload: Record<string, unknown> = { ...teamField(options.team) };
+  if (input !== undefined) payload.input = input;
+  const { data } = await client.post(`${operationsPath(connection, operation)}/call`, payload);
+  // `{ status, body }` as bare JSON in human mode, as `connection call` prints, so a skill can
+  // `JSON.parse(stdout)`; --json wraps it in the standard { ok, data } envelope.
   outputSuccess(data.data, (d) => JSON.stringify(d));
 }

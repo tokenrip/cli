@@ -1,6 +1,6 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { formatTeamCreated, formatTeamList, formatTeamDetails, formatTeamInvite, formatTeamMemberAdded } from '../formatters.js';
+import { formatTeamCreated, formatTeamList, formatTeamDetails, formatTeamMemberAdded } from '../formatters.js';
 import { loadTeams, saveTeams, resolveTeam, syncTeamsFromResponse, setAlias, removeAlias } from '../teams.js';
 
 export async function teamCreate(slug: string, options: { name?: string; description?: string }): Promise<void> {
@@ -37,26 +37,23 @@ export async function teamShow(slugOrId: string): Promise<void> {
   outputSuccess(data.data, formatTeamDetails);
 }
 
-export async function teamAdd(slugOrId: string, agentIdOrAlias: string): Promise<void> {
+/**
+ * `rip team add <team> <member>` — an email address, an alias or an account id. Another account of
+ * the caller's own person is added at once (`{ status: 'member' }`); anyone else gets an invite
+ * (`{ status: 'invited', inviteUrl }`).
+ */
+export async function teamAdd(slugOrId: string, member: string): Promise<void> {
   const resolved = resolveTeam(slugOrId);
   const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/teams/${encodeURIComponent(resolved)}/members`, {
-    member: agentIdOrAlias,
-  });
-  outputSuccess(data.data ?? { ok: true }, formatTeamMemberAdded);
+  const { data } = await client.post(`/v0/teams/${encodeURIComponent(resolved)}/members`, { member });
+  outputSuccess(data.data, formatTeamMemberAdded(member));
 }
 
-export async function teamInvite(slugOrId: string): Promise<void> {
+/** `rip team remove <team> <member>` — a member (alias or account id), or a pending invite (its id or email address). */
+export async function teamRemove(slugOrId: string, member: string): Promise<void> {
   const resolved = resolveTeam(slugOrId);
   const { client } = requireAuthClient();
-  const { data } = await client.post(`/v0/teams/${encodeURIComponent(resolved)}/invite`);
-  outputSuccess(data.data, formatTeamInvite);
-}
-
-export async function teamRemove(slugOrId: string, agentIdOrAlias: string): Promise<void> {
-  const resolved = resolveTeam(slugOrId);
-  const { client } = requireAuthClient();
-  await client.delete(`/v0/teams/${encodeURIComponent(resolved)}/members/${encodeURIComponent(agentIdOrAlias)}`);
+  await client.delete(`/v0/teams/${encodeURIComponent(resolved)}/members/${encodeURIComponent(member)}`);
   outputSuccess({ ok: true });
 }
 
@@ -78,24 +75,6 @@ export async function teamDelete(slugOrId: string): Promise<void> {
   delete teams[resolved];
   saveTeams(teams);
   outputSuccess({ ok: true });
-}
-
-export async function teamAcceptInvite(token: string): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/teams/accept-invite', { token });
-  const team = data.data;
-  if (team?.slug) {
-    const teams = loadTeams();
-    teams[team.slug] = {
-      id: team.id,
-      name: team.name,
-      slug: team.slug,
-      role: 'member',
-      syncedAt: new Date().toISOString(),
-    };
-    saveTeams(teams);
-  }
-  outputSuccess(team ?? { ok: true });
 }
 
 export async function teamAlias(slug: string, alias: string): Promise<void> {
