@@ -60,6 +60,15 @@ export interface DomainErrorDetails {
   /** `MAINTENANCE`: when the pause is planned to end, and the server's `Retry-After` in seconds. */
   until?: string;
   retryAfterSeconds?: number;
+  /** `AMBIGUOUS_REFERENCE` on a workspace slug: each workspace it names, to be named by its id. */
+  candidates?: WorkspaceCandidateDetails[];
+}
+/** One workspace an ambiguous slug names (`WorkspaceService.resolveReference`), copied field by field. */
+export interface WorkspaceCandidateDetails {
+  id: string;
+  slug: string;
+  name: string;
+  home: 'personal' | { team: string };
 }
 /** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
 export interface TaskPrincipalDetails {
@@ -220,6 +229,10 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       // The payer's own refusal names its next step, and the Billing link when the step is bought there.
       if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
     }
+  } else if (code === 'AMBIGUOUS_REFERENCE') {
+    // Trash restore's ambiguity names no candidates; a workspace slug's does.
+    const candidates = workspaceCandidateDetails(body.candidates);
+    if (candidates.length) details.candidates = candidates;
   } else if (code === 'MAINTENANCE') {
     if (typeof body.until === 'string' && ISO_DATE.test(body.until)) details.until = body.until;
     if (count(body.retryAfterSeconds)) details.retryAfterSeconds = body.retryAfterSeconds;
@@ -318,6 +331,28 @@ function taskHolderDetails(value: unknown): TaskHolderDetails | undefined {
     inBrowser: h.inBrowser, since: h.since, leaseExpiresAt: h.leaseExpiresAt as string | null,
     mine: h.mine, heldByCaller: h.heldByCaller,
   };
+}
+
+/** The most candidates kept (the server's `CANDIDATES_MAX`, apps/backend/src/execution/failure.ts). */
+const CANDIDATES_MAX = 20;
+/** A workspace or team slug: lowercase letters, digits and hyphens, at most 64. */
+const SLUG = /^[a-z0-9-]{1,64}$/;
+const ANY_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** An ambiguity's workspace candidates, each field checked; a malformed candidate is dropped whole. */
+function workspaceCandidateDetails(value: unknown): WorkspaceCandidateDetails[] {
+  if (!Array.isArray(value)) return [];
+  const candidates: WorkspaceCandidateDetails[] = [];
+  for (const entry of value.slice(0, CANDIDATES_MAX)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const { id, slug, name, home } = entry as Record<string, unknown>;
+    if (typeof id !== 'string' || !ANY_UUID.test(id) || typeof slug !== 'string' || !SLUG.test(slug)
+      || typeof name !== 'string' || name.length > NAME_MAX) continue;
+    const team = home && typeof home === 'object' ? (home as Record<string, unknown>).team : undefined;
+    if (home === 'personal') candidates.push({ id, slug, name, home: 'personal' });
+    else if (typeof team === 'string' && SLUG.test(team)) candidates.push({ id, slug, name, home: { team } });
+  }
+  return candidates;
 }
 
 /** The server's `TRASH_ITEM_TYPES` (apps/backend/src/api/service/trash-contract.ts). */

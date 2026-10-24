@@ -49,42 +49,42 @@ Exit code 0 = success, 1 = error. Human errors go to stderr; JSON errors go to s
 
 ```bash
 rip workspace list                                            # names, ids, your membership/role
-rip workspace load <workspace-id>                             # bounded context, recent sessions, your browser link
+rip workspace load <workspace>                                # its slug or id: bounded context, latest changes, your browser link
 ```
 
-`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), recent changes (who, the action, the item's title and id, and the why), and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). Duplicate names require full UUID, slug, home, and capabilities to disambiguate. Workspaces are addressed by UUID; `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
 
 **Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
 ```bash
 # What changed since I last looked (reading never acknowledges)
-rip workspace changes <workspace-id> [--limit <n>]
-rip workspace ack <workspace-id> --delivery-token <token>
+rip workspace changes <workspace> [--limit <n>]
+rip workspace ack <workspace> --delivery-token <token>
 
 # Who worked here recently (newest first): each goal with the changes made for it
-rip workspace sessions <workspace-id> [--cursor <nextCursor>]
+rip workspace sessions <workspace> [--cursor <nextCursor>]
 
 # Leave a handoff note for the next agent (optional; the session is recorded anyway)
-rip artifact publish notes.md --type markdown --title "Handoff: ..." --workspace-id <workspace-id> --handoff --why "<the goal>"
+rip artifact publish notes.md --type markdown --title "Handoff: ..." --workspace-id <workspace> --handoff --why "<the goal>"
 
 # Lifecycle and members
 rip workspace create <slug> [--name "Roadmap"] [--description <text>] [--team <team-slug-or-id>] --why "<the goal>"   # name defaults to the slug
-rip workspace show <workspace-id>
-rip workspace update <workspace-id> --name <name>
-rip workspace delete <workspace-id>                    # to the trash with everything in it, for 30 days
+rip workspace show <workspace>
+rip workspace update <workspace> --name <name>
+rip workspace delete <workspace>                       # to the trash with everything in it, for 30 days
 rip trash restore <workspace-id>
-rip workspace member add <workspace-id> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]   # invite by email; internal editor by default
-rip workspace member set-role <member> [--workspace-id <workspace-id>] [--role viewer|editor] [--membership internal|external]
-rip workspace member list <workspace-id>  ·  rip workspace member remove <member> [--workspace-id <workspace-id>]   # <member>: the row id alone, or an account id, alias or email with --workspace-id
+rip workspace member add <workspace> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]   # invite by email; internal editor by default
+rip workspace member set-role <member> [--workspace-id <workspace>] [--role viewer|editor] [--membership internal|external]
+rip workspace member list <workspace>  ·  rip workspace member remove <member> [--workspace-id <workspace>]   # <member>: the row id alone, or an account id, alias or email with --workspace-id
 
 # Bring standalone content in; pin read-on-load context
-rip workspace adopt <workspace-id> <artifact-id>... [--audience internal|shared]
-rip workspace adopt <workspace-id> --folder <folder-id-or-slug> [--audience internal|shared]
+rip workspace adopt <workspace> <artifact-id>... [--audience internal|shared]
+rip workspace adopt <workspace> --folder <folder-id-or-slug> [--audience internal|shared]
 rip workspace pin add <artifact-id> [--position <n>]          # the pin goes in the artifact's workspace
 rip workspace pin remove <artifact-id>
 
 # The operator's paired browser tab
-rip workspace view context <workspace-id>
+rip workspace view context <workspace>
 rip workspace view open <artifact-id> --expected-context-generation <n> [--operation-id <id>]
 ```
 
@@ -385,7 +385,7 @@ Search across artifact content. Results are ranked by relevance and include snip
 rip search "quarterly report"
 rip search "chart" --type chart --since 7
 rip search --type table --since 7          # no query: most recently updated first
-rip search "how do we handle auth failures" --workspace-id <workspace-uuid>
+rip search "how do we handle auth failures" --workspace-id <workspace>
 rip search "termination clause" --artifact-id contract-2026
 ```
 
@@ -427,7 +427,7 @@ Tokenrip emails a short notice when work in a workspace waits on someone, or whe
 
 ```bash
 rip notify --for-person                                      # the person's settings [--workspace-id <id>]
-rip notify set <workspace-id> new_files digest --for-person  # addressed | new_files | changed_files | tasks_done; off | soon | digest
+rip notify set <workspace> new_files digest --for-person     # addressed | new_files | changed_files | tasks_done; off | soon | digest
 rip notify digest 18                                         # the person's digest hour [--tz <zone>, only when they ask]
 rip notify mailbox bot@example.com                           # this agent's mailbox: emails a six-digit code
 rip notify mailbox --code 123456                             # confirm it with the emailed code (or --remove)
@@ -462,6 +462,7 @@ rip auth keys                         # list keys: agents, host keys, connectors
 rip auth keys create [--name <n>]     # key for a host that takes a pasted key (shown once)
 rip auth keys revoke <id>             # disconnect the agent using that key
 rip auth rotate-key                   # replace this agent's key; others keep theirs
+rip auth logout [--keep-key]          # revoke this CLI's key and forget the sign-in
 rip auth whoami                       # show current identity and profile
 rip auth update --alias "new-name"
 rip auth update --tag "Writer" --visibility public
@@ -499,6 +500,7 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `INVALID_CODE` | Sign-in code wrong, used, or expired (10 minutes) | Request a new code |
 | `CODE_RECENTLY_SENT` | A code was emailed less than a minute ago | Check the inbox and spam folder, then wait before asking again |
 | `SIGN_IN_LOCKED` | Too many wrong codes for this email | Wait until the time in the message (UTC), then request a new code |
+| `ENV_KEY_LOGOUT` | `rip auth logout` under `TOKENRIP_API_KEY` | Unset it; for a vault key, `rip auth keys revoke <id>` |
 | `ENV_KEY_ROTATION` | `rip auth rotate-key` under `TOKENRIP_API_KEY` | Unset it to rotate a stored key; for a vault key, `rip auth keys create --name <n>` then revoke the old one |
 | `NO_LOCAL_KEYPAIR` | Command needs a keypair identity; this one signed in by email | Not needed: an email-signed-in agent is already on the person's account |
 | `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most) | Get a new code at https://tokenrip.com/run and sign in with it |

@@ -7,7 +7,7 @@ import { accountIdToPublicKey } from '../crypto.js';
 import { addIdentity, loadIdentities, resolveAccountId } from '../identities.js';
 
 /** What happened to the key a repeat sign-in replaced on this machine (and its id when it is still live). */
-type PreviousKey = { status: 'revoked' | 'already_invalid' | 'not_revoked'; id?: string };
+export type PreviousKey = { status: 'revoked' | 'already_invalid' | 'not_revoked'; id?: string };
 
 /** `POST /v0/auth/sign-in` 201: a key of the agent's own, or (outcome `run`) a run key for its lasting key. */
 type SignedIn = { api_key: string; account_id: string; email: string } & (
@@ -21,7 +21,7 @@ type SignedIn = { api_key: string; account_id: string; email: string } & (
     }
 );
 
-const RUN_KEY_PREFIX = 'tr_run_';
+export const RUN_KEY_PREFIX = 'tr_run_';
 
 /**
  * `rip auth login` — sign in with the person's email. Without `code`, Tokenrip emails a six-digit
@@ -107,7 +107,7 @@ function envOverride(accountId: string): 'TOKENRIP_API_KEY' | 'TOKENRIP_AGENT' |
 }
 
 /** Revoke the key this machine held before, using that key: find it (`current`) and delete it. */
-async function retireKey(apiUrl: string, oldKey: string): Promise<PreviousKey> {
+export async function retireKey(apiUrl: string, oldKey: string): Promise<PreviousKey> {
   const client = createHttpClient({ baseUrl: apiUrl, apiKey: oldKey });
   let id: string | undefined;
   try {

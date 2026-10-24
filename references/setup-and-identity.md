@@ -76,6 +76,7 @@ Each connected agent, each key made for a host, and each chat app connector hold
 rip auth keys                            # list: name, id, connected, last used, connector, browsers signed in; (this agent) marks yours
 rip auth keys revoke <id>                # disconnect the agent using that key
 rip auth rotate-key                      # replace this agent's key; others keep theirs; refused under TOKENRIP_API_KEY
+rip auth logout [--keep-key]             # revoke this CLI's key and forget the sign-in; refused under TOKENRIP_API_KEY
 ```
 
 The person sees the same list on the dashboard's Agents page and can remove any agent there.
@@ -91,7 +92,7 @@ Four types, per workspace: `addressed` (work waiting on you: soon by default), `
 ```bash
 rip notify --for-person                                      # the person's settings
 rip notify --for-person --workspace-id <id>                  # plus each type's delivery in that workspace
-rip notify set <workspace-id> new_files digest --for-person  # email the person a daily digest of new files
+rip notify set <workspace> new_files digest --for-person     # email the person a daily digest of new files
 rip notify digest 18                                         # the person's digest hour [--tz <zone>]
 rip notify                                                   # this agent's own settings
 ```

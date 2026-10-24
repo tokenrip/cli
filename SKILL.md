@@ -16,7 +16,7 @@ description: >-
   API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.7
+version: 2.6.8
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.7 -->
+<!-- tokenrip-skill-version: 2.6.8 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -90,8 +90,8 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 ```bash
 rip auth whoami                                               # who am I acting as?
 rip auth login --email <email> [--code <code>]                # if not signed in (rule 1)
-rip workspace list                                            # full UUIDs, slugs, personal/team homes, capabilities
-rip workspace load <workspace-id>                             # bounded context, recent sessions, your browser link
+rip workspace list                                            # full ids, slugs, personal/team homes, capabilities
+rip workspace load <workspace>                                # its slug or id: bounded context, latest changes, your browser link
 ```
 
 `workspace load` prints, without `--json`:
@@ -103,17 +103,17 @@ rip workspace load <workspace-id>                             # bounded context,
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - the **Latest handoff**, the same way (inline, or the `rip artifact cat … --version-id …` command), plus the ids of earlier handoffs;
 - **Recent sessions**: who worked (`You` for your own account, `~alias` for someone else; their agent or the browser), from which tool, and each step: a stated why followed by the changes made for it (each item with its versions, a `rip artifact diff` command per edit, and row counts);
-- open **Tasks**, **Recent changes** (who, what happened, the item's title and id, and its why), and the **Artifacts** index;
-- `rip workspace load <workspace-id> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
+- open **Tasks**, **Latest changes**, newest first (who, what happened, the item's title and id, and its why), then how many are unread since your last acknowledgement with the `rip workspace changes <slug>` command that reads them in order, and the **Artifacts** index;
+- `rip workspace load <workspace> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset …` lines when a list has more.
 
-Read your instructions and what waits on you first, then the pins, the latest handoff and the recent sessions. Loading again is safe: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). **Sessions record themselves**: the server groups your writes (same key and conversation, no gap over 45 minutes) into a session the next agent sees. There is nothing to start or end. A workspace in the trash answers `WORKSPACE_DELETED` (410) to load and every other call; see [Deleting and restoring](#deleting-and-restoring). With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). Workspaces are addressed by **UUID**.
+Read your instructions and what waits on you first, then the pins, the latest handoff and the recent sessions. Loading again is safe: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). **Sessions record themselves**: the server groups your writes (same key and conversation, no gap over 45 minutes) into a session the next agent sees. There is nothing to start or end. A workspace in the trash answers `WORKSPACE_DELETED` (410) to load and every other call; see [Deleting and restoring](#deleting-and-restoring). With `--json`, pins and handoffs carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused with each candidate's id: use the id.
 
 ## Read-First Table
 
 | Source | Command | What to extract |
 |---|---|---|
 | Identity | `rip auth whoami` | Alias, account ID, API key status — confirms you can act |
-| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full UUID, slug, home and capabilities; `show` adds audiences |
+| Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full id, slug, home and capabilities; `show` adds audiences |
 | Context | `rip workspace load <ws>` | Your instructions, what waits on you, the agents' handles, pins and latest handoff (inline, or `rip artifact cat <publicId> --version-id <v>`), recent sessions, tasks, changes, artifacts, browser link |
 | Who worked on what | `rip workspace sessions <ws>` | Recent sessions, newest first: `You` or `~alias`, which tool, then steps: each why with the changes made for it (versions, diff commands, rows, handoff notes); `unread` marks sessions after your acknowledged position |
 | What changed | `rip workspace changes <ws>` | Events since you last acknowledged: who (`You` or `~alias`), the why, the action, and the item by title and id (an artifact's public id), plus a `deliveryToken` |
@@ -124,7 +124,7 @@ Read your instructions and what waits on you first, then the pins, the latest ha
 
 ## Choosing What to Do
 
-Duplicate workspace names require selection by UUID, slug, home and capabilities; clarify unresolved ambiguity.
+Name a workspace by its slug or id. A slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities, and clarify unresolved ambiguity.
 
 ### Working in a workspace
 
@@ -132,20 +132,20 @@ Creation audience and a handoff require a workspace: `--workspace-id`, or a `--f
 
 Every item in a workspace has an **audience**: `internal` (the owner, the owning team and internal members) or `shared` (external members too). An internal editor can also make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
 
-Activity sequences are positions, not counts or content versions; `load` can show current content with an older fixed history window. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
+Activity sequences are positions, not counts or content versions. `load` shows the latest changes and how many are unread; `rip workspace changes` reads the unread ones in order and reports history gaps and access changes. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
 
 Every write below also takes `--why "<the person's goal>"` (rule 4); only the publish lines show it.
 
 ```
 Pick up a workspace?
-  → rip workspace load <workspace-id>
+  → rip workspace load <workspace>
 
 Who worked here recently, toward what?
-  → rip workspace sessions <workspace-id>                         # --cursor <nextCursor> for older sessions
+  → rip workspace sessions <workspace>                            # --cursor <nextCursor> for older sessions
 
 What changed since I last looked?
-  → rip workspace changes <workspace-id>
-  → rip workspace ack <workspace-id> --delivery-token <token>     # only after you have processed the page
+  → rip workspace changes <workspace>
+  → rip workspace ack <workspace> --delivery-token <token>        # only after you have processed the page
 
 Put a new document into the workspace?
   → rip artifact publish <file> --type markdown --title "..." --workspace-id <ws> [--audience internal|shared] --why "<the person's goal>"
@@ -154,10 +154,10 @@ Replace a workspace document's content?
   → rip artifact update <id> <file> --expected-version-id <current-version-id>
 
 Bring a standalone artifact or folder into the workspace?
-  → rip workspace adopt <workspace-id> <artifact>... --why "<the person's goal>"        # or --folder <folder>; --audience shared for external members
+  → rip workspace adopt <workspace> <artifact>... --why "<the person's goal>"           # or --folder <folder>; --audience shared for external members
 
 Bring someone in (by email, even with no Tokenrip account)?
-  → rip workspace member add <workspace-id> <email> --why "<the person's goal>"   # internal by default; --membership external for shared items only
+  → rip workspace member add <workspace> <email> --why "<the person's goal>"      # internal by default; --membership external for shared items only
 
 Change what external members can see?
   → rip artifact patch <id> --audience shared
@@ -167,7 +167,7 @@ Keep a document in every agent's context on load?
   → rip workspace pin add <artifact-id>                             # its workspace; markdown only, max 20
 
 "This document" the operator has open in the browser?
-  → rip workspace view context <workspace-id>
+  → rip workspace view context <workspace>
 
 Decisions or loose ends the next agent should read? Leave a handoff note (optional).
   → rip artifact publish notes.md --type markdown --title "Handoff: ..." --workspace-id <ws> --handoff --why "<the person's goal>"
@@ -341,7 +341,7 @@ A folder of HTML/CSS/JS as a live website (a course, microsite, multi-page repor
 ```
 Find existing artifacts before creating new ones?
   → rip search ["<query>"] [--type markdown] [--since 7]
-  → rip search "<natural-language question>" --workspace-id <workspace-uuid>   # by meaning + keywords, with passages
+  → rip search "<natural-language question>" --workspace-id <workspace>      # by meaning + keywords, with passages
   → rip search "<query>" --artifact-id <id-or-alias> --limit 5   # best passages of one artifact, best first
 ```
 

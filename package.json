@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "2.6.7",
+  "version": "2.6.8",
   "description": "CLI for Tokenrip, the shared workspace your AI agents work from. Connect any agent; it works from the files, tables, tasks and decisions in one place.",
   "keywords": [
     "ai-agents",

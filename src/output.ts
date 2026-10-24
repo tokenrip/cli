@@ -69,6 +69,10 @@ export function outputError(err: CliError): never {
       }
       if (details.used !== undefined && details.limit !== undefined) console.error(`Workspaces: ${details.used} of ${details.limit}${details.plan ? ` (${details.plan})` : ''}`);
       if (details.billingUrl) console.error(`Billing: ${details.billingUrl}`);
+      for (const candidate of details.candidates ?? []) {
+        const home = candidate.home === 'personal' ? 'personal' : `team ${candidate.home.team}`;
+        console.error(`Candidate: ${candidate.id}  ${home}  ${candidate.name}`);
+      }
     }
   }
 
@@ -132,6 +136,7 @@ export const ERROR_HINTS: Record<string, string> = {
   TOO_MANY_PROPOSALS: 'You have 200 proposals In review in this workspace. Wait for decisions, or withdraw some with `rip task cancel <id>`, before proposing more.',
   TASK_NOT_DONE: 'A later result goes on a Done task. To finish this one, `rip task done <id> --result-text "…"`.',
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
+  AMBIGUOUS_REFERENCE: 'Name it by its id.',
   MAINTENANCE: 'Tokenrip is paused for maintenance. Nothing was changed. Run the command again after the time in the message.',
   WORKSPACE_LIMIT_REACHED: 'A team-owned workspace needs the Team plan: give your person the Billing link to subscribe. Otherwise the owner is at its maximum: delete a workspace to make room.',
   TEAM_HAS_PLAN: "Cancel the team's plan in Billing first.",

@@ -43,7 +43,7 @@ Every command in `@tokenrip/cli` 2.6, grouped by area. `rip --help` and `rip <co
 
 ## Workspace commands
 
-`rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and members you add or invite by email. Workspaces are addressed by **UUID** (slugs are not resolved). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
+`rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and members you add or invite by email. A `<workspace>` argument or `--workspace-id` takes the workspace's **id or slug** (the server resolves a slug among the workspaces you reach, in any case; one it cannot find is `WORKSPACE_NOT_FOUND`, as an unknown id is, and a slug two of them share is `AMBIGUOUS_REFERENCE`, which prints each candidate's id and home: name it by its id). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
 **Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version|prune-versions`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|rename|update|share-contents|delete`, `trash restore|purge`. Reads and pins take none.
 
@@ -115,14 +115,14 @@ rip workspace pin remove <artifact>
 
 ### `rip workspace load <workspace>`
 
-Load bounded context, in the order an agent reads it: the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason (`carry_out`: approved, carry out its approved text; `decide`: a review addressed to you; `do`: To do, for you), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), recent changes (50, each with its `why`), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own:` kinds (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin and the latest handoff (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), recent changes (when, `You` or `~alias`, the action, the item's title and id, and its why), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
+Load bounded context, in the order an agent reads it: the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason (`carry_out`: approved, carry out its approved text; `decide`: a review addressed to you; `do`: To do, for you), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), the latest changes (50, newest first, each with its `why`) with `unread` (how many changes came after this key's last acknowledgement, counted up to 1000; `unreadTruncated` when there are more), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: the header `Workspace: <name> (<slug>) [<id>]`, `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own:` kinds (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin and the latest handoff (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), `Latest changes (<n>):` newest first (when, `You` or `~alias`, the action, the item's title and id, and its why), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <workspace>` (`1000+` when the count was capped; `rip workspace changes` reads them in order and reports history gaps and access changes, `rip workspace ack` moves your position), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
 rip workspace load <workspace>
 rip workspace load <workspace> --task-cursor <cursor>
 ```
 
-Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>`. Names can repeat: use full UUID, slug, home, and capabilities to select, and clarify ambiguity. Load takes no session flag (`--operation-id` and `--session-id` are unknown options, as is `--session-cursor` on `show`).
+Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>` (`--activity-cursor` continues with older changes). Names can repeat: name the workspace by its slug or id; when a slug names two you reach, use the id the `AMBIGUOUS_REFERENCE` refusal prints. Load takes no session flag (`--operation-id` and `--session-id` are unknown options, as is `--session-cursor` on `show`).
 
 ### `rip workspace sessions <workspace>`
 
@@ -164,7 +164,7 @@ rip workspace changes <workspace> [--limit <n>] [--delivery-token <token>]
 rip workspace ack <workspace> --delivery-token <token>
 ```
 
-`changes` returns up to 100 events (default 50), each with its `why`, `actor.alias`, `mine`, `subject { type, id, title }` (an artifact's public id; `title` null when the item is gone or out of reach) and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Human output groups consecutive changes under `You` or `~alias` and the why, one line each with the action, title and id. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
+`changes` returns up to 100 events (default 50), each with its `why`, `actor.alias`, `mine`, `subject { type, id, title }` (an artifact's public id; `title` null when the item is gone or out of reach) and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Human output groups consecutive changes under `You` or `~alias` and the why, one line each with the action, title and id, then `Access changed: re-read before continuing.` when `refresh` is `required` and `History gap: older changes were pruned.` on a `historyGap`. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
 
 ### Workspace flags on other commands
 
@@ -441,19 +441,19 @@ rip folder create shared-reports --team research-team
 rip folder create drafts --workspace-id <ws> --audience internal
 ```
 
-Options: `--team <slug>`, `--workspace-id <workspace-id>` (not with `--team`), `--audience <internal|shared>` (requires `--workspace-id`), `--why <text>`.
+Options: `--team <slug>`, `--workspace-id <workspace>` (not with `--team`), `--audience <internal|shared>` (requires `--workspace-id`), `--why <text>`.
 
 ### `rip folder list`
 
-Options: `--team <slug>`, `--workspace-id <workspace-id>` (folders visible to you in that workspace).
+Options: `--team <slug>`, `--workspace-id <workspace>` (folders visible to you in that workspace).
 
 ### `rip folder show <folder>`
 
-Folder details. Options: `--team <slug>`, `--workspace-id <workspace-id>` (a slug's scope).
+Folder details. Options: `--team <slug>`, `--workspace-id <workspace>` (a slug's scope).
 
 ### `rip folder rename <folder> <new-slug>`
 
-Any kind (`PATCH /v0/folders/:folder` `{ newSlug }`). Options: `--team <slug>`, `--workspace-id <workspace-id>`, `--expected-workspace-revision <n>` (a workspace folder's; refuse if it changed since), `--why <text>` (required for a workspace folder).
+Any kind (`PATCH /v0/folders/:folder` `{ newSlug }`). Options: `--team <slug>`, `--workspace-id <workspace>`, `--expected-workspace-revision <n>` (a workspace folder's; refuse if it changed since), `--why <text>` (required for a workspace folder).
 
 ### `rip folder delete <folder>`
 
@@ -465,7 +465,7 @@ rip folder delete research --team research-team
 rip folder delete <workspace-folder-id> --why "Clear out the old drafts"
 ```
 
-Options: `--team <slug>`, `--workspace-id <workspace-id>`, `--expected-workspace-revision <n>` (a workspace folder's), `--why <text>` (required for a workspace folder, which needs `deleteContent`). The inputs go in the DELETE body.
+Options: `--team <slug>`, `--workspace-id <workspace>`, `--expected-workspace-revision <n>` (a workspace folder's), `--why <text>` (required for a workspace folder, which needs `deleteContent`). The inputs go in the DELETE body.
 
 ### `rip folder update <folder>`
 
@@ -475,7 +475,7 @@ Change a workspace folder's own audience (its children keep theirs). The folder 
 rip folder update <folder-id> --audience shared
 ```
 
-Required: `--audience <internal|shared>`. Options: `--workspace-id <workspace-id>` (only for a slug), `--expected-workspace-revision <n>` (refuse if the folder changed since), `--why <text>`.
+Required: `--audience <internal|shared>`. Options: `--workspace-id <workspace>` (only for a slug), `--expected-workspace-revision <n>` (refuse if the folder changed since), `--why <text>`.
 
 ### `rip folder share-contents <folder>`
 
@@ -485,7 +485,7 @@ Atomically share a workspace folder and all its current child artifacts. Later c
 rip folder share-contents <folder-id>
 ```
 
-Options: `--workspace-id <workspace-id>` (only for a slug), `--expected-workspace-revision <n>` (refuse if the folder changed since), `--why <text>`.
+Options: `--workspace-id <workspace>` (only for a slug), `--expected-workspace-revision <n>` (refuse if the folder changed since), `--why <text>`.
 
 ### Folder flags on other commands
 
@@ -616,7 +616,7 @@ rip trash list --workspace-id <ws>   # files and folders deleted in a workspace 
 rip trash list --type folder         # one type only
 ```
 
-Options: `--workspace-id <workspace-id>`, `--team <slug-or-id>`, `--account <id-or-alias>` (another account's own trash; platform admins only), at most one of the three; `--type <type>` (`artifact`, `bundle`, `folder` or `workspace`; one that trash holds); `--limit <n>` (default 50, max 100), `--offset <n>` (the previous page's `nextOffset`).
+Options: `--workspace-id <workspace>`, `--team <slug-or-id>`, `--account <id-or-alias>` (another account's own trash; platform admins only), at most one of the three; `--type <type>` (`artifact`, `bundle`, `folder` or `workspace`; one that trash holds); `--limit <n>` (default 50, max 100), `--offset <n>` (the previous page's `nextOffset`).
 
 ### `rip trash restore <id>`
 
@@ -632,16 +632,16 @@ Options: `--expected-workspace-revision <n>` (optional, for a workspace file or 
 
 ### `rip trash purge [<id>] [--all]`
 
-Delete for good, now: permanent (nothing purged can be restored), and it frees the storage the items used. Give one entry (`<id>` from `rip trash list`; it must be in the trash, a live item answers 409 `NOT_IN_TRASH` and an id that names nothing `NOT_FOUND`; a folder or workspace takes everything in it), or `--all` to empty a whole trash: your own, or with one of `--team <slug-or-id>`, `--workspace-id <workspace-id>` or `--account <id-or-alias>` (platform admins only), optionally only one `--type` and only what was deleted at or before `--deleted-before <iso-time>`. `--all` takes what was in the trash when it began; the server answers at most `TRASH_PURGE_PER_CALL` entries (100 by default) per call with a `nextCursor`, and the command calls again until it is null. It prints how many it purged and every entry it left with the reason: `forbidden` (you may not remove it), `restored` (it left the trash, or was deleted again, after the purge began), `gone` (already purged), `failed` (its purge failed; it stays in the trash, and a rerun tries it again). If a call fails partway, the error says how many earlier pages purged ("at least" when the failing call timed out, since it may have finished on the server) and that a rerun is safe. `--json` returns the totals as `{ purged: [{ type, id }], skipped: [{ type, id, reason }], nextCursor: null }`.
+Delete for good, now: permanent (nothing purged can be restored), and it frees the storage the items used. Give one entry (`<id>` from `rip trash list`; it must be in the trash, a live item answers 409 `NOT_IN_TRASH` and an id that names nothing `NOT_FOUND`; a folder or workspace takes everything in it), or `--all` to empty a whole trash: your own, or with one of `--team <slug-or-id>`, `--workspace-id <workspace>` or `--account <id-or-alias>` (platform admins only), optionally only one `--type` and only what was deleted at or before `--deleted-before <iso-time>`. `--all` takes what was in the trash when it began; the server answers at most `TRASH_PURGE_PER_CALL` entries (100 by default) per call with a `nextCursor`, and the command calls again until it is null. It prints how many it purged and every entry it left with the reason: `forbidden` (you may not remove it), `restored` (it left the trash, or was deleted again, after the purge began), `gone` (already purged), `failed` (its purge failed; it stays in the trash, and a rerun tries it again). If a call fails partway, the error says how many earlier pages purged ("at least" when the failing call timed out, since it may have finished on the server) and that a rerun is safe. `--json` returns the totals as `{ purged: [{ type, id }], skipped: [{ type, id, reason }], nextCursor: null }`.
 
 ```bash
 rip trash purge 550e8400-e29b-41d4-a716-446655440000
 rip trash purge --all
 rip trash purge --all --type artifact --deleted-before 2026-10-01T00:00:00Z
-rip trash purge --all --workspace-id <workspace-id> --why "Clear out the old drafts"
+rip trash purge --all --workspace-id <workspace> --why "Clear out the old drafts"
 ```
 
-Options: `--all`, `--team <slug>`, `--workspace-id <workspace-id>`, `--account <id-or-alias>` (with `--all`, at most one), `--type <type>`, `--deleted-before <iso-time>` (with `--all`), `--why <text>` (required for a workspace file or folder, and for `--workspace-id`). Each item needs the authority deleting it needs. A workspace file or folder purged by an agent is recorded in the workspace history (`artifact.purged`, `folder.purged`) with its why.
+Options: `--all`, `--team <slug>`, `--workspace-id <workspace>`, `--account <id-or-alias>` (with `--all`, at most one), `--type <type>`, `--deleted-before <iso-time>` (with `--all`), `--why <text>` (required for a workspace file or folder, and for `--workspace-id`). Each item needs the authority deleting it needs. A workspace file or folder purged by an agent is recorded in the workspace history (`artifact.purged`, `folder.purged`) with its why.
 
 ## Storage
 
@@ -655,7 +655,7 @@ rip storage --team acme
 rip storage --json        # { payer, plan, usedBytes, limitBytes, workspaces, standaloneBytes, bundleBytes, trashBytes, largest }
 ```
 
-A workspace's files count toward the workspace's owner (your account, or the team that owns it), whoever wrote them; your standalone files and every version of your bundles count toward your account. Every kept version and table row counts, and so does the trash until it is emptied: the `Trash:` line, `trashBytes`, is the part of the bytes used that is in the trash, and names how to empty it (`rip trash purge --all` for your own trash, `--team <slug>` for a team's, `--workspace-id <workspace-id>` for the files deleted inside a workspace, which stay in that workspace's own trash). Sizes print in decimal units (1 GB = 1,000,000,000 bytes), as the plans count them. A team you are not in answers 403 `NOT_A_MEMBER`; an unknown one 404 `TEAM_NOT_FOUND`.
+A workspace's files count toward the workspace's owner (your account, or the team that owns it), whoever wrote them; your standalone files and every version of your bundles count toward your account. Every kept version and table row counts, and so does the trash until it is emptied: the `Trash:` line, `trashBytes`, is the part of the bytes used that is in the trash, and names how to empty it (`rip trash purge --all` for your own trash, `--team <slug>` for a team's, `--workspace-id <workspace>` for the files deleted inside a workspace, which stay in that workspace's own trash). Sizes print in decimal units (1 GB = 1,000,000,000 bytes), as the plans count them. A team you are not in answers 403 `NOT_A_MEMBER`; an unknown one 404 `TEAM_NOT_FOUND`.
 
 ## Activity
 
@@ -687,13 +687,13 @@ Search across artifact content. Results are ranked by relevance with highlighted
 rip search "quarterly report"
 rip search "deploy" --type code --since 7
 rip search --type table --since 7
-rip search "how do we handle auth failures" --workspace-id <workspace-uuid>
+rip search "how do we handle auth failures" --workspace-id <workspace>
 rip search "termination clause" --artifact-id contract-2026 --limit 5
 ```
 
-Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200; more is refused), `--offset <n>`, `--type <type>` (`markdown`, `html`, `code`, `json`, `text`, `file`, `chart`, `table`, `csv`), `--workspace-id <uuid>`, `--artifact-id <id>`. Search finds live artifacts only.
+Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200; more is refused), `--offset <n>`, `--type <type>` (`markdown`, `html`, `code`, `json`, `text`, `file`, `chart`, `table`, `csv`), `--workspace-id <id>`, `--artifact-id <id>`. Search finds live artifacts only.
 
-- `--workspace-id` searches one workspace, named by its UUID (a slug is a 400 `INVALID_FIELD`; a workspace you cannot read is a 404 `WORKSPACE_NOT_FOUND`). Every workspace document is indexed by meaning, so a plain-language question works: the ranking blends keywords with meaning (`mode: hybrid`) and each result lists its best passages (section heading and full text, up to 3). `pending: N` means N chunks are not yet searchable by meaning (just written); they still match by keyword. If the server has no embedding provider, or it is unavailable, the search ranks by keyword (`mode: keyword`).
+- `--workspace-id` searches one workspace, named by its id or slug (a workspace you cannot read is a 404 `WORKSPACE_NOT_FOUND`). Every workspace document is indexed by meaning, so a plain-language question works: the ranking blends keywords with meaning (`mode: hybrid`) and each result lists its best passages (section heading and full text, up to 3). `pending: N` means N chunks are not yet searchable by meaning (just written); they still match by keyword. If the server has no embedding provider, or it is unavailable, the search ranks by keyword (`mode: keyword`).
 - `--artifact-id` scopes the search to one artifact (its id or alias) and returns one result with up to `--limit` passages (default 50), ranked best first; pass a small `--limit` for just the best few. It ranks hybrid when the artifact lives in a workspace, keyword otherwise. Combined with a `--workspace-id` other than the artifact's own, it is a 400 `INVALID_FIELD`.
 - Outside a workspace, search ranks by keyword only.
 
@@ -996,6 +996,10 @@ rip auth keys revoke <id>                # disconnect the agent using that key
 
 Every key on the account: connected agents, keys made for hosts, connector grants (with the connector's name). `(this agent)` marks the key this CLI uses; `browsers: N signed in` counts the browsers that key's sign-in links signed in (`browser_sessions` in JSON). Revoking that key yourself adds `own_key: true` to the output and a warning: this CLI's key no longer works, so sign in again (or, under `TOKENRIP_API_KEY`, replace or unset the variable). Paste a created key into the host's key vault or settings, never into a chat. `default`, `mcp-oauth`, and `mcp-oauth-grant` are reserved names.
 
+### `rip auth logout`
+
+End this CLI's sign-in: revoke its key, then forget it on this machine. Acts on the current identity (`--agent` picks another); other agents and connectors keep their keys. `--keep-key` forgets the sign-in but leaves the key valid. If the revoke fails the sign-in is still forgotten and the output says so, with `rip auth keys revoke <id>` to finish it. A keypair identity keeps its secret key and only loses its API key (`rip account recover-key` issues a new one). Refused with `ENV_KEY_LOGOUT` (no request made) while `TOKENRIP_API_KEY` is set.
+
 ### `rip auth rotate-key`
 
 Replace this agent's key and save the new one. Every other key on the account keeps working. Browsers this key's sign-in links signed in are signed out. Refused with `ENV_KEY_ROTATION` (no request made) while `TOKENRIP_API_KEY` is set: unset it to rotate a stored identity's key, or, for a key kept in a host's vault, make a new one with `rip auth keys create --name <name>` and revoke the old one.
@@ -1022,18 +1026,18 @@ Who hears about workspace work by email (CLI 2.6.1 or later; `--code` needs 2.6.
 
 ```bash
 rip notify --for-person                                 # the person's settings
-rip notify --workspace-id <workspace-id> --for-person   # plus each type's delivery in that workspace
+rip notify --workspace-id <workspace> --for-person   # plus each type's delivery in that workspace
 rip notify                                              # this agent's own settings
 ```
 
 Options: `--workspace-id <id>`, `--for-person`. Shows the person's digest hour and zone, the defaults, every stored difference, and for this agent its mailbox and switch (it warns when this agent has settings turned on but no confirmed mailbox). Takes no arguments: a misplaced subcommand or a typo is a usage error, not a read.
 
-### `rip notify set [<workspace-id> <type> <off|soon|digest>]`
+### `rip notify set [<workspace> <type> <off|soon|digest>]`
 
 ```bash
-rip notify set <workspace-id> new_files digest --for-person
-rip notify set <workspace-id> addressed off --for-person
-rip notify set <workspace-id> tasks_done soon           # this agent's own, once it has a mailbox
+rip notify set <workspace> new_files digest --for-person
+rip notify set <workspace> addressed off --for-person
+rip notify set <workspace> tasks_done soon           # this agent's own, once it has a mailbox
 rip notify set --tell-person off
 ```
 

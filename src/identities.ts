@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getConfigDir, loadConfig } from './config.js';
+import { getConfigDir, loadConfig, saveConfig } from './config.js';
 import { CliError } from './errors.js';
 
 function getIdentitiesFile(): string {
@@ -56,13 +56,17 @@ export function addIdentity(identity: StoredIdentity): void {
   saveIdentities(store);
 }
 
-export function removeIdentity(target: string): void {
+/**
+ * Remove a stored identity. The last one is kept unless `allowLast` is set (`rip auth logout`
+ * ends the only sign-in on purpose; `rip account remove` never does).
+ */
+export function removeIdentity(target: string, opts: { allowLast?: boolean } = {}): void {
   const store = loadIdentities();
   const accountId = resolveAccountId(store, target);
   if (!accountId) {
     throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
   }
-  if (Object.keys(store).length <= 1) {
+  if (!opts.allowLast && Object.keys(store).length <= 1) {
     throw new CliError(
       'LAST_IDENTITY',
       'Cannot remove the last identity. Sign in to another account first: `rip auth login --email <your email>`.',
@@ -70,6 +74,24 @@ export function removeIdentity(target: string): void {
   }
   delete store[accountId];
   saveIdentities(store);
+}
+
+/**
+ * Clear both the current and the deprecated field so we never leave a dangling pointer on a v3
+ * config that still has `currentAgent` set or a pre-v3 config that's about to be migrated.
+ */
+export function clearCurrentAccount(accountId: string): void {
+  const config = loadConfig();
+  let changed = false;
+  if (config.currentAccount === accountId) {
+    delete config.currentAccount;
+    changed = true;
+  }
+  if (config.currentAgent === accountId) {
+    delete config.currentAgent;
+    changed = true;
+  }
+  if (changed) saveConfig(config);
 }
 
 export function resolveAccountId(store: IdentityStore, target: string): string | null {

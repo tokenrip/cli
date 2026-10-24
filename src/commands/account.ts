@@ -3,6 +3,7 @@ import {
   loadIdentities,
   addIdentity,
   removeIdentity,
+  clearCurrentAccount,
   resolveAccountId,
   resolveCurrentIdentity,
   requireLocalKeypair,
@@ -157,20 +158,7 @@ export function accountRemove(target: string): void {
     throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
   }
   removeIdentity(agentId);
-  // Clear both the current and the deprecated field so we never leave a
-  // dangling pointer on a v3 config that still has `currentAgent` set or a
-  // pre-v3 config that's about to be migrated.
-  const config = loadConfig();
-  let changed = false;
-  if (config.currentAccount === agentId) {
-    delete config.currentAccount;
-    changed = true;
-  }
-  if (config.currentAgent === agentId) {
-    delete config.currentAgent;
-    changed = true;
-  }
-  if (changed) saveConfig(config);
+  clearCurrentAccount(agentId);
   outputSuccess({
     agentId,
     message: `Removed ${target} from local identities (agent still exists on server)`,

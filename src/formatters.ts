@@ -447,6 +447,20 @@ export const formatKeyRevoked: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** `rip auth logout` */
+export const formatLoggedOut: Formatter = (data) => {
+  const lines = [data.removed
+    ? `Signed out ${data.accountId} on this machine.`
+    : `Signed out ${data.accountId}. Its keypair is kept; \`rip account recover-key\` gets a new key.`];
+  if (data.revoked === 'revoked') lines.push('  The key was revoked.');
+  else if (data.revoked === 'already_invalid') lines.push('  The key had already stopped working.');
+  else if (data.revoked === 'not_revoked') {
+    lines.push(`  The key could not be revoked and may still work; remove it with \`rip auth keys revoke ${data.keyId ?? '<id>'}\`.`);
+  } else lines.push('  The key was not revoked (kept, or it ends on its own); it may still work elsewhere.');
+  lines.push('  Sign in again: rip auth login --email <your email>');
+  return lines.join('\n');
+};
+
 /** The server's notification settings (`GET/PATCH /v0/notifications`, `POST …/mailbox`), as `rip notify` reads them. */
 interface NoticeSettingsView {
   recipient: { kind: 'person' | 'agent'; keyId: string | null };
@@ -1325,15 +1339,16 @@ export const formatWorkspaceSessions = (data: unknown, workspace?: string): stri
 /**
  * `rip workspace load` in human mode is the first thing an agent reads, so it
  * carries everything the load returned: pins (inline or with the command that
- * reads them), the latest handoff, open tasks, recent changes, the artifact
- * index, and the exact flags that page each list further.
+ * reads them), the latest handoff, open tasks, the latest changes (newest
+ * first, with how many are unread and the command that catches up), the
+ * artifact index, and the exact flags that page each list further.
  */
 export const formatWorkspaceLoad: Formatter = (data) => {
   const value = data as Record<string, any>;
   const workspace = (value.workspace ?? {}) as Record<string, any>;
   const workspaceId = workspace.id ?? value.workspaceId ?? '-';
   const lines = [
-    `Workspace: ${workspace.name ?? '-'} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}`,
+    `Workspace: ${workspace.name ?? '-'}${workspace.slug ? ` (${workspace.slug})` : ''} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}`,
   ];
   const can = capabilityList(workspace.capabilities);
   if (can) lines.push(`Can:       ${can}`);
@@ -1385,15 +1400,18 @@ export const formatWorkspaceLoad: Formatter = (data) => {
 
   const activity = value.activity ?? {};
   const activityItems: Array<Record<string, any>> = Array.isArray(activity.items) ? activity.items : [];
+  // The newest first, as the reply orders them; the ordered catch-up (and its gap and refresh notices) is `workspace changes`.
   lines.push(...loadSection(
-    `Recent changes (${activityItems.length}${activity.hasMore ? '+' : ''}):`,
+    `Latest changes (${activityItems.length}${activity.hasMore ? '+' : ''}):`,
     activityItems.flatMap((e) => [
       `  ${e.createdAt ?? '-'}  ${e.mine ? 'You' : e.actor?.alias ? `~${e.actor.alias}` : (e.actor?.id ?? '-')}  ${verbAction(e.type)}  ${subjectWords(e.subject)}`,
       ...('why' in e ? [`    ${changeGoal(e)}`] : []),
     ]),
   ));
-  if (activity.refresh === 'required') lines.push('  Access changed: re-read before continuing.');
-  if (activity.historyGap) lines.push('  History gap: older changes were pruned.');
+  const unread = Number(activity.unread);
+  if (unread > 0) {
+    lines.push(`  ${unread}${activity.unreadTruncated ? '+' : ''} unread since your last acknowledgement: rip workspace changes ${workspaceShellArgument(workspace.slug || workspaceId)}`);
+  }
 
   const artifacts = value.artifacts ?? {};
   const artifactItems: Array<Record<string, any>> = Array.isArray(artifacts.items) ? artifacts.items : [];
@@ -1495,6 +1513,8 @@ export const formatWorkspaceChanges: Formatter = (data) => {
     heading = next;
     lines.push(`  ${item.createdAt ?? '-'}  ${verbAction(item.type)}  ${subjectWords(item.subject)}`);
   }
+  if (value.refresh === 'required') lines.push('Access changed: re-read before continuing.');
+  if (value.historyGap) lines.push('History gap: older changes were pruned.');
   lines.push(`Delivery token: ${value.deliveryToken ?? '-'}`);
   if (value.nextCursor != null) lines.push(`Next cursor: ${value.nextCursor}`);
   return lines.join('\n');

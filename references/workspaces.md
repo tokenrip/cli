@@ -1,6 +1,6 @@
 # Workspaces
 
-A workspace is the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an internal/shared audience per item and members you add or invite by email. Commands: `rip workspace …` (alias `rip ws`). Identifier: the workspace **UUID** (these commands do not resolve slugs). API: `/v0/workspaces`; MCP: the `workspace_*` tools (`workspace_list`, `workspace_load`, `workspace_changes`, …). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
+A workspace is the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an internal/shared audience per item and members you add or invite by email. Commands: `rip workspace …` (alias `rip ws`). Identifier: the workspace's **slug or id** (`rip workspace load tokenrip-social`), in any case, resolved by the server among the workspaces you reach. A slug none of them has is `WORKSPACE_NOT_FOUND`, as an unknown id is; a slug two of your workspaces share is refused with each candidate's id (`AMBIGUOUS_REFERENCE`, printed with its home and name): use the id. API: `/v0/workspaces`; MCP: the `workspace_*` tools (`workspace_list`, `workspace_load`, `workspace_changes`, …). Return to [SKILL.md](../SKILL.md) for the top-level decision trees.
 
 ## Membership and audience
 
@@ -10,21 +10,21 @@ Membership is resolved live:
 - Other members of the owning team are internal **editors**.
 - People added to the workspace are members with the access they were given: **internal** (they see everything) or **external** (shared items only), each as an **editor** or a **viewer**. Internal editors may invite; only admins change or remove access.
 
-Every item has an `audience`: `internal` (the owner, the team and internal members) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full UUID, slug, personal/team home, `membership/role`, permitted capabilities, and `needsYou=<n>`: how many decisions wait on this agent key there (reviews addressed to it; the In review children of one parent count once); `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
+Every item has an `audience`: `internal` (the owner, the team and internal members) or `shared` (external members too). Internal members create `internal` items by default; external editors create `shared` ones. `rip workspace list` prints each workspace's name, full id, slug, personal/team home, `membership/role`, permitted capabilities, and `needsYou=<n>`: how many decisions wait on this agent key there (reviews addressed to it; the In review children of one parent count once); `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
 
 ## When to use
 
-- "work on project X from this harness" → `rip workspace load <workspace-id>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on every write
+- "work on project X from this harness" → `rip workspace load <workspace>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on every write
 - "post this", "send that email", "publish it" → propose it first (`rip task propose`, [references/tasks.md](tasks.md)) and act only on what comes back approved
 - "hand this to Codex", "ask Maya's agent" → name the agent as `agent:<handle>` from load's `Agents` in `rip task add --assignee` or `--reviewer`
-- "who worked on this, and toward what" → `rip workspace sessions <workspace-id>`
-- "what changed since I last looked" → `rip workspace changes <workspace-id>`, then `rip workspace ack <workspace-id> --delivery-token <token>`
-- "this document the operator is looking at" → `rip workspace view context <workspace-id>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
+- "who worked on this, and toward what" → `rip workspace sessions <workspace>`
+- "what changed since I last looked" → `rip workspace changes <workspace>`, then `rip workspace ack <workspace> --delivery-token <token>`
+- "this document the operator is looking at" → `rip workspace view context <workspace>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
 - "open that document in their browser" → `rip workspace view open …` and read the receipt (`queued` / `deferred` / `applied` / `disconnected`)
 - "share this with the client" → `rip workspace adopt … --audience shared` for standalone content, `rip artifact patch <id> --audience shared` for a workspace artifact, `rip folder share-contents` for a folder and everything in it
 - "send this to someone who has no account" → `rip artifact patch <id> --visibility link` (anyone with the URL can read it; `--visibility private` turns it off). Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be
-- "invite bob@example.com to this" → `rip workspace member add <workspace-id> bob@example.com --why "<the goal>"`, then read the row's `status`: `invited` (no account holds the address) → tell the person "invited" and give the `inviteUrl`; `member` (a verified address, alias or id) → they are in, and `inviteUrl` is null ([Members and invites](#members-and-invites))
-- "give the client read access to what we share" → `rip workspace member add <workspace-id> <email> --membership external --role viewer --why "<the goal>"`
+- "invite bob@example.com to this" → `rip workspace member add <workspace> bob@example.com --why "<the goal>"`, then read the row's `status`: `invited` (no account holds the address) → tell the person "invited" and give the `inviteUrl`; `member` (a verified address, alias or id) → they are in, and `inviteUrl` is null ([Members and invites](#members-and-invites))
+- "give the client read access to what we share" → `rip workspace member add <workspace> <email> --membership external --role viewer --why "<the goal>"`
 - "bring an existing artifact or folder into the workspace" → `rip workspace adopt`
 - "hand off" → nothing to end: your session is recorded. For decisions and loose ends, `rip artifact publish <file> --type markdown --title "Handoff: ..." --workspace-id <ws> --handoff --why "<the goal>"`
 
@@ -33,15 +33,15 @@ Every item has an `audience`: `internal` (the owner, the team and internal membe
 ```bash
 rip workspace create <slug> [--name "Roadmap"] [--description <text>] [--team <team-slug-or-id>] --why "<the goal>"
 rip workspace list                                   # names, ids, membership/role
-rip workspace show <workspace-id>                    # adds Can: (capabilities) and audiences
-rip workspace update <workspace-id> [--name <name>] [--description <text>]
-rip workspace delete <workspace-id>                  # admins; moves it and everything in it to the trash for 30 days
+rip workspace show <workspace>                       # adds Can: (capabilities) and audiences
+rip workspace update <workspace> [--name <name>] [--description <text>]
+rip workspace delete <workspace>                     # admins; moves it and everything in it to the trash for 30 days
 rip trash restore <workspace-id> --why "<goal>"     # bring it back, as it was, until its purge date
 
-rip workspace member list <workspace-id>             # members and pending invites; owner and team access are not listed
-rip workspace member add <workspace-id> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]
-rip workspace member set-role <member> [--workspace-id <workspace-id>] [--role viewer|editor] [--membership internal|external]
-rip workspace member remove <member> [--workspace-id <workspace-id>]
+rip workspace member list <workspace>                # members and pending invites; owner and team access are not listed
+rip workspace member add <workspace> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]
+rip workspace member set-role <member> [--workspace-id <workspace>] [--role viewer|editor] [--membership internal|external]
+rip workspace member remove <member> [--workspace-id <workspace>]
 ```
 
 `--name` defaults to the slug. `--team` takes the team's slug or id; only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`), nor can a team on a paid plan (`TEAM_HAS_PLAN`).
@@ -69,8 +69,8 @@ Adding someone who is already internal (the owner or a member of the owning team
 ## Adopt existing content
 
 ```bash
-rip workspace adopt <workspace-id> <artifact-id>... [--audience internal|shared] [--destination-folder-id <uuid>]
-rip workspace adopt <workspace-id> --folder <folder-id-or-slug> [--audience internal|shared]   # one of your personal folders, with its current artifacts
+rip workspace adopt <workspace> <artifact-id>... [--audience internal|shared] [--destination-folder-id <uuid>]
+rip workspace adopt <workspace> --folder <folder-id-or-slug> [--audience internal|shared]      # one of your personal folders, with its current artifacts
 ```
 
 `--audience` defaults to `internal` (`shared` for an external editor). Adoption is atomic, makes no copy, and keeps identity and history. You must own the content; its team shares are removed. Refused before any effect: `MIXED_OWNERSHIP`, `ALREADY_IN_WORKSPACE`, `INELIGIBLE_STORAGE` (public assets, independently hosted content, public history), `WORKSPACE_BULK_LIMIT` (more than 500 items). Sharing an adopted artifact exposes its **whole** version history. There is no move-out. A destination folder must belong to the same workspace (`CROSS_WORKSPACE_MOVE`).
@@ -151,13 +151,13 @@ Pass `--why` on each writing command, or set `TOKENRIP_WHY` once for a script wi
 ## Load, sessions, pins, and handoff notes
 
 ```bash
-rip workspace load <workspace-id>     # bounded context; also --artifact-offset, --task-cursor, --activity-cursor, --handoff-offset
-rip workspace sessions <workspace-id> [--cursor <nextCursor>]
+rip workspace load <workspace>        # bounded context; also --artifact-offset, --task-cursor, --activity-cursor, --handoff-offset
+rip workspace sessions <workspace> [--cursor <nextCursor>]
 ```
 
 `load` takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position, and every load records this agent in the workspace's Agents with the harness it used; only `rip workspace ack` moves the position). The response is bounded, and human output prints all of it, in the order an agent should read it:
 
-- `Workspace:` name, id, `membership/role`, and `Can:` — the capabilities you hold now; `Browser:` — the link the person opens to pair a browser tab to your agent key
+- `Workspace:` name, slug and id (`Workspace: <name> (<slug>) [<id>]`), `membership/role`, and `Can:` — the capabilities you hold now; `Browser:` — the link the person opens to pair a browser tab to your agent key
 - `Storage:` (internal members) — this workspace's bytes and its payer's plan and usage ("the owner's account" or "the team"), never trimmed. When a notice follows it, tell your person; don't delete anything on your own
 - `Instructions (v<n>):` — what your person wrote for this agent in this workspace, **whole and never trimmed**, then `On its own:` the kinds of proposal your person lets run without asking (applied for you by `rip task propose`). Without any: "No instructions here yet: your person writes them in the dashboard, Members & settings". Only your person edits them, in the dashboard; no agent writes instructions, and a change reaches you on your next load
 - `Waiting on you` — up to 20 tasks for exactly this agent, in this order: `carry out` (approved: `rip task show <id>` shows the approved text and who approved it; carry out only that), `decide` (a review addressed to you: `rip task decide`), `do` (To do, for you), each with the next command; a task listed here is not printed again under `Tasks`. Then `Your proposals In review: <n>`
@@ -165,10 +165,10 @@ rip workspace sessions <workspace-id> [--cursor <nextCursor>]
 - `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run exactly that
 - `Latest handoff` — the newest handoff note, inline or with the same `rip artifact cat … --version-id …` command (handoffs usually arrive as references), plus the ids of earlier notes
 - `Recent sessions` — the latest few sessions (see below), with a `rip workspace sessions … --cursor …` line when there are more
-- `Tasks` (To do and Doing, 20), `Recent changes` (up to 50, each with when, `You` or `~alias`, the action, the item's title and id, and its why on the next line; a `refresh`/`historyGap` warning when set), and the `Artifacts` index (50)
+- `Tasks` (To do and Doing, 20), `Latest changes` (up to 50, newest first, each with when, `You` or `~alias`, the action, the item's title and id, and its why on the next line), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <slug>` (`1000+` past the server's count cap), and the `Artifacts` index (50). `--activity-cursor` continues with older changes. History gaps and access changes are reported by `rip workspace changes`, not by load
 - `More` — one `rip workspace load <ws> --artifact-offset|--task-cursor|--activity-cursor|--handoff-offset <value>` line per list that continues
 
-With `--json`, the keys come in this order: `workspace`, `storage` (internal members only: `{ workspaceBytes, payer: { kind, plan, usedBytes, limitBytes }, notice? }`), `instructions` (`{ version, text, onItsOwn, savedAt }` or null), `waiting` (`items[]`, each a task with `waiting: carry_out | decide | do`, and `hasMore`; the `carry_out` and `do` items, To do or Doing, also appear in `tasks`), `tasks`, `proposals` (`{ inReview }`), `agents` (`items[]`, principals whose `agent.id` is the handle, and `hasMore`), `pins[]`, `artifacts`, `activity`, `handoffs.items[]`, `sessions` (`items`, `hasMore`, `nextCursor`), and `browserLink`. When the reply would exceed its budget, the lists are cut in a fixed order and `waiting` last, to one item; the instructions and `storage` are never cut; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above). Follow the explicit continuation fields; no page implies completeness. A workspace in the trash answers `WORKSPACE_DELETED` (410) to `load` and `show`. Loading does **not** acknowledge activity.
+With `--json`, the keys come in this order: `workspace`, `storage` (internal members only: `{ workspaceBytes, payer: { kind, plan, usedBytes, limitBytes }, notice? }`), `instructions` (`{ version, text, onItsOwn, savedAt }` or null), `waiting` (`items[]`, each a task with `waiting: carry_out | decide | do`, and `hasMore`; the `carry_out` and `do` items, To do or Doing, also appear in `tasks`), `tasks`, `proposals` (`{ inReview }`), `agents` (`items[]`, principals whose `agent.id` is the handle, and `hasMore`), `pins[]`, `artifacts`, `activity` (`items` newest first, `hasMore`, `nextCursor` for older ones, `unread` up to 1000, `unreadTruncated`), `handoffs.items[]`, `sessions` (`items`, `hasMore`, `nextCursor`), and `browserLink`. When the reply would exceed its budget, the lists are cut in a fixed order and `waiting` last, to one item; the instructions and `storage` are never cut; a pin or handoff carries either `content.content` (inline) or `content.versionId` (a reference — read it with the command above). Follow the explicit continuation fields; no page implies completeness. A workspace in the trash answers `WORKSPACE_DELETED` (410) to `load` and `show`. Loading does **not** acknowledge activity.
 
 **Sessions record themselves.** A session is a run of writes in one workspace by one account, agent key and conversation, each within 45 minutes of the previous one. Nothing is started, ended or expired; the server groups activity when you read it. Each session reads like a git log:
 
@@ -205,7 +205,7 @@ rip workspace pin remove <artifact-id-or-alias>
 ## The operator's browser
 
 ```bash
-rip workspace view context <workspace-id>
+rip workspace view context <workspace>
 rip workspace view open <artifact-id> --expected-context-generation <n> [--operation-id <stable-id>]
 ```
 
@@ -225,13 +225,13 @@ The same `--operation-id` replays the receipt; without one the server makes a ke
 ## Changes and acknowledgment
 
 ```bash
-rip workspace changes <workspace-id> [--limit <n>] [--delivery-token <token>]
-rip workspace ack <workspace-id> --delivery-token <token>
+rip workspace changes <workspace> [--limit <n>] [--delivery-token <token>]
+rip workspace ack <workspace> --delivery-token <token>
 ```
 
-`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position — workspace, member, artifact, folder, and task events. Each item describes itself: its `why` (null for browser edits, system jobs and older events), `actor.alias`, `mine` (your own account's), on your own account's events the `agent` key name, and `subject { type, id, title }`, where an artifact's `id` is its public id (the one every `rip artifact` command takes) and `title` is null for an item gone or out of your reach. Human output groups consecutive items under `You` or `~alias` and the why, one line each: time, action (`created`, `edited`, …), type, title and id. Recent activity, load previews, changes, and the operator's peek/polling share the same event-time audience and current access policy. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
+`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position, oldest first, up to the head as it stood at your first `changes` call (that window stays fixed until you acknowledge through it) — workspace, member, artifact, folder, and task events. Each item describes itself: its `why` (null for browser edits, system jobs and older events), `actor.alias`, `mine` (your own account's), on your own account's events the `agent` key name, and `subject { type, id, title }`, where an artifact's `id` is its public id (the one every `rip artifact` command takes) and `title` is null for an item gone or out of your reach. Human output groups consecutive items under `You` or `~alias` and the why, one line each: time, action (`created`, `edited`, …), type, title and id. Recent activity, load's latest changes, changes, and the operator's peek/polling share the same event-time audience and current access policy. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
 
-Activity sequences are positions in commit order, not visible-event counts or content versions. A retained activity window can be older than the current content returned by `load`. `ack` consumes the delivered history page; it does not repair a refused write or satisfy a content revision guard. Already consumed history is not rewound automatically.
+Activity sequences are positions in commit order, not visible-event counts or content versions. A `changes` window can be older than the current content returned by `load`. `ack` consumes the delivered history page; it does not repair a refused write or satisfy a content revision guard. Already consumed history is not rewound automatically.
 
 Reading, loading, and polling never acknowledge visible history; `ack` consumes its delivered page. Invisible-only ranges can be traversed automatically. While a page is outstanding a new one is refused (`WORKSPACE_PAGE_UNACKNOWLEDGED`); pass its token to `changes` to replay it. A wrong or expired (10 minute) token is `INVALID_WORKSPACE_DELIVERY`. Positions are per credential: another key, or the operator's browser, has its own.
 
@@ -247,6 +247,8 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 
 | Error | Meaning |
 |---|---|
+| `WORKSPACE_NOT_FOUND` | No workspace you reach has that id or slug (`rip workspace list` prints both) |
+| `AMBIGUOUS_REFERENCE` | 409: the slug names two or more workspaces you reach; the error prints each candidate's id, home and name: name it by its id |
 | `WORKSPACE_FORBIDDEN` | No access to the workspace, the item's audience, or that write |
 | `WORKSPACE_DELETED` | 410: the workspace is in the trash until `purgeAt`; an admin can `rip trash restore <id>`. 409 on a restore: the item's workspace is in the trash, so restore the workspace first |
 | `DELETED` | 410: the file or folder (or, with `via`, its folder) is in the trash; `rip trash restore <id>` (optionally `--expected-workspace-revision <n>`) |
