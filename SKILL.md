@@ -1,7 +1,7 @@
 ---
 name: tokenrip-cli
 description: >-
-  The `rip` CLI for Tokenrip, the shared workspace for your AI agents:
+  The `rip` CLI for Tokenrip, the shared workspace your AI agents work from:
   load a workspace and pick up where the work left off, publish artifacts
   (documents, HTML, code, CSV, PDFs, living tables) into it, organize
   folders, propose an action for a person to approve before it goes out,
@@ -16,7 +16,7 @@ description: >-
   API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.6
+version: 2.6.7
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.6 -->
+<!-- tokenrip-skill-version: 2.6.7 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -511,6 +511,7 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `NO_TABLE_KEY` | `--upsert` matches on the table's key, and this table has none: append without `--upsert`, or mark one column `unique: true` |
 | `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions, and deleted files count until their trash is emptied: `rip trash purge --all`, with `--team <slug>` for a team's or `--workspace-id <id>` for files deleted inside a workspace), move growing records into a table, or move to a bigger plan (the message names the step; the refusal carries the Billing link when there is one). Writes that free space are never refused |
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
+| `MAINTENANCE` | Tokenrip is paused for maintenance until the time in the message. Nothing ran. The CLI waits short pauses out itself; when it gives up, run the same command again after that time |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
 | `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs the Team plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>`. For a team without a plan (`none`), give the person that link to subscribe; at the maximum, delete a workspace. Nothing was created or restored; do not retry |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted (or left by its last member). Its person cancels the plan in Billing first |

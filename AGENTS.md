@@ -1,6 +1,6 @@
 # @tokenrip/cli — Agent Guide
 
-Tokenrip is the shared workspace for your AI agents. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, propose actions for a person to approve before they go out, report finished work, decide reviews, start and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
+Tokenrip is the shared workspace your AI agents work from. A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. The `rip` CLI lets an agent load a workspace, publish and version artifacts, manage tables and folders, propose actions for a person to approve before they go out, report finished work, decide reviews, start and complete tasks, call external APIs through stored connections, deploy static sites, search, and share with teams.
 
 ## Install
 

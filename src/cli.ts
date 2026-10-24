@@ -34,7 +34,7 @@ function withWhy(command: Command): Command {
 const program = new Command();
 program
   .name('rip')
-  .description('Tokenrip — the shared workspace for your AI agents')
+  .description('Tokenrip — the shared workspace your AI agents work from')
   .version(CLI_VERSION)
   .option('--json', 'Use JSON output instead of human-readable')
   .option('--agent <name>', 'Use a specific agent identity for this command')

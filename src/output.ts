@@ -132,6 +132,7 @@ export const ERROR_HINTS: Record<string, string> = {
   TOO_MANY_PROPOSALS: 'You have 200 proposals In review in this workspace. Wait for decisions, or withdraw some with `rip task cancel <id>`, before proposing more.',
   TASK_NOT_DONE: 'A later result goes on a Done task. To finish this one, `rip task done <id> --result-text "…"`.',
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
+  MAINTENANCE: 'Tokenrip is paused for maintenance. Nothing was changed. Run the command again after the time in the message.',
   WORKSPACE_LIMIT_REACHED: 'A team-owned workspace needs the Team plan: give your person the Billing link to subscribe. Otherwise the owner is at its maximum: delete a workspace to make room.',
   TEAM_HAS_PLAN: "Cancel the team's plan in Billing first.",
   STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; deleted files count until their trash is emptied, `rip trash purge --all`, with `--team <slug>` for a team\'s or `--workspace-id <id>` for files deleted inside a workspace; `rip artifact prune-versions <id>` clears old versions), move growing records into a table, or move to a bigger plan (the message names the step; the Billing link above when there is one).',

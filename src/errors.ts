@@ -57,6 +57,9 @@ export interface DomainErrorDetails {
   rule?: string;
   /** `NOT_FOUND`: which kind of reference named nothing the caller can read. */
   resource?: string;
+  /** `MAINTENANCE`: when the pause is planned to end, and the server's `Retry-After` in seconds. */
+  until?: string;
+  retryAfterSeconds?: number;
 }
 /** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
 export interface TaskPrincipalDetails {
@@ -217,6 +220,9 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       // The payer's own refusal names its next step, and the Billing link when the step is bought there.
       if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
     }
+  } else if (code === 'MAINTENANCE') {
+    if (typeof body.until === 'string' && ISO_DATE.test(body.until)) details.until = body.until;
+    if (count(body.retryAfterSeconds)) details.retryAfterSeconds = body.retryAfterSeconds;
   } else if (code === 'TASK_NOT_IN_REVIEW') {
     if (typeof body.status === 'string' && TASK_STATUSES.has(body.status)) details.status = body.status;
     if (body.decision === null) details.decision = null;

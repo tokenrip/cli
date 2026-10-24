@@ -1,12 +1,12 @@
 <p>
-  <img src="./assets/banner.svg" alt="tokenrip — The shared workspace for your AI agents" width="100%">
+  <img src="./assets/banner.svg" alt="tokenrip — The shared workspace your AI agents work from" width="100%">
 </p>
 
 # tokenrip/cli
 
-The shared workspace for your AI agents, from the command line.
+The shared workspace your AI agents work from, on the command line.
 
-Tokenrip is the shared workspace for your AI agents. Your agents keep running where they already do, in Claude, ChatGPT, Codex, Grok, Cursor, Instinct, Muse or any MCP app, and connect to Tokenrip as themselves. Their work lands in one workspace: files with every edit saved as a version, tasks any agent can pick up, and pinned decisions every agent reads before it starts. When an agent wants to send, post or publish something, it can ask first: the proposal waits in the workspace, and you approve it, edit it or skip it. Invite teammates, clients or contractors; they join free and bring their own agents. Each agent has its own key you can revoke, and every action is on the record. Pricing is by storage: 1 GB free, paid plans from $20 a month.
+Tokenrip is the shared workspace your AI agents work from. Your agents keep running where they already do, in Claude, ChatGPT, Codex, Grok, Cursor, Instinct, Muse or any MCP app, and connect to Tokenrip as themselves. They work from one workspace: files with every edit saved as a version, tables they add to and update, tasks any agent can pick up, and pinned decisions every agent reads before it starts. Agents state why on every change to files, tables and tasks, so the next agent or person picks up where the last one left off, whichever tool it ran in. When an agent wants to send, post or publish something, it can ask first: the proposal waits in the workspace, and you approve it, edit it or skip it. Invite teammates, clients or contractors; they join free and bring their own agents. Each agent has its own key you can revoke, and every change to a file, table or task names the agent that made it. Pricing is by storage: 1 GB free, paid plans from $20 a month.
 
 The CLI also calls external APIs through stored connections, deploys static sites, and shares work with teams — every artifact gets a shareable link.
 

@@ -1,4 +1,5 @@
-import axios, { AxiosInstance, AxiosError, type InternalAxiosRequestConfig, type AxiosResponse, type AxiosAdapter, type CancelToken } from 'axios';
+import { Stream } from 'node:stream';
+import axios, { AxiosInstance, AxiosError, AxiosHeaders, type AxiosRequestConfig, type InternalAxiosRequestConfig, type AxiosResponse, type AxiosAdapter, type CancelToken } from 'axios';
 import { CliError, safeErrorDetails, type TransportErrorDetails } from './errors.js';
 import { createProxyAgentOwner } from './proxy-agents.js';
 import { CLI_VERSION } from './version.js';
@@ -87,6 +88,69 @@ export function resolveConversation(env: Record<string, string | undefined> = pr
     .find(candidate => !!candidate && candidate.length <= CONVERSATION_MAX_CHARS && /^[\x20-\x7e]+$/.test(candidate));
 }
 
+/** The longest single `Retry-After` the client waits out (plan D3). */
+export const MAINTENANCE_MAX_WAIT_MS = 60_000;
+/**
+ * The most one request waits for maintenance in all, below agent harnesses' 2-minute tool limit.
+ * It covers waiting only: the final resend still has its own request timeout.
+ */
+export const MAINTENANCE_WAIT_CAP_MS = 90_000;
+/** The most times one request is sent again, which bounds a run of `Retry-After: 0`. */
+export const MAINTENANCE_MAX_RETRIES = 5;
+
+/**
+ * Whether a request refused with `MAINTENANCE` is sent again, and after how long. A refused
+ * request did no work, so sending it again is safe, unless its body was a stream already read.
+ */
+export function maintenanceRetry(input: {
+  retryAfterSeconds: number | undefined; waitedMs: number; attempts: number; streamBody: boolean;
+}): { waitMs: number } | null {
+  const { retryAfterSeconds, waitedMs, attempts, streamBody } = input;
+  if (streamBody || attempts >= MAINTENANCE_MAX_RETRIES) return null;
+  if (typeof retryAfterSeconds !== 'number' || !Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) return null;
+  const waitMs = retryAfterSeconds * 1000;
+  if (waitMs > MAINTENANCE_MAX_WAIT_MS || waitedMs + waitMs > MAINTENANCE_WAIT_CAP_MS) return null;
+  return { waitMs };
+}
+
+/**
+ * A resent request's maintenance tally rides on the config it is resent with: Axios's config merge
+ * copies symbol-keyed values, and the request interceptor moves it into the client's own map.
+ */
+const MAINTENANCE_TALLY = Symbol('tokenrip.maintenanceTally');
+type MaintenanceTally = { waitedMs: number; attempts: number };
+/** What one dispatch needs to be sent again: the request as the interceptor received it, and its tally. */
+type Resend = MaintenanceTally & { config: AxiosRequestConfig };
+
+/**
+ * Wait out a pause, ending early when the caller cancels (its `signal` or `cancelToken`). The
+ * resend that follows a cancel is refused by Axios before anything is sent, so the caller gets
+ * exactly the error any cancelled request gets.
+ */
+function maintenanceWait(ms: number, config: AxiosRequestConfig): Promise<void> {
+  return new Promise(resolve => {
+    const { signal, cancelToken } = config;
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', done);
+      cancelToken?.unsubscribe(done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    if (signal?.aborted) return done();
+    signal?.addEventListener?.('abort', done);
+    // A token cancelled already calls its listener at once.
+    cancelToken?.subscribe(done);
+  });
+}
+
+function maintenanceWaitLine(until: string | undefined, seconds: number): string {
+  const end = until ? new Date(until) : undefined;
+  const at = end && !Number.isNaN(end.getTime())
+    ? ` until ${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')} UTC` : '';
+  return `Tokenrip is paused for maintenance${at} — waiting ${seconds} s, then retrying.`;
+}
+
 export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   const baseUrl = config.baseUrl || 'https://api.tokenrip.com';
   const headers: Record<string, string> = {};
@@ -112,7 +176,18 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
     const original = originalTokens.get(config);
     if (original) { config.cancelToken = original; originalTokens.delete(config); }
   };
+  const resends = new WeakMap<InternalAxiosRequestConfig, Resend>();
   client.interceptors.request.use(config => {
+    // Snapshot the request before this client wraps its transforms, adapter, agents and cancel
+    // token, so a maintenance resend starts from the caller's request with fresh bookkeeping.
+    const tagged = config as { [MAINTENANCE_TALLY]?: MaintenanceTally };
+    const carried = tagged[MAINTENANCE_TALLY];
+    delete tagged[MAINTENANCE_TALLY];
+    const resend: Resend = {
+      config: { ...config, headers: new AxiosHeaders(config.headers) },
+      waitedMs: carried?.waitedMs ?? 0,
+      attempts: carried?.attempts ?? 0,
+    };
     const transforms = config.transformRequest;
     config.transformRequest = [
       ...(Array.isArray(transforms) ? transforms : transforms ? [transforms] : []),
@@ -121,6 +196,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         // resources only after the caller's transformations have succeeded.
         const observation: RequestObservation = { started: performance.now(), timeout: this.timeout, responseReceived: false };
         observations.set(this, observation);
+        resends.set(this, resend);
         if (this.cancelToken) {
           const original = this.cancelToken;
           const requestConfig = this;
@@ -196,7 +272,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
 
   client.interceptors.response.use(
     (response) => { proxyAgents.settle(response.config, response); restoreToken(response.config); return response; },
-    (
+    async (
       error: AxiosError<{
         ok: boolean;
         error?: string;
@@ -247,6 +323,31 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         throw new CliError('UNAUTHORIZED', process.env.TOKENRIP_API_KEY
           ? 'The key in TOKENRIP_API_KEY was refused. Replace it, or unset it to use your stored sign-in (rip auth login --email <your email>).'
           : 'This key is not valid. Sign in again: rip auth login --email <your email>');
+      }
+      // A maintenance pause refused the request before any work: wait it out and send it again
+      // while the wait stays bounded (plan D3), else fail with the end time.
+      if (error.response?.status === 503 && error.response.data?.error === 'MAINTENANCE') {
+        const data = error.response.data;
+        const details = data.details && typeof data.details === 'object' ? data.details as Record<string, unknown> : {};
+        const headers = error.response.headers;
+        const header: unknown = headers instanceof AxiosHeaders ? headers.get('retry-after') : headers?.['retry-after'];
+        let retryAfterSeconds: number | undefined;
+        if (typeof header === 'string' && /^\d+$/.test(header.trim())) retryAfterSeconds = Number(header.trim());
+        else if (typeof details.retryAfterSeconds === 'number') retryAfterSeconds = details.retryAfterSeconds;
+        const until = typeof details.until === 'string' ? details.until : undefined;
+        const resend = error.config ? resends.get(error.config) : undefined;
+        const decision = resend && maintenanceRetry({
+          retryAfterSeconds, waitedMs: resend.waitedMs, attempts: resend.attempts,
+          // A web ReadableStream body is not detected; the CLI never sends one.
+          streamBody: resend.config.data instanceof Stream,
+        });
+        if (resend && decision) {
+          console.error(maintenanceWaitLine(until, decision.waitMs / 1000));
+          await maintenanceWait(decision.waitMs, resend.config);
+          const tally: MaintenanceTally = { waitedMs: resend.waitedMs + decision.waitMs, attempts: resend.attempts + 1 };
+          return client.request({ ...resend.config, [MAINTENANCE_TALLY]: tally } as AxiosRequestConfig);
+        }
+        throw new CliError('MAINTENANCE', data.message || 'Tokenrip is paused for maintenance.', { until, retryAfterSeconds });
       }
       if (error.response?.data?.error) {
         const data = error.response.data;
