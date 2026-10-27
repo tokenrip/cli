@@ -118,7 +118,7 @@ export async function accountExport(target: string, options: { to: string }): Pr
     throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
   }
   const identity = store[agentId];
-  requireLocalKeypair(identity, 'Sign in on the other machine instead: rip auth login --email <your email>, or hand off with rip auth code.');
+  requireLocalKeypair(identity, 'Sign in on the other machine instead: rip auth login --email <your email>, or connect it with rip auth code.');
   const blob = encryptIdentityForAgent(identity, options.to, identity.secretKey);
   outputSuccess({
     blob,

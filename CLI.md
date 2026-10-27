@@ -47,7 +47,7 @@ An unknown subcommand is refused with the group's real commands: `rip table list
 
 `rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and guests you add or invite by email. A `<workspace>` argument or `--workspace-id` takes the workspace's **id or slug** (the server resolves a slug among the workspaces you reach, in any case; one it cannot find is `WORKSPACE_NOT_FOUND`, as an unknown id is, and a slug two of them share is `AMBIGUOUS_REFERENCE`, which prints each candidate's id and home: name it by its id). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
-**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version|prune-versions`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|rename|update|share-contents|delete`, `trash restore|purge`. Reads and pins take none.
+**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|append|patch|fork|move|bulk|delete|delete-version|prune-versions`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|rename|update|share-contents|delete`, `trash restore|purge`. Reads and pins take none.
 
 ### `rip workspace create <slug>`
 
@@ -70,7 +70,7 @@ Show one workspace.
 
 ### `rip workspace update <workspace>`
 
-Options: `--name <name>`, `--description <text>`, `--why <text>`.
+Options: `--name <name>`, `--description <text>`, `--history <setting>`, `--why <text>`. Admins only. `--history` is how many earlier versions whole-file updates and edits keep across the workspace, unless a folder or file sets its own: `off` (the default: a write keeps no earlier version), `all`, a number `n` (1–100: the last `n`) or `inherit` (clear it; reads as off). It deletes nothing now and applies from each file's next write.
 
 ### `rip workspace delete <workspace>`
 
@@ -97,7 +97,7 @@ Each member write takes `--why <text>`.
 
 ### `rip workspace adopt <workspace> [artifacts...]`
 
-Move standalone content you own into the workspace: atomic, no copy, identity and history kept, old team shares removed. Sharing an adopted artifact exposes its full version history.
+Move standalone content you own into the workspace: atomic, no copy, identity and history kept, old team shares removed. Sharing an adopted artifact exposes every version it keeps.
 
 ```bash
 rip workspace adopt <workspace> <artifact>... [--audience internal|shared] [--destination-folder-id <uuid>]
@@ -117,34 +117,24 @@ rip workspace pin remove <artifact>
 
 ### `rip workspace load <workspace>`
 
-Load bounded context, in the order an agent reads it: the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason (`carry_out`: approved, carry out its approved text; `decide`: a review addressed to you; `do`: To do, for you), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), the latest changes (50, newest first, each with its `why`) with `unread` (how many changes came after this key's last acknowledgement, counted up to 1000; `unreadTruncated` when there are more), handoff notes, recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: the header `Workspace: <name> (<slug>) [<id>]`, `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own:` kinds (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin and the latest handoff (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), `Latest changes (<n>):` newest first (when, `You` or `~alias`, the action, the item's title and id, and its why), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <workspace>` (`1000+` when the count was capped; `rip workspace changes` reads them in order and reports history gaps and access changes, `rip workspace ack` moves your position), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`).
+Load bounded context, in the order an agent reads it: `notices` first, only when Tokenrip changed how something works since this key last loaded (`[{ id, publishedAt, text }]`, told once, printed under `Tokenrip changed:`); the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason (`carry_out`: approved, carry out its approved text; `decide`: a review addressed to you; `do`: To do, for you), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), the latest changes (50, newest first, each with its `why`) with `unread` (how many changes came after this key's last acknowledgement, counted up to 1000; `unreadTruncated` when there are more), recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: the header `Workspace: <name> (<slug>) [<id>]`, `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own:` kinds (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), `Latest changes (<n>):` newest first (when, `You` or `~alias`, the action, the item's title and id, and its why), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <workspace>` (`1000+` when the count was capped; `rip workspace changes` reads them in order and reports history gaps and access changes, `rip workspace ack` moves your position), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
 rip workspace load <workspace>
 rip workspace load <workspace> --task-cursor <cursor>
 ```
 
-Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>`, `--handoff-offset <n>` (`--activity-cursor` continues with older changes). Names can repeat: name the workspace by its slug or id; when a slug names two you reach, use the id the `AMBIGUOUS_REFERENCE` refusal prints. Load takes no session flag (`--operation-id` and `--session-id` are unknown options, as is `--session-cursor` on `show`).
+Continuation: `--artifact-offset <n>`, `--task-cursor <cursor>`, `--activity-cursor <cursor>` (`--activity-cursor` continues with older changes). Names can repeat: name the workspace by its slug or id; when a slug names two you reach, use the id the `AMBIGUOUS_REFERENCE` refusal prints. Load takes no session flag (`--operation-id` and `--session-id` are unknown options, as is `--session-cursor` on `show`).
 
 ### `rip workspace sessions <workspace>`
 
-Recent sessions, newest first, 20 per page. A session is a run of writes in the workspace by one account, agent key and conversation, each within 45 minutes of the previous one; the server computes it from activity, so nothing is started or ended. Each prints who worked (`You · <agent> (<tool>)`, `You · <tool>` without a key, plain `You`, or `You · in the browser` for your own account; `~<alias>'s agent · <tool>`, `~<alias> · in the browser` or `~<alias>` for someone else, whose key names are never shown), the time range, `unread` when it holds changes after your acknowledged position, then its **steps**: each stated why ("no stated goal" for older writes, "in the browser" for a person's edits) followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, …; older writes read `updated`), the item's type, title and id, the versions it created (`v6`, or `(deleted)`; past five, the first and the latest four with `…` between), row counts (`+12 ~3 -0 rows`), and for a handoff note `rip artifact cat <id>`. An edit is followed by one diff command for the whole change, `rip artifact diff --version-id <last> --from-version-id <first>` (just `--version-id` when the step saved one version); a file the step created gets none. External members see sessions built from shared work only. With `--json`, sessions carry `steps`, `mine` and `unread`.
+Recent sessions, newest first, 20 per page. A session is a run of writes in the workspace by one account, agent key and conversation, each within 45 minutes of the previous one; the server computes it from activity, so nothing is started or ended. Each prints who worked (`You · <agent> (<tool>)`, `You · <tool>` without a key, plain `You`, or `You · in the browser` for your own account; `~<alias>'s agent · <tool>`, `~<alias> · in the browser` or `~<alias>` for someone else, whose key names are never shown), the time range, `unread` when it holds changes after your acknowledged position, then its **steps**: each stated why ("no stated goal" for older writes, "in the browser" for a person's edits) followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, …; older writes read `updated`), the item's type, title and id, the versions it created (`v6`, or `(deleted)`; past five, the first and the latest four with `…` between), and row counts (`+12 ~3 -0 rows`). An edit is followed by one diff command for the whole change, `rip artifact diff --version-id <last> --from-version-id <first>` (just `--version-id` when the step saved one version); a file the step created gets none. External members see sessions built from shared work only. With `--json`, sessions carry `steps`, `mine` and `unread`.
 
 ```bash
 rip workspace sessions <workspace> [--cursor <nextCursor>]
 ```
 
 `INVALID_CURSOR` for a malformed cursor. The read scans the workspace's latest 1,000 events; a session that reaches past them says "earlier activity of this session not shown".
-
-### Handoff notes
-
-A handoff note is an ordinary markdown artifact the next agent reads on load. It is optional: the session is recorded anyway.
-
-```bash
-rip artifact publish notes.md --type markdown --title "Handoff: pricing" --workspace-id <workspace> --handoff --why "<the goal>"
-```
-
-`--handoff` needs `--workspace-id` (`INVALID_SCOPE`) and markdown (`INVALID_HANDOFF`).
 
 ### `rip workspace view context|open`
 
@@ -170,11 +160,13 @@ rip workspace ack <workspace> --delivery-token <token>
 
 ### Workspace flags on other commands
 
-Workspace content is written with the ordinary commands. A write composed from what you read needs its precondition (`PRECONDITION_REQUIRED` when missing): a document body (`--expected-version-id`), a row or task update (`--expected-revision`), a patch of `--description` or `--metadata` (`--expected-workspace-revision`). Every other write states its whole outcome and takes its revision optionally. A stale precondition is `CONFLICT` with the current value:
+Workspace content is written with the ordinary commands. A write composed from what you read needs its precondition (`PRECONDITION_REQUIRED` when missing): replacing a file's whole content that someone else wrote (`--expected-version-id`; another agent or key, a person in the browser, or a write from before this release), a row or task update (`--expected-revision`), a patch of `--description` or `--metadata` (`--expected-workspace-revision`). Append and `--find`/`--replace` edits never need one. Every other write states its whole outcome and takes its revision optionally. A stale precondition is `CONFLICT` with the current value:
 
 ```bash
 rip artifact publish|upload … --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"   # or --folder <workspace-folder-id> alone
-rip artifact update <id> <file> --expected-version-id <version-id>   # keeps the audience; change it with patch
+rip artifact append <id> [file]                                      # adds to the end; no version id
+rip artifact update <id> --find <text> --replace <text>              # changes a passage; no version id
+rip artifact update <id> <file> [--expected-version-id <version-id>]   # over someone else's content; keeps the audience
 rip artifact patch <id> --description|--metadata … --expected-workspace-revision <n>
 rip artifact patch|move|delete|prune-versions … [--expected-workspace-revision <n>]
 rip artifact delete-version <version-id> [--expected-workspace-revision <n>]
@@ -191,7 +183,7 @@ rip task add "<title>" --workspace-id <ws> [--audience …]   ·   rip task list
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --audience]
 ```
 
-New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision. History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. Audience and `--handoff` require explicit workspace identity (`INVALID_SCOPE`). Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
+New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision. History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. Audience requires explicit workspace identity (`INVALID_SCOPE`). Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
 
 ## Artifact commands
 
@@ -213,7 +205,7 @@ rip artifact publish --type table --title "Research" --strict \
 rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> --audience shared
 ```
 
-Required: `--type`. Options: `--title`, `--content`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema <json>`, `--headers`, `--from-csv`, `--team <slugs>` (shares with each; the first scopes a `--folder` slug), `--folder <id-or-slug>` (a folder id, or a slug in `--workspace-id`, else the first `--team`, else personal; a workspace folder puts it in that workspace), `--metadata <json>` (not on tables), `--public-asset`, `--visibility <private|link|public>` (default `link`), `--strict` (a table from `--schema` only), `--workspace-id <id>`, `--audience <internal|shared>`, `--handoff` (a markdown handoff note; needs `--workspace-id`), `--why <text>`, `--dry-run`.
+Required: `--type`. Options: `--title`, `--content`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema <json>`, `--headers`, `--from-csv`, `--team <slugs>` (shares with each; the first scopes a `--folder` slug), `--folder <id-or-slug>` (a folder id, or a slug in `--workspace-id`, else the first `--team`, else personal; a workspace folder puts it in that workspace), `--metadata <json>` (not on tables), `--public-asset`, `--visibility <private|link|public>` (default `link`), `--strict` (a table from `--schema` only), `--workspace-id <id>`, `--audience <internal|shared>`, `--why <text>`, `--dry-run`.
 
 - **CSV vs table.** A `csv` artifact is a versioned file rendered as a table — for exports and snapshots. A `table` is a living table with a row-level API — for incremental data. `--from-csv` imports a CSV straight into a table (the CLI sends the CSV as the table's `content`); pass `--headers` (first row as column names) or `--schema` (explicit names and types), not both. A column name is 1 to 256 characters with no leading or trailing space, comma or square bracket, so spreadsheet headers such as `Estado (funil)` import as they are; a refused header is named by position (`INVALID_SCHEMA`), and an unclosed quote is `INVALID_CSV`. A CSV-imported table is not strict.
 - **Strict tables.** `--strict` makes row writes reject unknown columns and values that don't match their declared type. Without it an unknown key is silently *added* to the schema as a `text` column and no value is type checked.
@@ -245,7 +237,7 @@ Options: `--since <iso|days>`, `--limit <n>` (1–100, default 20), `--type <typ
 
 ### `rip artifact get <identifier>`
 
-Metadata and permissions for an artifact: visibility, folder, teams, workspace and audience, and who can modify it. The `Versions:` line names the command that lists them (`Versions:    3 (rip artifact versions <id>)`).
+Metadata and permissions for an artifact: visibility, folder, teams, workspace and audience, and who can modify it. The `Versions:` line names the command that lists them (`Versions:    3 (rip artifact versions <id>)`); `History:` gives the effective history setting and where it comes from (`off (the default)`, `keep the last 5 earlier versions (from its folder)`; `--json`: `history: { value, from }`, null for a table), and `--json` carries `currentVersionNumber`.
 
 ```bash
 rip artifact get 550e8400-...
@@ -274,17 +266,33 @@ rip artifact download <table-id> --format json
 
 Options: `--output <path>`, `--version-id <versionId>`, `--format <csv|json>` (tables; default `csv`).
 
-### `rip artifact update <uuid> <file>`
+### `rip artifact update <identifier> [file]`
 
 Publish a new version of an existing artifact (a UUID, alias or page URL). The URL stays the same. The version keeps the artifact's own type: a text artifact (markdown, html, csv, …) takes the file's text, a file artifact the file as it is (the CLI reads the artifact first to tell which). `--title` / `--alias` also patch the artifact, so you can republish and retitle in one command.
 
 ```bash
 rip artifact update 550e8400-... report-v2.md --description "copy edits"
 rip artifact update my-doc report-v2.md --title "Report (v2)"
-rip artifact update <id> report-v2.md --expected-version-id <version-id>   # workspace content
+rip artifact update <id> report-v2.md --expected-version-id <version-id>   # over a workspace file someone else wrote
 ```
 
-Options: `--description`, `--context`, `--title`, `--alias`, `--expected-version-id <id>`, `--why <text>`, `--dry-run`. A new version keeps the artifact's audience; change it with `rip artifact patch --audience`.
+Options: `--find <text>` / `--replace <text>` (repeatable pairs), `--keep-previous`, `--description`, `--context`, `--title`, `--alias`, `--expected-version-id <id>`, `--why <text>`, `--dry-run`. A new version keeps the artifact's audience; change it with `rip artifact patch --audience`.
+
+- **Edits.** Instead of a file, repeated `--find`/`--replace` pairs (paired in order) change passages of a text file on the server: each applies to the text the earlier ones left, and each `--find` must occur exactly once, or nothing changes (`INVALID_FIELD` on `edits[i].find`, naming how many times it matched). Nothing is read first. A binary file or a table is refused (`INVALID_TYPE`).
+- **History.** The write replaces the content. The replaced version is kept only when the file's history setting keeps it (its own, its folder's or its workspace's; off by default) or with `--keep-previous`; under a "last n" setting the oldest kept versions beyond `n` go.
+- **`--expected-version-id`.** Needed only to replace a workspace file's content that someone else wrote: another agent or key, a person in the browser, or a write from before this release (`PRECONDITION_REQUIRED` names the agent when it knows it, else says the content was written in the browser, by the system or before this change). Over content your key wrote it is optional (the `Version ID` of your last receipt). When sent it is checked, standalone files too: stale is `CONFLICT` with `currentVersionId`. Edits never need it.
+- **Hints.** The receipt may carry `hints`, printed as `Hint:` lines on stderr: re-sending a large file to add to its end, or to change a small part, names `rip artifact append` or `--find`/`--replace`.
+
+### `rip artifact append <identifier> [file]`
+
+Add text to the end of a text file without sending or reading the rest (`POST /v0/artifacts/:artifactId/append`): the file's text, or stdin when no file is given. The server starts it on a new line when the file is not empty and does not end with one; end your text with a newline to keep lines whole. The result is a new current version; an append never keeps the earlier version, even under keep all. No `--expected-version-id` is needed (when sent it is checked: stale is `CONFLICT`). Text files only: a binary file is refused (replace it with `rip artifact update`), and a table takes rows (`rip table append`).
+
+```bash
+rip artifact append run-log entry.md
+echo "- deployed v2" | rip artifact append run-log --why "Keep the launch log current"
+```
+
+Options: `--expected-version-id <id>`, `--why <text>`. Prints the receipt as `update` does.
 
 ### `rip artifact patch <identifier>`
 
@@ -300,9 +308,11 @@ rip artifact patch <id> --audience shared
 rip artifact patch <id> --visibility link             # a workspace file: anyone with the URL reads it, no login
 ```
 
-On a workspace artifact, `--description` and `--metadata` need `--expected-workspace-revision` (the patch was composed from what you read); with only `--title`, `--alias`, `--audience` or `--visibility` it is optional.
+On a workspace artifact, `--description` and `--metadata` need `--expected-workspace-revision` (the patch was composed from what you read); with only `--title`, `--alias`, `--audience`, `--visibility` or `--history` it is optional.
 
-On a workspace artifact, `--visibility` takes `private` or `link` (never `public`, `INVALID_VISIBILITY`), and only an internal editor sets it. `link` lets anyone with the URL read that file, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off (`--audience internal` with `--visibility link` is `INVALID_VISIBILITY`). Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. A patch of `--visibility` alone needs no `--why`; a why you send is recorded. The workspace history records it as `public_access_granted` / `public_access_removed`. Options: `--title`, `--description`, `--alias`, `--metadata <json>` (replaces existing metadata, except a table keeps its stored `schema` and `strict` unless you send them; a new schema that declares or moves the key onto repeated values is `409 DUPLICATE_UNIQUE_VALUE`, and onto a column holding an object, an array or a value over 1024 bytes is `400 INVALID_SCHEMA`), `--visibility`, `--audience`, `--expected-workspace-revision <n>`, `--why <text>`.
+`--history <setting>` sets how many earlier versions this file's whole-file updates and edits keep: `off` (the default: a write keeps no earlier version), `all`, a number `n` (1–100: the last `n`) or `inherit` (clear it; it follows its folder, then its workspace). It deletes nothing now and applies from the next write; `rip artifact prune-versions` frees what is already kept. A table is refused (`INVALID_TYPE`).
+
+On a workspace artifact, `--visibility` takes `private` or `link` (never `public`, `INVALID_VISIBILITY`), and only an internal editor sets it. `link` lets anyone with the URL read that file, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off (`--audience internal` with `--visibility link` is `INVALID_VISIBILITY`). Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. A patch of `--visibility` alone needs no `--why`; a why you send is recorded. The workspace history records it as `public_access_granted` / `public_access_removed`. Options: `--title`, `--description`, `--alias`, `--metadata <json>` (replaces existing metadata, except a table keeps its stored `schema` and `strict` unless you send them; a new schema that declares or moves the key onto repeated values is `409 DUPLICATE_UNIQUE_VALUE`, and onto a column holding an object, an array or a value over 1024 bytes is `400 INVALID_SCHEMA`), `--visibility`, `--audience`, `--history <setting>`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact versions [artifact]`
 
@@ -328,7 +338,7 @@ Delete one version by its own id (`DELETE /v0/versions/:versionId`; the version 
 
 ### `rip artifact prune-versions <uuid>`
 
-The artifact may be a UUID, alias or page URL. Delete an artifact's old versions in one step (`DELETE /v0/artifacts/:id/versions`, with `keep`, `expectedWorkspaceRevision` and `why` in the request body), keeping the current one and the newest `--keep <n>` of the others (default 0). Immediate and for good: versions do not go to the trash. Every version is stored in full and counts toward the owner's storage, so this frees what the old versions hold. The current version always stays, so pruning never frees a version number; a stored file goes only when no other version uses it (a fork shares its source's). A table is refused (`INVALID_TYPE`). Prints the versions removed, the bytes freed and the versions left; `--json` returns `{ artifactId, removed, freedBytes, versionCount }`. Options: `--keep <n>`, `--expected-workspace-revision <n>`, `--why <text>`.
+The artifact may be a UUID, alias or page URL. Delete an artifact's old versions in one step (`DELETE /v0/artifacts/:id/versions`, with `keep`, `expectedWorkspaceRevision` and `why` in the request body), keeping the current one and the newest `--keep <n>` of the others (default 0). Immediate and for good: versions do not go to the trash. Every kept version counts toward the owner's storage, so this frees what the old versions hold. The current version always stays, so pruning never frees a version number; a stored file goes only when no other version uses it (a fork shares its source's). A table is refused (`INVALID_TYPE`). Prints the versions removed, the bytes freed and the versions left; `--json` returns `{ artifactId, removed, freedBytes, versionCount }`. Options: `--keep <n>`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact delete <identifier>`
 
@@ -477,13 +487,14 @@ Options: `--team <slug>`, `--workspace-id <workspace>`, `--expected-workspace-re
 
 ### `rip folder update <folder>`
 
-Change a workspace folder's own audience (its children keep theirs). The folder names its workspace.
+Change a workspace folder's own audience (its children keep theirs), or any folder's history setting: one per call. The folder names its workspace.
 
 ```bash
 rip folder update <folder-id> --audience shared
+rip folder update <folder-id> --history 10
 ```
 
-Required: `--audience <internal|shared>`. Options: `--workspace-id <workspace>` (only for a slug), `--expected-workspace-revision <n>` (refuse if the folder changed since), `--why <text>`.
+`--history` is how many earlier versions whole-file updates and edits keep for the files in the folder that set none of their own: `off` (the default: a write keeps no earlier version), `all`, a number `n` (1–100: the last `n`) or `inherit` (clear it; it follows the workspace). It deletes nothing now and applies from each file's next write; in a workspace, internal admins and editors set it. Required: `--audience <internal|shared>` or `--history <setting>`. Options: `--team <slug>` (only for a slug), `--workspace-id <workspace>` (only for a slug), `--expected-workspace-revision <n>` (refuse if the folder changed since), `--why <text>`.
 
 ### `rip folder share-contents <folder>`
 
@@ -1115,7 +1126,7 @@ rip config show                                  # API URL, key status, config p
 
 ### `rip update` (alias of `rip self-update`)
 
-Check for a newer CLI and install it via npm, then print how to refresh the skill file.
+Check for a newer CLI and install it via npm, then print how to refresh the skill file. When a newer version exists, every command prints on stderr (the published version is checked at most once a day): "rip X is available (you have Y): run `rip update`, then reload the tokenrip skill."
 
 ## Provenance tracking
 
@@ -1127,7 +1138,7 @@ Check for a newer CLI and install it via npm, then print how to refresh the skil
 
 ## Several agents, one account
 
-Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Hand off with `rip auth code`; sign the person's browser in with `rip auth link`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_list`, `key_list`, …). Creating keys, sign-in codes and sign-in links, and connection calls have no MCP tool: an MCP agent gives the person the Agents page (`whoami`'s `agentsUrl`). Over MCP, `team_add_member` adds by email and `notification_mailbox` sets the mailbox, whose code the person enters on the Agents page.
+Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key, so all see the same workspaces; connecting one never disconnects another. Connect the next agent with `rip auth code`; sign the person's browser in with `rip auth link`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_list`, `key_list`, …). Creating keys, sign-in codes and sign-in links, and connection calls have no MCP tool: an MCP agent gives the person the Agents page (`whoami`'s `agentsUrl`). Over MCP, `team_add_member` adds by email and `notification_mailbox` sets the mailbox, whose code the person enters on the Agents page.
 
 ## Library usage
 
@@ -1210,7 +1221,7 @@ Environment variables take precedence over the config file:
 
 ## Output format
 
-Human-readable text by default. Use `--json` or `TOKENRIP_OUTPUT=json` for JSON. Success goes to stdout (exit 0), errors to stderr (exit 1).
+Human-readable text by default. Use `--json` or `TOKENRIP_OUTPUT=json` for JSON. Success goes to stdout (exit 0), errors to stderr (exit 1). A write receipt's `hints` print as `Hint:` lines on stderr in human mode and stay in `data.hints` with `--json`.
 
 ```json
 { "ok": true, "data": { ... } }
@@ -1256,7 +1267,7 @@ Common server codes:
 | `INVALID_SORT_COLUMN` / `INVALID_FILTER_COLUMN` | `rip table rows` named a column the table lacks; `details.available` lists the valid ones (`availableTruncated` when the list was cut: read the table's schema for the rest) |
 | `INVALID_SCHEMA` / `INVALID_CSV` | A table schema or CSV import was refused. A CSV header names its 1-based `column` and `rule` (`column_name`, `duplicate_column`); an unclosed quote is `INVALID_CSV` with `reason: unbalanced_quote` |
 | `NOT_FOUND` | Nothing you can read matches the reference; `details.resource` names which kind (`artifact`, `version`, `row`). Name an artifact by its full id, alias or page URL |
-| `INVALID_SCOPE` | Workspace-only creation fields (`--audience`, `--handoff`) require `workspaceId` |
+| `INVALID_SCOPE` | The workspace-only creation field `--audience` requires `workspaceId` |
 | `ALREADY_IN_WORKSPACE` / `CROSS_WORKSPACE_MOVE` | Adoption or move refused |
 | `TEAM_OWNS_WORKSPACES` | The team still owns workspaces |
 | `TASK_TAKEN` | Someone else holds the task; the details carry `holder` (printed as `Held by: …`). Nothing was written |

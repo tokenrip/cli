@@ -5,7 +5,7 @@ import { formatArtifactPatched } from '../formatters.js';
 import { parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
-import { parseNonNegativeInteger } from '../input.js';
+import { historyField, parseNonNegativeInteger } from '../input.js';
 
 export async function patch(
   identifier: string,
@@ -16,6 +16,7 @@ export async function patch(
     description?: string;
     visibility?: string;
     audience?: 'internal' | 'shared';
+    history?: string;
     expectedWorkspaceRevision?: string;
     why?: string;
   },
@@ -26,15 +27,16 @@ export async function patch(
     options.title === undefined &&
     options.description === undefined &&
     options.visibility === undefined &&
-    options.audience === undefined
+    options.audience === undefined &&
+    options.history === undefined
   ) {
     throw new CliError(
       'INVALID_ARGS',
-      'Provide at least one of --title, --description, --metadata, --alias, --visibility, or --audience.',
+      'Provide at least one of --title, --description, --metadata, --alias, --visibility, --audience, or --history.',
     );
   }
 
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = { ...historyField(options.history) };
   if (options.metadata) {
     body.metadata = parseJsonObjectOption(options.metadata, '--metadata');
   }

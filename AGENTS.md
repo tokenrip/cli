@@ -52,7 +52,7 @@ rip workspace list                                            # names, ids, your
 rip workspace load <workspace>                                # its slug or id: bounded context, latest changes, your browser link
 ```
 
-`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, the latest handoff note, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin or handoff arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin or handoff has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
 
 **Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
@@ -64,8 +64,11 @@ rip workspace ack <workspace> --delivery-token <token>
 # Who worked here recently (newest first): each goal with the changes made for it
 rip workspace sessions <workspace> [--cursor <nextCursor>]
 
-# Leave a handoff note for the next agent (optional; the session is recorded anyway)
-rip artifact publish notes.md --type markdown --title "Handoff: ..." --workspace-id <workspace> --handoff --why "<the goal>"
+# Stopping: complete what you finished; put what you hold but didn't finish back to To do,
+# its body saying how far it got (a proposal stays In review; no note restates them)
+rip task done <id> --why "<the goal>"
+rip task stop <id> --why "<the goal>"
+rip task update <id> --expected-revision <n> --body "<how far it got>" --why "<the goal>"
 
 # Lifecycle and members
 rip workspace create <slug> [--name "Roadmap"] [--description <text>] [--team <team-slug-or-id>] --why "<the goal>"   # name defaults to the slug
@@ -89,11 +92,13 @@ rip workspace view context <workspace>
 rip workspace view open <artifact-id> --expected-context-generation <n> [--operation-id <id>]
 ```
 
-Every item in a workspace has an **audience**: `internal` (owner and owning team) or `shared` (guests too: everyone added to the workspace is a guest). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags. A change composed from what you read carries its precondition (a document body, a row or task update, a patch of description or metadata); the rest takes it optionally:
+Every item in a workspace has an **audience**: `internal` (owner and owning team) or `shared` (guests too: everyone added to the workspace is a guest). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags. A change composed from what you read carries its precondition (replacing content someone else wrote, a row or task update, a patch of description or metadata); append and `--find`/`--replace` edits need none, and the rest takes it optionally:
 
 ```bash
 rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"
-rip artifact update <id> report-v2.md --expected-version-id <version-id>
+rip artifact append <id> entry.md                                   # add to the end; only the new text is sent
+rip artifact update <id> --find "Status: draft" --replace "Status: ready"
+rip artifact update <id> report-v2.md [--expected-version-id <version-id>]   # the id only over someone else's content
 rip artifact patch <id> --description "..." --expected-workspace-revision <n>
 rip artifact patch <id> --audience shared
 rip table update <row-id> --data '{...}' --expected-revision <row-rev>
@@ -101,7 +106,7 @@ rip folder create <slug> --workspace-id <ws>
 rip folder share-contents <folder-id>
 ```
 
-New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision. A missing required precondition is `PRECONDITION_REQUIRED`; a stale one, required or optional, is `CONFLICT` with the authorized current value. Reconcile before a corrected write. Use audience and omit standalone visibility/sharing fields on workspace creation; `WORKSPACE_AUTHORITY` names incompatible fields. To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. `audience` and `--handoff` require explicit workspace identity. Keep the content and the why when correcting input. History acknowledgment consumes a delivered page and cannot repair a write conflict.
+New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision. A missing required precondition is `PRECONDITION_REQUIRED`; a stale one, required or optional, is `CONFLICT` with the authorized current value. Reconcile before a corrected write. Use audience and omit standalone visibility/sharing fields on workspace creation; `WORKSPACE_AUTHORITY` names incompatible fields. To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. `audience` requires explicit workspace identity. Keep the content and the why when correcting input. History acknowledgment consumes a delivered page and cannot repair a write conflict.
 
 ## Artifact Commands
 
@@ -134,7 +139,7 @@ rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 
 **Public assets.** Pass `--public-asset` to store the bytes in a public-read bucket and serve them from a direct CDN URL — for public media (blog images, embeddable charts). The command prints `publicUrl`. The API rejects a public asset with private visibility (`400 INVALID_VISIBILITY`) and on tables (`400 PUBLIC_ASSET_UNSUPPORTED`); the flag is immutable once set.
 
-Other options: `--alias`, `--team <slugs>`, `--folder <slug>`, `--metadata <json>`, `--parent`, `--context`, `--refs`, `--workspace-id`, `--audience`, `--handoff`, `--why`.
+Other options: `--alias`, `--team <slugs>`, `--folder <slug>`, `--metadata <json>`, `--parent`, `--context`, `--refs`, `--workspace-id`, `--audience`, `--why`.
 
 ### `rip artifact upload <file>`
 
@@ -149,8 +154,11 @@ rip artifact upload hero.png --public-asset # → data.publicUrl (direct CDN)
 ### Versions and metadata
 
 ```bash
-rip artifact update <id> report-v2.md --description "revised"   # new version, same URL, same type
-rip artifact update <id> report-v2.md --title "Report (v2)"     # version + retitle
+rip artifact update <id> report-v2.md --description "revised"   # replaces the content, same URL, same type
+rip artifact update <id> report-v2.md --title "Report (v2)"     # replace + retitle
+rip artifact update <id> report-v2.md --keep-previous           # also keep the version it replaces
+rip artifact append <id> entry.md                               # add to the end (never keeps the earlier version)
+rip artifact patch <id> --history 5                             # keep the last 5 earlier versions: off (default) | all | <n> | inherit
 rip artifact patch <id> --title "Better Title"                                  # no new version
 rip artifact patch <id> --alias my-report --description "One-line summary"
 rip artifact patch <id> --visibility private                                    # standalone: private | link | public; workspace: private | link
@@ -482,7 +490,7 @@ rip update                            # check for and install CLI updates
 
 ### Several agents, one account
 
-Every agent the person connects (CLI agents, chat apps through a connector, hosted agents) joins their one account with its own key. Hand off with `rip auth code`; for a host that takes a pasted key, use `rip auth keys create --name <host>` and have the person paste the key into the host's vault or settings, never into a chat.
+Every agent the person connects (CLI agents, chat apps through a connector, hosted agents) joins their one account with its own key. Connect the next agent with `rip auth code`; for a host that takes a pasted key, use `rip auth keys create --name <host>` and have the person paste the key into the host's vault or settings, never into a chat.
 
 To open the dashboard for the person, `rip auth link [--to <page>]` makes a one-time sign-in link for their browser. Give it whole, only to the person in this conversation; never post or store it. It works once, within 10 minutes, and they are emailed when it is used. Never open it yourself. `rip auth code` is for their next agent and never signs a browser in.
 
@@ -521,7 +529,7 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `INVALID_AGENT_ID` | Bad agent ID format | Agent IDs start with `rip1` |
 | `WHY_REQUIRED` | A workspace write without `--why` | Add `--why "<what the person is trying to accomplish>"` (or `TOKENRIP_WHY`) and retry; no `--why` flag means an old CLI: `rip update` |
 | `INVALID_FIELD` | The server refused the named `field`: a wrong value, or a field the operation does not take or that does not apply here (the error lists the `accepted` ones); nothing changed | Correct the field; an old form from an older CLI or a saved skill: `rip update` and use the current flags |
-| `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write lacks, or has a stale, version id or revision | Re-read and retry with the current value |
+| `PRECONDITION_REQUIRED` / `CONFLICT` | A workspace write lacks a version id or revision it needs (replacing content someone else wrote, a row or task update, a patch of description or metadata), or a sent one is stale | Re-read and retry with the current value; append and `--find`/`--replace` need none |
 | `WORKSPACE_FORBIDDEN` | No access to the workspace, audience, or write | `rip workspace show <ws>` — check `capabilities` |
 | `WORKSPACE_DELETED` | The workspace is in the trash (410), or a restore names an item whose workspace is (409) | A workspace admin runs `rip trash restore <ws>` |
 | `DELETED` | The item, or its folder (`via`), is in the trash | `rip trash restore <id>` if you may delete it; `rip trash list` shows entries |

@@ -1,7 +1,7 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { formatTrashed } from '../formatters.js';
-import { assertWorkspaceCreationScope, parseNonNegativeInteger } from '../input.js';
+import { assertWorkspaceCreationScope, historyField, parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
 import { resolveTeam } from '../teams.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
@@ -81,15 +81,24 @@ export async function folderRename(
   outputSuccess(data.data);
 }
 
-/** `rip folder update <folder> --audience`: a workspace folder's audience; the workspace is the folder's own. */
+/**
+ * `rip folder update <folder> --audience | --history`: a workspace folder's audience, or any folder's
+ * history setting (`inherit` clears it); one per call, as the server takes them.
+ */
 export async function folderUpdate(
   folder: string,
-  options: { workspaceId?: string; audience: 'internal' | 'shared'; expectedWorkspaceRevision?: string; why?: string },
+  options: FolderScope & { audience?: 'internal' | 'shared'; history?: string; expectedWorkspaceRevision?: string; why?: string },
 ): Promise<void> {
+  const body = {
+    ...historyField(options.history),
+    ...(options.audience !== undefined ? { audience: options.audience } : {}),
+    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
+  };
+  if (options.audience === undefined && options.history === undefined) {
+    throw new CliError('INVALID_ARGS', 'Provide --audience or --history.');
+  }
   const { client } = requireAuthClient();
-  const { data } = await client.patch(folderPath(folder), {
-    audience: options.audience, ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
-  });
+  const { data } = await client.patch(folderPath(folder), body);
   outputSuccess(data.data);
 }
 

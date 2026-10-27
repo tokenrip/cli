@@ -26,6 +26,18 @@ export function outputSuccess(data: Record<string, unknown>, formatter?: Formatt
   } else {
     console.log(formatter(data));
   }
+  // Write hints (a content write's receipt, `data.hints`): stderr in human mode, so stdout stays
+  // the receipt; --json already carries them.
+  if (!isJsonMode()) {
+    for (const message of hintMessages(data)) console.error(`Hint: ${message}`);
+  }
+}
+
+/** The messages of a receipt's `hints` (`{ code, message }[]`); anything else reads as none. */
+function hintMessages(data: Record<string, unknown>): string[] {
+  const hints = data.hints;
+  if (!Array.isArray(hints)) return [];
+  return hints.flatMap((hint) => (hint && typeof hint === 'object' && typeof hint.message === 'string' ? [hint.message] : []));
 }
 
 export function outputError(err: CliError): never {
@@ -120,7 +132,7 @@ export const ERROR_HINTS: Record<string, string> = {
   INVALID_CODE: 'Codes last 10 minutes and work once. Request a new one: `rip auth login --email <your email>`, or ask a connected agent to run `rip auth code`.',
   CODE_RECENTLY_SENT: 'A code was sent less than a minute ago. Check the inbox (and the spam folder) before asking again.',
   SIGN_IN_LOCKED: 'Too many wrong codes for this email. Wait until the time in the message, then request a new code.',
-  NO_LOCAL_KEYPAIR: 'Email sign-in needs no keypair. To use this account elsewhere, sign in there or hand off with `rip auth code`.',
+  NO_LOCAL_KEYPAIR: 'Email sign-in needs no keypair. To use this account elsewhere, sign in there or connect it with `rip auth code`.',
   RUN_KEY_EXPIRED: 'Get a new code from your key sign-in page and sign in again.',
   RUN_KEY_FORBIDDEN: 'Run keys cannot manage keys; ask the person to use the Agents page.',
   NO_OPERATOR: 'This account is not linked to a verified person. Sign in by email instead (`rip auth login --email <your email>`), or link this agent with `rip operator-link`.',

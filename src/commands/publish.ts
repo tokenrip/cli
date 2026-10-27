@@ -26,10 +26,9 @@ export function addHomeFields(body: Record<string, unknown>, options: { team?: s
   }
 }
 
-function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; why?: string; handoff?: boolean }): void {
+function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; why?: string }): void {
   if (options.workspaceId) body.workspaceId = options.workspaceId;
   if (options.audience) body.audience = options.audience;
-  if (options.handoff) body.handoff = true;
   if (options.why !== undefined) body.why = options.why;
 }
 
@@ -83,8 +82,6 @@ export async function publish(
     workspaceId?: string;
     audience?: 'internal' | 'shared';
     why?: string;
-    /** Publish markdown as the workspace's handoff note (requires `workspaceId`). */
-    handoff?: boolean;
   },
 ): Promise<void> {
   assertWorkspaceCreationScope(options);

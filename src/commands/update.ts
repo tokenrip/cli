@@ -7,58 +7,87 @@ import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatVersionCreated } from '../formatters.js';
 
+interface UpdateOptions {
+  description?: string;
+  context?: string;
+  title?: string;
+  alias?: string;
+  expectedVersionId?: string;
+  keepPrevious?: boolean;
+  find?: string[];
+  replace?: string[];
+  why?: string;
+  dryRun?: boolean;
+}
+
 /**
- * A new version of the artifact's own type (AR-1: no `--type`). A text artifact (markdown, html,
- * csv, …) takes the file's text as `content`; a file artifact takes the file as an upload. The
- * artifact is read first to tell which.
+ * The edits `--find` / `--replace` name, paired in order (the first find with the first replace).
+ * Unequal counts are a usage error, before any request.
  */
-export async function update(
-  identifier: string,
-  filePath: string,
-  options: { description?: string; context?: string; title?: string; alias?: string; expectedVersionId?: string; why?: string; dryRun?: boolean },
-): Promise<void> {
+export function pairEdits(find: readonly string[] = [], replace: readonly string[] = []): Array<{ find: string; replace: string }> {
+  if (find.length !== replace.length) {
+    throw new CliError('INVALID_ARGS', `Each --find needs a --replace (they pair in order): got ${find.length} --find and ${replace.length} --replace.`);
+  }
+  return find.map((text, index) => ({ find: text, replace: replace[index]! }));
+}
+
+/**
+ * A new version of the artifact's own type (AR-1: no `--type`), from a file or from edits (exactly
+ * one). With a file, a text artifact (markdown, html, csv, …) takes the file's text as `content`;
+ * a file artifact takes the file as an upload; the artifact is read first to tell which. Edits
+ * (`--find` / `--replace` pairs) apply on the server to the current text, sent as JSON with no
+ * read first.
+ */
+export async function update(identifier: string, filePath: string | undefined, options: UpdateOptions): Promise<void> {
   const uuid = parseArtifactId(identifier);
-  const absPath = path.resolve(filePath);
-  if (!fs.existsSync(absPath)) {
+  const edits = pairEdits(options.find, options.replace);
+  if (filePath !== undefined && edits.length > 0) {
+    throw new CliError('INVALID_ARGS', 'Give a file or --find/--replace edits, not both.');
+  }
+  if (filePath === undefined && edits.length === 0) {
+    throw new CliError('INVALID_ARGS', 'Give the file with the new content, or --find/--replace edits.');
+  }
+  const absPath = filePath === undefined ? undefined : path.resolve(filePath);
+  if (absPath !== undefined && !fs.existsSync(absPath)) {
     throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
   }
 
   if (options.dryRun) {
-    outputSuccess({ dryRun: true, action: 'would update', artifactId: uuid, file: absPath }, formatVersionCreated);
+    outputSuccess({ dryRun: true, action: 'would update', artifactId: uuid, ...(absPath ? { file: absPath } : { edits: edits.length }) }, formatVersionCreated);
     return;
   }
 
   const { client } = requireAuthClient();
-  const { data: current } = await client.get(`/v0/artifacts/${uuid}`);
-  const fileArtifact = current?.data?.type === 'file';
+  const fields: Record<string, unknown> = {};
+  if (options.description) fields.description = options.description;
+  if (options.context) fields.creatorContext = options.context;
+  if (options.expectedVersionId) fields.expectedVersionId = options.expectedVersionId;
+  if (options.keepPrevious) fields.keepPrevious = true;
+  if (options.why !== undefined) fields.why = options.why;
 
   let result: Record<string, unknown>;
-  if (!fileArtifact) {
-    // A text artifact: the version is the file's text, of the artifact's own type.
-    const content = fs.readFileSync(absPath, 'utf-8');
-    const body: Record<string, unknown> = { content };
-    if (options.description) body.description = options.description;
-    if (options.context) body.creatorContext = options.context;
-    if (options.expectedVersionId) body.expectedVersionId = options.expectedVersionId;
-    if (options.why !== undefined) body.why = options.why;
-
-    const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, body);
+  if (absPath === undefined) {
+    // Edits: the server applies them to the current text, so nothing is read first.
+    const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, { edits, ...fields });
     result = data.data;
   } else {
-    // A file artifact: upload the file as it is.
-    const form = new FormData();
-    form.append('file', fs.createReadStream(absPath));
-    if (options.description) form.append('description', options.description);
-    if (options.context) form.append('creatorContext', options.context);
-    if (options.expectedVersionId) form.append('expectedVersionId', options.expectedVersionId);
-    if (options.why !== undefined) form.append('why', options.why);
-
-    const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, form, {
-      headers: form.getHeaders(),
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-    });
-    result = data.data;
+    const { data: current } = await client.get(`/v0/artifacts/${uuid}`);
+    if (current?.data?.type !== 'file') {
+      // A text artifact: the version is the file's text, of the artifact's own type.
+      const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, { content: fs.readFileSync(absPath, 'utf-8'), ...fields });
+      result = data.data;
+    } else {
+      // A file artifact: upload the file as it is (a multipart field is text).
+      const form = new FormData();
+      form.append('file', fs.createReadStream(absPath));
+      for (const [key, value] of Object.entries(fields)) form.append(key, String(value));
+      const { data } = await client.post(`/v0/artifacts/${uuid}/versions`, form, {
+        headers: form.getHeaders(),
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      });
+      result = data.data;
+    }
   }
 
   // Title / alias are artifact-level metadata, not version content — apply them

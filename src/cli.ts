@@ -7,6 +7,7 @@ import { status } from './commands/status.js';
 import { deleteArtifact } from './commands/delete.js';
 import { forkArtifact } from './commands/fork.js';
 import { update } from './commands/update.js';
+import { append } from './commands/append.js';
 import { deleteVersion } from './commands/delete-version.js';
 import { pruneVersions } from './commands/prune-versions.js';
 import { artifactGet } from './commands/artifact-get.js';
@@ -99,7 +100,6 @@ withWhy(artifact
   .option('--strict', 'For a table created from --schema: reject unknown columns and type-mismatched values on row writes (not with --from-csv)')
   .option('--workspace-id <id>', 'Workspace id or slug: create inside it; no expected revision required')
   .option('--audience <audience>', 'Workspace audience: internal | shared (requires --workspace-id, or a --folder in a workspace)')
-  .option('--handoff', 'Publish this markdown as the workspace handoff note for whoever comes next (requires --workspace-id, or a --folder in a workspace)')
   .option('--dry-run', 'Validate inputs without publishing')
   .description('Publish structured content with rich rendering support')
   .addHelpText('after', `
@@ -123,8 +123,6 @@ EXAMPLES:
     --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
   $ rip artifact publish leads.csv --type table --from-csv --headers \\
     --title "Leads from CSV"
-  $ rip artifact publish notes.md --type markdown --title "Handoff" \\
-    --workspace-id <id> --handoff --why "Leave the pricing work ready for the next agent"
 `)
   .action(wrapCommand(publish));
 
@@ -187,29 +185,61 @@ EXAMPLES:
 `)
   .action(wrapCommand(forkArtifact));
 
+const collectText = (value: string, previous: string[] = []): string[] => previous.concat(value);
+
 withWhy(artifact
   .command('update'))
   .allowExcessArguments(false)
   .argument('<artifact>', 'Artifact ID, alias, or full URL')
-  .argument('<file>', 'File containing the new version content')
+  .argument('[file]', 'File containing the new content (or give --find/--replace edits instead)')
+  .option('--find <text>', 'Text that occurs exactly once in the current content (repeatable; pairs in order with --replace)', collectText)
+  .option('--replace <text>', 'What replaces the matching --find (repeatable; may be empty)', collectText)
   .option('--description <text>', 'Version description')
   .option('--context <text>', 'Creator context (your agent name, task, etc.)')
   .option('--title <title>', 'Also update the artifact title (applied via a follow-up patch)')
   .option('--alias <alias>', 'Also update the artifact alias (applied via a follow-up patch)')
-  .option('--expected-version-id <id>', 'Required current version ID when replacing workspace content')
+  .option('--keep-previous', 'Keep the version this write replaces, whatever the history setting says')
+  .option('--expected-version-id <id>', 'The current version id you read: needed to replace content another agent or person wrote; checked when sent')
   .option('--dry-run', 'Validate without publishing')
-  .description('Publish a new version of an existing artifact')
+  .description('Replace an artifact\'s content: from a file, or by --find/--replace edits')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact update 550e8400-... report-v2.md
   $ rip artifact update 550e8400-... chart.png --description "with axes fixed"
   $ rip artifact update my-doc report-v2.md --title "Report (v2)"
+  $ rip artifact update my-doc --find "Status: draft" --replace "Status: ready"
 
 A new version keeps the artifact's type: a text artifact (markdown, html, csv, ...)
 takes the file's text, a file artifact the file as it is. It keeps its audience
 too. To share a workspace artifact, use: rip artifact patch <id> --audience shared
+
+Edits apply in order on the server to the current text; each --find must occur
+exactly once, or nothing changes. They need no --expected-version-id.
+The write replaces the content: the earlier version is kept only when the file's
+history setting keeps it, or with --keep-previous.
 `)
   .action(wrapCommand(update));
+
+withWhy(artifact
+  .command('append'))
+  .allowExcessArguments(false)
+  .argument('<artifact>', 'Artifact ID, alias, or full URL')
+  .argument('[file]', 'File containing the text to add (or pipe it on stdin)')
+  .option('--expected-version-id <id>', 'Optional: the current version id you read; a stale one is refused (CONFLICT)')
+  .description('Add text to the end of a text artifact, without sending the rest')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip artifact append run-log entry.md
+  $ echo "- deployed v2" | rip artifact append run-log
+
+The server adds the text at the end of the current content, on a new line when
+the file does not end with one; end the text with a newline to keep lines whole.
+Nothing is read first, and no --expected-version-id is needed. An append keeps
+no earlier version, whatever the file's history setting says. Text artifacts
+only: replace a binary file with rip artifact update; add rows to a table with
+rip table append.
+`)
+  .action(wrapCommand(append));
 
 withWhy(artifact
   .command('delete-version'))
@@ -241,7 +271,7 @@ EXAMPLES:
   $ rip artifact prune-versions 550e8400-... --keep 3
   $ rip artifact prune-versions 550e8400-... --why "Keep the run log small"
 
-Every version is stored in full and counts toward the owner's storage.
+Every kept version counts toward the owner's storage.
 Prints the versions removed, the bytes freed and how many versions remain.
 
 CAUTION:
@@ -382,8 +412,9 @@ withWhy(artifact
   .option('--description <description>', 'New description for the artifact (empty string clears it)')
   .option('--visibility <level>', 'private | link | public. A workspace artifact takes private or link, set by internal editors: link lets anyone with the URL read it and makes it shared. Earlier versions become readable too; prune them first (rip artifact prune-versions) if they shouldn\'t be. No --why needed when visibility is the only change')
   .option('--audience <audience>', 'Set workspace audience: internal | shared without creating a version; internal turns public access off')
+  .option('--history <setting>', 'Earlier versions whole-file updates keep: off | all | a number (1-100) | inherit (clear it; follow its folder, then its workspace). Takes effect at the next write; deletes nothing now')
   .option('--expected-workspace-revision <n>', 'Required with --description or --metadata on a workspace artifact (the patch was composed from what you read); otherwise optional: refuse if the item changed since this revision')
-  .description('Update artifact metadata and/or alias without creating a new version')
+  .description('Update artifact metadata, alias or history setting without creating a new version')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact patch 550e8400-... --metadata '{"tags":["ai","agents"]}'
@@ -392,6 +423,8 @@ EXAMPLES:
   $ rip artifact patch my-post --title "New Title"
   $ rip artifact patch my-post --description "A helpful description"
   $ rip artifact patch <id> --visibility link
+  $ rip artifact patch <id> --history 5
+  $ rip artifact patch <id> --history inherit
 `)
   .action(wrapCommand(patch));
 
@@ -628,7 +661,7 @@ bundle
   .action(wrapCommand((bundleRef: string) => bundleDelete(bundleRef)));
 
 // ── auth commands ───────────────────────────────────────────────────
-const auth = program.command('auth').description('Sign in, hand off to another agent, and manage keys');
+const auth = program.command('auth').description('Sign in, connect another agent, and manage keys');
 
 auth
   .command('login')
@@ -2086,7 +2119,8 @@ withWhy(workspace
   .argument('<workspace>', 'Workspace id or slug')
   .option('--name <name>', 'New display name')
   .option('--description <text>', 'New description')
-  .description('Update workspace metadata')
+  .option('--history <setting>', 'Earlier versions whole-file updates keep: off | all | a number (1-100) | inherit (clear it; reads as off). Takes effect at the next write; deletes nothing now')
+  .description('Update workspace name, description or history setting')
   .action(wrapCommand(async (ws, options) => { const { workspaceUpdate } = await import('./commands/workspace.js'); await workspaceUpdate(ws, options); }));
 
 withWhy(workspace
@@ -2150,7 +2184,7 @@ withWhy(workspace
   .option('--audience <audience>', 'internal | shared (default internal; shared for an external editor)')
   .option('--destination-folder-id <uuid>', 'With artifacts: the workspace folder to file them in')
   .allowExcessArguments(false)
-  .description('Move standalone content into workspace authority; sharing exposes full artifact history')
+  .description('Move standalone content into workspace authority; sharing exposes every version it keeps')
   .addHelpText('after', `
 EXAMPLES:
   $ rip workspace adopt <workspace> brief-alias 7c9e6679-7425-40de-944b-e07fc1f90ae7 --why "Bring the launch notes into the project"
@@ -2163,7 +2197,7 @@ const workspacePinGroup = workspace.command('pin').description('Manage ordered m
 workspacePinGroup.command('add').argument('<artifact>', 'Markdown artifact in a workspace: id, alias or URL').option('--position <n>').allowExcessArguments(false).action(wrapCommand(async (artifact, options) => { const { workspacePin } = await import('./commands/workspace.js'); await workspacePin(artifact, options); }));
 workspacePinGroup.command('remove').argument('<artifact>', 'Pinned artifact: id, alias or URL').allowExcessArguments(false).action(wrapCommand(async (artifact) => { const { workspaceUnpin } = await import('./commands/workspace.js'); await workspaceUnpin(artifact); }));
 
-workspace.command('load').argument('<workspace>', 'Workspace id or slug').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').option('--handoff-offset <n>').allowExcessArguments(false).description('Load bounded context: pins, artifacts, open tasks, the latest changes (newest first, with how many are unread), recent sessions (steps: each goal with the changes made for it), handoff notes, and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor, handoffOffset: options.handoffOffset }); }));
+workspace.command('load').argument('<workspace>', 'Workspace id or slug').option('--artifact-offset <n>').option('--task-cursor <cursor>').option('--activity-cursor <cursor>').allowExcessArguments(false).description('Load bounded context: pins, artifacts, open tasks, the latest changes (newest first, with how many are unread), recent sessions (steps: each goal with the changes made for it), and your browser link').action(wrapCommand(async (ws, options) => { const { workspaceLoad } = await import('./commands/workspace.js'); await workspaceLoad(ws, { artifactOffset: options.artifactOffset, taskCursor: options.taskCursor, activityCursor: options.activityCursor }); }));
 const workspaceView = workspace.command('view').description('Inspect or explicitly navigate a paired browser view');
 // The view follows the caller's key; open needs only the artifact, whose workspace is the view's.
 workspaceView.command('context').argument('<workspace>', 'Workspace id or slug').allowExcessArguments(false).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws); }));
@@ -2262,11 +2296,14 @@ withWhy(folder
 withWhy(folder
   .command('update'))
   .allowExcessArguments(false)
-  .argument('<folder>', 'Workspace folder id, or its slug with --workspace-id')
+  .argument('<folder>', FOLDER_ARGUMENT)
+  .option('--team <slug>', 'The team a folder slug belongs to')
   .option('--workspace-id <workspace-id>', 'Workspace id or slug: the workspace a folder slug is in (a folder id needs none)')
-  .requiredOption('--audience <audience>', 'internal | shared')
-  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
-  .description('Change a workspace folder audience')
+  .option('--audience <audience>', 'A workspace folder\'s audience: internal | shared')
+  .option('--history <setting>', 'Earlier versions whole-file updates keep: off | all | a number (1-100) | inherit (clear it; follow the workspace). Takes effect at the next write; deletes nothing now')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the workspace folder changed since this revision')
+  .description('Change a workspace folder\'s audience, or any folder\'s history setting (one per call; a workspace folder\'s change needs --why)')
+  .addHelpText('after', FOLDER_SCOPE_NOTE)
   .action(wrapCommand(async (folderRef, options) => {
     const { folderUpdate } = await import('./commands/folder.js');
     await folderUpdate(folderRef, options);

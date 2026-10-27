@@ -291,6 +291,9 @@ export const formatArtifactMetadata: Formatter = (data) => {
   if (data.creatorContext) lines.push(`  Context:     ${data.creatorContext}`);
   if (data.visibility) lines.push(`  Visibility:  ${data.visibility}`);
   if (data.workspaceId && data.audience) lines.push(`  Audience:    ${data.audience}`);
+  // What its next whole-file update keeps, and where that comes from; none for an outsider.
+  const history = data.history as { value: unknown; from: string } | null | undefined;
+  if (history) lines.push(`  History:     ${historyWords(history.value)} (${HISTORY_SOURCE[history.from] ?? history.from})`);
 
   const folder = data.folder as { slug: string; teamSlug?: string } | null | undefined;
   if (folder) {
@@ -1188,6 +1191,15 @@ export const formatBulkResult: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** A history value in words: off, all, or the count of earlier versions kept. */
+function historyWords(value: unknown): string {
+  if (value === 'all') return 'keep all earlier versions';
+  if (typeof value === 'number') return `keep the last ${value} earlier version${value === 1 ? '' : 's'}`;
+  return 'off';
+}
+
+const HISTORY_SOURCE: Record<string, string> = { file: 'its own setting', folder: 'from its folder', workspace: 'from its workspace', default: 'the default' };
+
 /** Workspace output keeps every durable handle copyable in human mode. */
 export const formatWorkspace: Formatter = (data) => {
   const w = data as Record<string, any>;
@@ -1201,6 +1213,8 @@ export const formatWorkspace: Formatter = (data) => {
     `Audiences:  ${Array.isArray(w.audiences) ? w.audiences.join(', ') : '-'}`,
     `Sequence:   ${w.mutationSequence ?? '-'}`,
     `Generation: ${w.accessGeneration ?? '-'}`,
+    // Its own setting; not set reads as off. An older server sends none: no line.
+    ...('history' in w ? [`History:    ${w.history === null ? 'not set (off)' : historyWords(w.history)}`] : []),
     ...(w.description ? ['', String(w.description)] : []),
   ].join('\n');
 };
@@ -1213,7 +1227,7 @@ export const formatWorkspaceList: Formatter = (data) => {
 };
 
 /**
- * A pinned or handoff document: inline markdown is printed whole; a large one
+ * A pinned document: inline markdown is printed whole; a large one
  * arrives as a content reference, so print the exact command that reads it.
  */
 function loadDocumentLines(doc: Record<string, any>): string[] {
@@ -1280,7 +1294,7 @@ function subjectWords(subject: Record<string, any> | undefined): string {
 }
 
 /**
- * One change of a step: its actions, item, versions, rows and handoff, then one diff command for
+ * One change of a step: its actions, item, versions and rows, then one diff command for
  * the whole change, from its first remaining version to its last (design §5.3). The command is
  * printed only for an edit of a reachable file the step did not create, while a listed version
  * still exists. A shortened list whose first version was deleted has no known range (the versions
@@ -1301,7 +1315,6 @@ function sessionChangeLines(change: Record<string, any>, indent: string): string
   }
   const rows = change.rows;
   if (rows) line += `  +${rows.added ?? 0} ~${rows.updated ?? 0} -${rows.deleted ?? 0} rows`;
-  if (change.handoff && reachable && !subject.gone) line += `  handoff  rip artifact cat ${subject.id}`;
   const lines = [line];
   // `artifact.updated` is the verb rows written before precise verbs carry. A created file is new: nothing to compare.
   const edited = actions.includes('artifact.edited') || actions.includes('artifact.updated');
@@ -1355,7 +1368,7 @@ export const formatWorkspaceSessions = (data: unknown, workspace?: string): stri
 /**
  * `rip workspace load` in human mode is the first thing an agent reads, so it
  * carries everything the load returned: pins (inline or with the command that
- * reads them), the latest handoff, open tasks, the latest changes (newest
+ * reads them), open tasks, the latest changes (newest
  * first, with how many are unread and the command that catches up), the
  * artifact index, and the exact flags that page each list further.
  */
@@ -1363,9 +1376,15 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   const value = data as Record<string, any>;
   const workspace = (value.workspace ?? {}) as Record<string, any>;
   const workspaceId = workspace.id ?? value.workspaceId ?? '-';
-  const lines = [
+  // Platform notices come first (opt-in history design §5.5 B): how Tokenrip changed since this key
+  // last loaded. The server sends the key only when there are any.
+  const notices: Array<Record<string, any>> = Array.isArray(value.notices) ? value.notices : [];
+  const lines: string[] = notices.length
+    ? ['Tokenrip changed:', ...notices.flatMap((notice) => String(notice.text ?? '').split('\n').map((line) => `  ${line}`)), '']
+    : [];
+  lines.push(
     `Workspace: ${workspace.name ?? '-'}${workspace.slug ? ` (${workspace.slug})` : ''} [${workspaceId}]${workspace.role ? `  ${workspace.membership}/${workspace.role}` : ''}`,
-  ];
+  );
   const can = capabilityList(workspace.capabilities);
   if (can) lines.push(`Can:       ${can}`);
   if (value.browserLink) lines.push(`Browser:   ${value.browserLink}`);
@@ -1389,11 +1408,6 @@ export const formatWorkspaceLoad: Formatter = (data) => {
 
   const pins: Array<Record<string, any>> = Array.isArray(value.pins) ? value.pins : [];
   lines.push(...loadSection(`Pinned (${pins.length}):`, pins.flatMap((pin) => loadDocumentLines(pin))));
-
-  const handoffs = value.handoffs ?? {};
-  const handoffItems: Array<Record<string, any>> = Array.isArray(handoffs.items) ? handoffs.items : [];
-  lines.push(...loadSection('Latest handoff:', handoffItems.length ? loadDocumentLines(handoffItems[0]) : []));
-  if (handoffItems.length > 1) lines.push(`  ${handoffItems.length - 1} earlier: ${handoffItems.slice(1).map((h) => h.publicId).join(', ')}`);
 
   if (value.sessions) {
     const sessions = value.sessions;
@@ -1440,7 +1454,6 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   if (artifacts.nextOffset != null) more.push(`--artifact-offset ${artifacts.nextOffset}`);
   if (tasks.nextCursor != null) more.push(`--task-cursor ${workspaceShellArgument(tasks.nextCursor)}`);
   if (activity.nextCursor != null) more.push(`--activity-cursor ${workspaceShellArgument(activity.nextCursor)}`);
-  if (handoffs.nextOffset != null) more.push(`--handoff-offset ${handoffs.nextOffset}`);
   if (more.length) {
     lines.push('', 'More:');
     for (const flag of more) lines.push(`  rip workspace load ${workspaceShellArgument(workspaceId)} ${flag}`);

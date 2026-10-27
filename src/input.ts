@@ -8,6 +8,25 @@ export function parseNonNegativeInteger(value: string, option: string): number {
   return parsed;
 }
 
+/** A history setting on the wire: off, all, a count of earlier versions to keep, or null (follow the container). */
+export type HistoryOption = 'off' | 'all' | number | null;
+
+/**
+ * `--history <off|all|n|inherit>`: `inherit` clears the setting (`null`), a whole number is the count
+ * of earlier versions to keep (the server holds its range), anything else is a usage error.
+ */
+export function parseHistoryOption(value: string): HistoryOption {
+  if (value === 'off' || value === 'all') return value;
+  if (value === 'inherit') return null;
+  if (/^\d+$/.test(value)) return Number(value);
+  throw new CliError('INVALID_ARGUMENT', '--history must be off, all, a number of earlier versions to keep, or inherit');
+}
+
+/** The body field for an optional `--history`: absent when the flag is not given. */
+export function historyField(value: string | undefined): { history?: HistoryOption } {
+  return value === undefined ? {} : { history: parseHistoryOption(value) };
+}
+
 /** Parse a relative duration (`30s`, `5m`, `1h`, `7d`) into an absolute Unix timestamp in seconds. */
 export function parseDuration(s: string): number {
   const match = s.match(/^(\d+)(s|m|h|d)$/);
@@ -23,8 +42,8 @@ export function parseDuration(s: string): number {
  * workspace folder, which names its workspace (AR-6), so with one the server decides whether the
  * workspace-only fields apply; beside `--workspace-id` it names a folder in that workspace.
  */
-export function assertWorkspaceCreationScope(input: { workspaceId?: string; audience?: string; visibility?: string; team?: string; folder?: string; publicAsset?: boolean; handoff?: boolean }): void {
-  if (!input.workspaceId && input.folder === undefined && (input.audience !== undefined || input.handoff)) {
+export function assertWorkspaceCreationScope(input: { workspaceId?: string; audience?: string; visibility?: string; team?: string; folder?: string; publicAsset?: boolean }): void {
+  if (!input.workspaceId && input.folder === undefined && input.audience !== undefined) {
     throw new CliError('INVALID_SCOPE', 'Workspace-only fields require --workspace-id, or a --folder in a workspace. Supply the workspace identity or omit those fields.', { field: 'workspaceId' });
   }
   if (input.workspaceId) {

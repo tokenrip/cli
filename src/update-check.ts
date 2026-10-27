@@ -74,8 +74,11 @@ export async function checkForUpdate(): Promise<void> {
   }
 }
 
+/**
+ * The update banner, on stderr whether or not it is a terminal (opt-in history design §5.5 C), so
+ * an agent running rip reads it too; stdout (and --json output) is untouched. The 24-hour manifest
+ * throttle above decides how often the manifest is fetched.
+ */
 function printBanner(current: string, latest: string): void {
-  if (process.stderr.isTTY) {
-    console.error(`\nUpdate available: ${current} → ${latest} — run \`rip update\` to upgrade\n`);
-  }
+  console.error(`rip ${latest} is available (you have ${current}): run \`rip update\`, then reload the tokenrip skill.`);
 }

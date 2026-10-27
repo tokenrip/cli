@@ -12,11 +12,12 @@ Priority (highest wins): `--json` flag → `TOKENRIP_OUTPUT` env var → config 
 // Success (stdout, exit code 0)
 { "ok": true, "data": { "id": "uuid", "url": "https://...", "rawUrl": "https://...", "title": "...", "type": "...", "currentVersionId": "uuid" } }
 
-// JSON error (stdout, exit code 1; human errors and interactive hints use stderr)
+// JSON error (stdout, exit code 1; human errors and hints use stderr)
 { "ok": false, "error": "CONFLICT", "message": "Artifact changed.", "details": { "currentWorkspaceRevision": 3 } }
 ```
 
-- Success and JSON error envelopes go to stdout; human errors and interactive hints go to stderr. Check the exit status when piping JSON.
+- Success and JSON error envelopes go to stdout; human errors and hints go to stderr. Check the exit status when piping JSON.
+- A content write's receipt may carry `hints` (`[{ code, message }]`): a cheaper way to make the next write, such as append instead of re-sending the whole file. Human mode prints each as a `Hint:` line on stderr, terminal or not; `--json` leaves them in `data.hints`. An error's own hint prints only in a terminal. The update banner ("rip X is available (you have Y): run `rip update`, then reload the tokenrip skill.") also goes to stderr: do both.
 - JSON mode passes the server's data through unchanged. Human mode prints every identifier and URL in full; nothing is truncated.
 - Always parse `data.url` from a successful artifact response and present it to the user. `data.rawUrl` is the link for the file itself (for example, to open an HTML report rendered); it is null for a table.
 - Workspace write receipts carry the new `workspaceRevision`. Carry it into the next write instead of re-reading.
@@ -29,7 +30,7 @@ Artifact publish/upload create receipts retain `workspaceId`, `audience`, and `w
 
 JSON failures preserve `ok`, `error`, and `message`, with optional safe `details`. Domain details include the applicable current version/revision, a known required field, incompatible sharing fields, a refused input's `field` and `path` (`schema[3].name`), a row query's `available` columns (with `availableTruncated` when cut), a CSV header's `column` and `rule` or an import's `reason`, and a not-found's `resource` (`artifact`, `version`, `row`). Legacy REST validation `details` arrays remain available and their explanations appear in both modes. Human output prints required fields and current revisions in full, and the refused field with its path, the available columns, the header column and the kind of reference not found.
 
-- `PRECONDITION_REQUIRED`: read the resource and supply the required `expectedVersionId` (a document body), `expectedRevision` (a row or task update), or `expectedWorkspaceRevision` (a patch of description or metadata).
+- `PRECONDITION_REQUIRED`: read the resource and supply the required `expectedVersionId` (replacing a workspace file's content that someone else wrote: the message names the agent when it knows it, else says the content was written in the browser, by the system or before this change), `expectedRevision` (a row or task update), or `expectedWorkspaceRevision` (a patch of description or metadata). Append and `--find`/`--replace` edits need no version id.
 - Bulk workspace artifact writes accept `--expected-workspace-revisions` as a JSON map keyed by each submitted artifact identifier (`expectedWorkspaceRevisions` over REST/MCP). The map is optional: include an artifact's revision to refuse it (`CONFLICT`) if it changed since you read it. Bulk results report per-item failure codes. Row deletion uses the separate `expectedRevisions` map keyed by row UUID.
 - `CONFLICT`: read the current authorized resource and reconcile before writing again. A 409 with another code is a state/domain refusal; do not invent version advice.
 - `INELIGIBLE_STORAGE`: omit independently public storage creation flags, or select eligible standalone content for adoption. Preserve the intended workspace and why.

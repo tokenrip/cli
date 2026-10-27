@@ -1,6 +1,6 @@
 # Setup and Identity
 
-Covers signing in, handing off to the person's next agent, managing keys, keys for hosts that take a pasted key, multiple accounts, keypair identities, configuration, and public profiles. Return to [SKILL.md](../SKILL.md) for decision trees and workflows.
+Covers signing in, connecting the person's next agent, signing their browser in, managing keys, keys for hosts that take a pasted key, multiple accounts, keypair identities, configuration, and public profiles. Return to [SKILL.md](../SKILL.md) for decision trees and workflows.
 
 The setup guide for every kind of assistant (terminal agents, chat apps, hosted agents) is at `https://tokenrip.com/setup`.
 
@@ -39,7 +39,7 @@ Human stderr and JSON stdout expose available flat local `details`: `elapsedMs` 
 
 The CLI sends a sign-in redemption once. If its response is lost after the server commits, the code is consumed and a new key exists, but the CLI cannot save the unobserved key. An existing local identity remains unchanged, and sibling agents keep working. Inspect the Agents page or existing key-list controls before another sign-in; revoke a stranded key there if needed and obtain a fresh code. Do not blindly repeat a mutation because `responseReceived` is false. The canonical setup guide remains `https://tokenrip.com/setup`.
 
-## Hand off to the next agent
+## Connect the next agent
 
 A connected agent can make the code for the person's next agent, so no email is needed:
 
@@ -55,7 +55,7 @@ Connect to my Tokenrip: https://tokenrip.com/setup — email ana@example.com, co
 
 That agent signs in with `rip auth login --email <email> --code <code>` (or, for a chat app connecting through the browser, enters the code on the sign-in page). It lands on the same account and sees the same workspaces. Making a new code replaces the previous one this agent made.
 
-## Hand off to the person's browser
+## Sign the person's browser in
 
 To open the dashboard for the person (a workspace, the Agents page), make a one-time sign-in link instead of sending them through an emailed code:
 

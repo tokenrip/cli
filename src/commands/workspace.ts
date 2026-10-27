@@ -1,7 +1,7 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { formatTrashed, formatWorkspace, formatWorkspaceList, formatWorkspaceChanges, formatWorkspaceLoad, formatWorkspaceSessions, formatWorkspaceViewReceipt } from '../formatters.js';
-import { parseNonNegativeInteger } from '../input.js';
+import { historyField, parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
 
@@ -28,7 +28,13 @@ export async function workspaceCreate(slug: string, options: { name?: string; de
 }
 export async function workspaceList(): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get('/v0/workspaces'); outputSuccess(data.data, formatWorkspaceList); }
 export async function workspaceShow(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(workspacePath(workspace)); outputSuccess(data.data, formatWorkspace); }
-export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.patch(workspacePath(workspace), { name: options.name, description: options.description, why: options.why }); outputSuccess(data.data, formatWorkspace); }
+/** `rip workspace update`: name, description and `--history` (`inherit` clears it). */
+export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null; history?: string } & WhyOption): Promise<void> {
+  const body = { name: options.name, description: options.description, ...historyField(options.history), why: options.why };
+  const { client } = requireAuthClient();
+  const { data } = await client.patch(workspacePath(workspace), body);
+  outputSuccess(data.data, formatWorkspace);
+}
 export async function workspaceDelete(workspace: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.delete(workspacePath(workspace), deleteBody(options)); outputSuccess(data.data, formatTrashed); }
 
 /**
@@ -78,12 +84,11 @@ export async function workspaceAdopt(workspace: string, artifacts: string[], opt
 export async function workspacePin(artifact: string, options: { position?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post('/v0/pins', { artifactId: parseArtifactId(artifact), ...(options.position === undefined ? {} : { position: parseNonNegativeInteger(options.position, '--position') }) }); outputSuccess(data.data); }
 export async function workspaceUnpin(artifact: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(`/v0/pins/${encodeURIComponent(parseArtifactId(artifact))}`); outputSuccess({ ok: true }); }
 /** Bounded workspace context. Load takes no selector: sessions record themselves. */
-export async function workspaceLoad(workspace: string, options: { artifactOffset?: string; taskCursor?: string; activityCursor?: string; handoffOffset?: string }): Promise<void> {
+export async function workspaceLoad(workspace: string, options: { artifactOffset?: string; taskCursor?: string; activityCursor?: string }): Promise<void> {
   const body = {
     ...(options.artifactOffset !== undefined ? { artifactOffset: parseNonNegativeInteger(options.artifactOffset, '--artifact-offset') } : {}),
     ...(options.taskCursor ? { taskCursor: options.taskCursor } : {}),
     ...(options.activityCursor ? { activityCursor: options.activityCursor } : {}),
-    ...(options.handoffOffset !== undefined ? { handoffOffset: parseNonNegativeInteger(options.handoffOffset, '--handoff-offset') } : {}),
   };
   const { client } = requireAuthClient();
   const { data } = await client.post(`${workspacePath(workspace)}/load`, body);
