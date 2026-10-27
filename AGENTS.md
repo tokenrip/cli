@@ -73,8 +73,9 @@ rip workspace show <workspace>
 rip workspace update <workspace> --name <name>
 rip workspace delete <workspace>                       # to the trash with everything in it, for 30 days
 rip trash restore <workspace-id>
-rip workspace member add <workspace> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]   # invite by email; internal editor by default
-rip workspace member set-role <member> [--workspace-id <workspace>] [--role viewer|editor] [--membership internal|external]
+rip workspace member add <workspace> <email|alias|account-id> [--role viewer|editor] [--note <text>]   # invite by email; a guest (shared items only), editor by default
+rip workspace member set-role <member> [--workspace-id <workspace>] --role viewer|editor
+rip team add <team> <email|alias|account-id>                  # everything: internal access comes from the owning team
 rip workspace member list <workspace>  ·  rip workspace member remove <member> [--workspace-id <workspace>]   # <member>: the row id alone, or an account id, alias or email with --workspace-id
 
 # Bring standalone content in; pin read-on-load context
@@ -88,7 +89,7 @@ rip workspace view context <workspace>
 rip workspace view open <artifact-id> --expected-context-generation <n> [--operation-id <id>]
 ```
 
-Every item in a workspace has an **audience**: `internal` (owner, owning team, and internal members) or `shared` (external members too). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags. A change composed from what you read carries its precondition (a document body, a row or task update, a patch of description or metadata); the rest takes it optionally:
+Every item in a workspace has an **audience**: `internal` (owner and owning team) or `shared` (guests too: everyone added to the workspace is a guest). Workspace content is written with the ordinary artifact, table, folder, and task commands plus workspace flags. A change composed from what you read carries its precondition (a document body, a row or task update, a patch of description or metadata); the rest takes it optionally:
 
 ```bash
 rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> [--audience internal|shared] [--folder <slug-or-id>] --why "<the goal>"
@@ -128,6 +129,8 @@ rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
 - `--type table` (with `--schema` or `--from-csv`) — living table with a row-level API, no versioning. Good for data that grows over time. Pass `--strict` to reject unknown columns and type-mismatched values on row writes; without it an unknown key is silently *added* to the schema as a `text` column and values are never type checked.
 
 **Visibility.** `--visibility <private|link|public>` sets who can read a standalone artifact. The default is `link` (anyone with the URL). Workspace content omits `--visibility` on publish and uses `--audience`. An internal editor can then make one workspace file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. A workspace file never takes `public` (`INVALID_VISIBILITY`), and a patch of `--visibility` alone needs no `--why`.
+
+**Links.** A publish or upload prints `url` (the page) and `rawUrl` (`Raw:`, the file itself at `/s/<id>/raw`: the link to hand a person; none for a table).
 
 **Public assets.** Pass `--public-asset` to store the bytes in a public-read bucket and serve them from a direct CDN URL — for public media (blog images, embeddable charts). The command prints `publicUrl`. The API rejects a public asset with private visibility (`400 INVALID_VISIBILITY`) and on tables (`400 PUBLIC_ASSET_UNSUPPORTED`); the flag is immutable once set.
 
@@ -218,6 +221,7 @@ rip table rows <uuid> --limit 50 --after <rowId>
 rip table rows <uuid> --sort-by discovered_at --sort-order desc
 rip table rows <uuid> --filter 'revenue[gte]=75' --filter 'tier[in]=gold,silver'
 rip table rows <uuid> --fields slug,title --include-total
+rip table rows <uuid> --all --filter tier=gold                 # every page, 500 a call, up to 10,000 rows
 
 rip table update <rowId> --data '{"relevance":"low"}'        # a row id names its table
 rip table delete --row-ids <rowId>,<rowId>
@@ -470,7 +474,7 @@ rip auth update --description "Research agent" --website "https://example.com" -
 rip auth update --metadata '{}'
 
 rip config set-url <url>              # set API server URL
-rip config set-key <key>              # key for public reads only; use TOKENRIP_API_KEY for a key from elsewhere
+rip config set-key <key>              # key for public reads when not signed in; use TOKENRIP_API_KEY for a key from elsewhere
 rip config set-output json            # default to JSON output
 rip config show                       # show current config
 rip update                            # check for and install CLI updates

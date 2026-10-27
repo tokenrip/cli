@@ -21,6 +21,7 @@ import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 import { checkForUpdate } from './update-check.js';
 import { CLI_VERSION } from './version.js';
+import { listCommandsOnUnknown } from './command-hints.js';
 
 /**
  * Every writing command states why: one sentence on the person's goal, which the
@@ -431,7 +432,7 @@ EXAMPLES:
 // ── table commands ──────────────────────────────────────────────────
 const table = program
   .command('table')
-  .description('Manage table rows (append, list, update, delete)');
+  .description('Manage table rows');
 
 withWhy(table
   .command('append'))
@@ -478,8 +479,16 @@ table
   .option('--filter <key=value...>', 'Filter rows (repeatable). The key may carry an operator: revenue[gte]=75')
   .option('--fields <columns>', 'Comma-separated columns to return, e.g. slug,title')
   .option('--include-total', 'Also return the total row count matching the filters')
+  .option('--all', 'Read every page (500 rows a call; stops at 10,000 rows; continue with --after)')
   .description('List rows in a table (no sign-in needed for a table anyone with the link may read)')
   .addHelpText('after', `
+The first line says whether the read is whole: "100 rows shown, more remain
+(--after <id>)" for one page of more, "100 of 2,345 rows" with --include-total,
+"12 rows" when no more follow. --all follows the cursor with the same
+filters, sort and fields; it does not go with --limit or --before (--after
+starts it from that row: continue a capped read with the same filters and
+sort).
+
 FILTER OPERATORS:
   eq (default)  lt  lte  gt  gte  ne  in (comma-separated)  contains  starts
 
@@ -494,6 +503,7 @@ EXAMPLES:
   $ rip table rows 550e8400-... --filter ignored=false --filter action=engage
   $ rip table rows 550e8400-... --filter 'revenue[gte]=75' --filter 'tier[in]=gold,silver'
   $ rip table rows 550e8400-... --fields slug,title,excerpt --include-total
+  $ rip table rows 550e8400-... --all --filter action=engage
 `)
   .action(wrapCommand(async (uuid, options) => {
     const { tableRows } = await import('./commands/table.js');
@@ -1113,11 +1123,12 @@ const config = program.command('config').description('Manage CLI configuration')
 config
   .command('set-key')
   .argument('<key>', 'Your API key')
-  .description('Save a key for public reads (not used by authenticated commands)')
+  .description('Save a key for public reads when not signed in (not used by authenticated commands)')
   .addHelpText('after', `
 NOTE:
   This does not sign in. Authenticated commands use the current identity's key
-  (or TOKENRIP_API_KEY), never the key saved here.
+  (or TOKENRIP_API_KEY), never the key saved here; public reads use it only
+  when no identity is signed in.
   To use a key from elsewhere, set TOKENRIP_API_KEY. To get a key of your own,
   sign in: \`rip auth login --email <your email>\`.
 `)
@@ -2095,19 +2106,19 @@ withWhy(workspaceMember
   .argument('<member>', memberTargetHelp)
   .option('--workspace-id <id>', 'Workspace id or slug, when <member> is an account id, alias or email')
   .option('--role <role>', 'viewer | editor; kept when omitted')
-  .option('--membership <membership>', 'internal (sees everything) | external (shared items only); kept when omitted')
+  .option('--membership <membership>', 'external (the only access a stored member has; internal access comes from the team)')
   .allowExcessArguments(false)
-  .description('Change a member\'s or invite\'s role, membership, or both (workspace admins only)')
+  .description('Change a member\'s or invite\'s role (workspace admins only). Everyone added is a guest: to give someone everything, add them to the owning team')
   .action(wrapCommand(async (member, options) => { const { workspaceMemberSetRole } = await import('./commands/workspace.js'); await workspaceMemberSetRole(member, options); }));
 withWhy(workspaceMember
   .command('add'))
   .argument('<workspace>', 'Workspace id or slug')
   .argument('<member>', 'Email, alias or account id. An email with no Tokenrip account becomes an invite')
-  .option('--membership <membership>', 'internal (sees everything) | external (shared items only) (default internal)')
+  .option('--membership <membership>', 'external (the only access a stored member has; internal access comes from the team)')
   .option('--role <role>', 'viewer | editor (default editor)')
   .option('--note <text>', 'A short note for the invite email (at most 280 characters)')
   .allowExcessArguments(false)
-  .description('Add or invite someone (internal admins and editors). Tokenrip emails invites and adds by address, naming your verified address; an add by alias or id is emailed only when both accounts have one verified person')
+  .description('Add or invite a guest: shared items only (internal admins and editors). To give someone everything, add them to the owning team (rip team add). Tokenrip emails invites and adds by address, naming your verified address; an add by alias or id is emailed only when both accounts have one verified person')
   .action(wrapCommand(async (ws, member, options) => {
     const { workspaceMemberAdd } = await import('./commands/workspace.js');
     await workspaceMemberAdd(ws, member, options);
@@ -2396,4 +2407,5 @@ if (_cfg.preferences?.outputFormat === 'human') setConfigHuman(true);
 
 checkForUpdate().catch(() => {});
 
+listCommandsOnUnknown(program);
 program.parse();

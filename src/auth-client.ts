@@ -33,12 +33,19 @@ export function requireAuthClient(): AuthContext {
   return { client, config, apiUrl };
 }
 
+/**
+ * A client for reads that may be public. The key is `TOKENRIP_API_KEY`, else the current identity's
+ * key, else the one `rip config set-key` saved, else none (public access). The sign-in comes before
+ * the saved key because signing in never replaces it: a stale saved key would otherwise be refused
+ * (the server checks every key it is sent) with advice to sign in that could not help.
+ */
 export function optionalAuthClient(): { client: AxiosInstance; apiUrl: string } {
   const config = loadConfig();
-  let apiKey: string | undefined = process.env.TOKENRIP_API_KEY || config.apiKey;
+  let apiKey: string | undefined = process.env.TOKENRIP_API_KEY;
   if (!apiKey) {
-    try { apiKey = resolveCurrentIdentity().apiKey; } catch { /* public access */ }
+    try { apiKey = resolveCurrentIdentity().apiKey; } catch { /* no identity: the saved key, or public */ }
   }
+  apiKey ||= config.apiKey;
   const apiUrl = getApiUrl(config);
   const client = createHttpClient({ baseUrl: apiUrl, apiKey: apiKey || undefined });
   return { client, apiUrl };

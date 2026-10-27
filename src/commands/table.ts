@@ -36,6 +36,12 @@ export async function tableAppend(
   outputSuccess({ rows: data.data, count: data.data.length }, formatRowsAppended);
 }
 
+/** `rip table rows --all`: rows a call (the server's most) and where the walk stops. */
+export const TABLE_ROWS_ALL_PAGE = 500;
+export const TABLE_ROWS_ALL_CAP = 10_000;
+
+type TableRowsPage = { rows: Array<{ id: string }>; nextCursor: string | null; total?: number };
+
 export async function tableRows(
   identifier: string,
   options: {
@@ -47,8 +53,12 @@ export async function tableRows(
     filter?: string[];
     fields?: string;
     includeTotal?: boolean;
+    all?: boolean;
   },
 ): Promise<void> {
+  if (options.all && (options.limit || options.before)) {
+    throw new CliError('INVALID_ARGS', '--all reads every page from the start (or from --after): it does not go with --limit or --before.');
+  }
   const uuid = parseArtifactId(identifier);
   // A table anyone may read (link or public) reads without signing in, as the route does.
   const { client } = optionalAuthClient();
@@ -69,8 +79,41 @@ export async function tableRows(
     }
   }
 
-  const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params });
-  outputSuccess(data.data, formatTableRows);
+  if (!options.all) {
+    const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params });
+    outputSuccess(data.data, formatTableRows);
+    return;
+  }
+
+  // Every page with the same filters, sort and fields, following `nextCursor` (a row id) until it is
+  // null or the cap is reached; the total is asked for once. A cursor the server repeats stops the walk.
+  const { include_total: _total, after: _after, ...walkParams } = params;
+  const result: TableRowsPage = { rows: [], nextCursor: null };
+  let cursor: string | undefined = options.after;
+  let first = true;
+  for (;;) {
+    const pageParams: Record<string, string> = { ...walkParams, limit: String(TABLE_ROWS_ALL_PAGE) };
+    if (cursor) pageParams.after = cursor;
+    if (first && options.includeTotal) pageParams.include_total = 'true';
+    const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params: pageParams });
+    const page = data.data as TableRowsPage;
+    if (first && typeof page.total === 'number') result.total = page.total;
+    first = false;
+    result.rows.push(...page.rows);
+    const next = typeof page.nextCursor === 'string' ? page.nextCursor : null;
+    if (result.rows.length >= TABLE_ROWS_ALL_CAP) {
+      const more = next !== null || result.rows.length > TABLE_ROWS_ALL_CAP;
+      result.rows.length = TABLE_ROWS_ALL_CAP;
+      result.nextCursor = more ? result.rows[TABLE_ROWS_ALL_CAP - 1].id : null;
+      break;
+    }
+    if (next === null) break;
+    if (next === cursor) {
+      throw new CliError('ROWS_CURSOR_REPEATED', `The server answered the cursor it was given, so the read stopped after ${result.rows.length} rows instead of repeating that page.`);
+    }
+    cursor = next;
+  }
+  outputSuccess(result as unknown as Record<string, unknown>, formatTableRows);
 }
 
 /** `PUT /v0/rows/:rowId`: the row id names its table. */

@@ -247,8 +247,8 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   return Object.keys(details).length ? details : undefined;
 }
 
-/** The server's `PlanLabel` (apps/backend/src/api/service/billing-plans.ts). */
-const PLAN_LABELS: ReadonlySet<string> = new Set(['free', 'pro', 'team', 'none']);
+/** The server's `PlanLabel` (apps/backend/src/api/service/billing-plans.ts); `tests/unit/plan-catalog-parity.test.ts` pins it. */
+export const PLAN_LABELS: ReadonlySet<string> = new Set(['free', 'pro', 'power', 'none']);
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
 /** A `WORKSPACE_LIMIT_REACHED` refusal's details, field by field: exactly owner, plan, limit, used and billingUrl. */
@@ -267,8 +267,8 @@ function workspaceLimitDetails(body: Record<string, unknown>): DomainErrorDetail
 function isBillingUrl(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 2048 && /^https?:\/\/\S+$/.test(value);
 }
-/** The server's `PLAN_KEYS` (apps/backend/src/db/models/plan-keys.ts). */
-const PLAN_KEYS: ReadonlySet<string> = new Set(['free', 'pro', 'team', 'enterprise']);
+/** The server's `PLAN_KEYS` (apps/backend/src/db/models/plan-keys.ts); `tests/unit/plan-catalog-parity.test.ts` pins it. */
+export const PLAN_KEYS: ReadonlySet<string> = new Set(['free', 'pro', 'power', 'enterprise']);
 
 /** The server's `TASK_STATUSES` (apps/backend/src/db/models/task-vocabulary.ts). */
 const TASK_STATUSES: ReadonlySet<string> = new Set(['todo', 'doing', 'review', 'done', 'cancelled']);

@@ -16,7 +16,7 @@ description: >-
   API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.8
+version: 2.6.9
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.8 -->
+<!-- tokenrip-skill-version: 2.6.9 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -73,7 +73,7 @@ curl -fsSL https://tokenrip.com/.well-known/skills/tokenrip/update.sh | bash
 
 # Tokenrip — the shared workspace for people and agents
 
-A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. Artifacts can also live outside a workspace (owned by you or a team, shared by team). Any artifact, in a workspace or not, can be opened to anyone with its link. Every artifact has a URL that opens in a browser — always give the returned URL to the user after you publish.
+A **workspace** keeps a project's artifacts, tables, folders, and tasks together so any agent can pick up where the work left off. Artifacts can also live outside a workspace (owned by you or a team, shared by team). Any artifact, in a workspace or not, can be opened to anyone with its link. Every artifact has a URL that opens in a browser — always give the returned URL to the user after you publish; `rawUrl` is the link to the file itself (an HTML report shown as a page, an image), null for a table.
 
 ## Critical Rules
 
@@ -130,7 +130,7 @@ Name a workspace by its slug or id. A slug two of your workspaces share is refus
 
 Creation audience and a handoff require a workspace: `--workspace-id`, or a `--folder` that is a workspace folder (it puts the artifact in its workspace). Beside `--workspace-id`, `--folder` names a folder in that workspace. Omit `--visibility`, `--team` and `--public-asset` when creating workspace content. At creation, `private` is standalone owner-private access; it does not mean workspace internal. On an existing workspace artifact, `--visibility private` means no public access. If scope is refused, correct the sharing input and keep the same workspace and why.
 
-Every item in a workspace has an **audience**: `internal` (the owner, the owning team and internal members) or `shared` (external members too). An internal editor can also make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
+Every item in a workspace has an **audience**: `internal` (the owner and the owning team's members) or `shared` (guests too: everyone added to the workspace is a guest). An internal editor can also make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Existing-item changes carry their version id, row revision, or workspace revision; insert-only table rows also need no revision unless they expand the schema. The server answers `CONFLICT` if a guard is stale. See `references/workspaces.md`.
 
 Activity sequences are positions, not counts or content versions. `load` shows the latest changes and how many are unread; `rip workspace changes` reads the unread ones in order and reports history gaps and access changes. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
 
@@ -157,9 +157,10 @@ Bring a standalone artifact or folder into the workspace?
   → rip workspace adopt <workspace> <artifact>... --why "<the person's goal>"           # or --folder <folder>; --audience shared for external members
 
 Bring someone in (by email, even with no Tokenrip account)?
-  → rip workspace member add <workspace> <email> --why "<the person's goal>"      # internal by default; --membership external for shared items only
+  → rip workspace member add <workspace> <email> --why "<the person's goal>"      # a guest: shared items only
+  → rip team add <team> <email>                    # everything: internal access comes from the owning team
 
-Change what external members can see?
+Change what guests can see?
   → rip artifact patch <id> --audience shared
   → rip folder share-contents <folder-id>          # the folder names its workspace
 
@@ -513,7 +514,7 @@ For JSON output format, provenance flags, and `--json` details, read `references
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
 | `MAINTENANCE` | Tokenrip is paused for maintenance until the time in the message. Nothing ran. The CLI waits short pauses out itself; when it gives up, run the same command again after that time |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
-| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs the Team plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>`. For a team without a plan (`none`), give the person that link to subscribe; at the maximum, delete a workspace. Nothing was created or restored; do not retry |
+| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs Pro or Power, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>`. For a team without a plan (`none`), give the person that link, where a team admin chooses Pro or Power; at the maximum, delete a workspace. Nothing was created or restored; do not retry |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted (or left by its last member). Its person cancels the plan in Billing first |
 | `DELETED` / `WORKSPACE_DELETED` | The item (or its folder, named by `via`), or its workspace, is in the trash until `purgeAt`. If you may delete it, `rip trash restore <id>`; a 409 `WORKSPACE_DELETED` on restore means restore the workspace first ([Deleting and restoring](#deleting-and-restoring)) |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |

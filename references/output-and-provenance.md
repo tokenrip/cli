@@ -10,7 +10,7 @@ Priority (highest wins): `--json` flag → `TOKENRIP_OUTPUT` env var → config 
 
 ```json
 // Success (stdout, exit code 0)
-{ "ok": true, "data": { "id": "uuid", "url": "https://...", "title": "...", "type": "...", "currentVersionId": "uuid" } }
+{ "ok": true, "data": { "id": "uuid", "url": "https://...", "rawUrl": "https://...", "title": "...", "type": "...", "currentVersionId": "uuid" } }
 
 // JSON error (stdout, exit code 1; human errors and interactive hints use stderr)
 { "ok": false, "error": "CONFLICT", "message": "Artifact changed.", "details": { "currentWorkspaceRevision": 3 } }
@@ -18,7 +18,7 @@ Priority (highest wins): `--json` flag → `TOKENRIP_OUTPUT` env var → config 
 
 - Success and JSON error envelopes go to stdout; human errors and interactive hints go to stderr. Check the exit status when piping JSON.
 - JSON mode passes the server's data through unchanged. Human mode prints every identifier and URL in full; nothing is truncated.
-- Always parse `data.url` from a successful artifact response and present it to the user.
+- Always parse `data.url` from a successful artifact response and present it to the user. `data.rawUrl` is the link for the file itself (for example, to open an HTML report rendered); it is null for a table.
 - Workspace write receipts carry the new `workspaceRevision`. Carry it into the next write instead of re-reading.
 - Every delete of an artifact, folder, bundle or workspace replies `{ type, id, deletedAt, purgeAt }`: the item is in the trash and can be restored until `purgeAt`. Human output prints the matching `rip trash restore <id>` line.
 - In human mode, `rip connection call` prints the bare upstream `{ status, headers, body, bodyIsJson, latencyMs }` as JSON so a script can parse stdout directly, and `rip connection run` prints the operation's bare `{ status, body }`. With `--json` both are wrapped like every other command.

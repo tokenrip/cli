@@ -31,8 +31,13 @@ export async function workspaceShow(workspace: string): Promise<void> { const { 
 export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.patch(workspacePath(workspace), { name: options.name, description: options.description, why: options.why }); outputSuccess(data.data, formatWorkspace); }
 export async function workspaceDelete(workspace: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.delete(workspacePath(workspace), deleteBody(options)); outputSuccess(data.data, formatTrashed); }
 
+/**
+ * Both values pass the CLI: the server refuses `internal` with INTERNAL_NEEDS_TEAM and the path
+ * (internal access comes from owning the workspace or being in its team). The flag goes with the
+ * API field, at the end of the deprecation window.
+ */
 const WORKSPACE_MEMBERSHIPS = ['internal', 'external'] as const;
-/** `--membership`: checked before any request. Omitted, nothing is sent (add defaults to internal; set-role keeps it). */
+/** `--membership`: checked before any request. Omitted, nothing is sent: every stored member is a guest. */
 function parseMembership(value: string | undefined): string | undefined {
   if (value === undefined || (WORKSPACE_MEMBERSHIPS as readonly string[]).includes(value)) return value;
   throw new CliError('INVALID_ARGUMENT', `--membership must be ${WORKSPACE_MEMBERSHIPS.join(' or ')}`);
@@ -42,7 +47,7 @@ export async function workspaceMemberAdd(workspace: string, member: string, opti
 /** A member row id stands alone; an account id, alias or email names a member in `--workspace-id`. */
 interface MemberTarget { workspaceId?: string }
 const memberPath = (member: string) => `/v0/workspace-members/${encodeURIComponent(member)}`;
-/** Change role, membership, or both (at least one); what is omitted is kept. */
+/** Change the role (a member stays a guest); `--membership external` changes nothing. */
 export async function workspaceMemberSetRole(member: string, options: { role?: string; membership?: string } & MemberTarget & WhyOption = {}): Promise<void> {
   const membership = parseMembership(options.membership);
   if (options.role === undefined && membership === undefined) throw new CliError('INVALID_ARGUMENT', 'Pass --role, --membership, or both');

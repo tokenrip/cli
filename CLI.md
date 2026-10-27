@@ -2,6 +2,8 @@
 
 Every command in `@tokenrip/cli` 2.6, grouped by area. `rip --help` and `rip <command> --help` print the same flags with examples and are always current.
 
+An unknown subcommand is refused with the group's real commands: `rip table list` prints `error: unknown command 'list'` and then `table commands: append, rows, update, delete (rip table --help)`, after commander's "Did you mean …?" when it has one.
+
 ## Contents
 
 - [Global options](#global-options)
@@ -43,7 +45,7 @@ Every command in `@tokenrip/cli` 2.6, grouped by area. `rip --help` and `rip <co
 
 ## Workspace commands
 
-`rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and members you add or invite by email. A `<workspace>` argument or `--workspace-id` takes the workspace's **id or slug** (the server resolves a slug among the workspaces you reach, in any case; one it cannot find is `WORKSPACE_NOT_FOUND`, as an unknown id is, and a slug two of them share is `AMBIGUOUS_REFERENCE`, which prints each candidate's id and home: name it by its id). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
+`rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and guests you add or invite by email. A `<workspace>` argument or `--workspace-id` takes the workspace's **id or slug** (the server resolves a slug among the workspaces you reach, in any case; one it cannot find is `WORKSPACE_NOT_FOUND`, as an unknown id is, and a slug two of them share is `AMBIGUOUS_REFERENCE`, which prints each candidate's id and home: name it by its id). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
 **Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|patch|fork|move|bulk|delete|delete-version|prune-versions`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|rename|update|share-contents|delete`, `trash restore|purge`. Reads and pins take none.
 
@@ -76,19 +78,19 @@ Move a workspace and everything in it to the trash, restorable for 30 days. Admi
 
 ### `rip workspace member …`
 
-Invite people by email, or add existing users by alias or account id. The owner and the owning team's access is derived live and never listed; `list` shows everyone added, and pending invites.
+Invite people by email, or add existing users by alias or account id; everyone added is a guest. The owner and the owning team's access is derived live and never listed; `list` shows everyone added, and pending invites.
 
 ```bash
 rip workspace member list <workspace>
-rip workspace member add <workspace> <email|alias|account-id> [--membership internal|external] [--role viewer|editor] [--note <text>]
-rip workspace member set-role <member> [--workspace-id <workspace>] [--role viewer|editor] [--membership internal|external]
+rip workspace member add <workspace> <email|alias|account-id> [--role viewer|editor] [--note <text>]
+rip workspace member set-role <member> [--workspace-id <workspace>] --role viewer|editor
 rip workspace member remove <member> [--workspace-id <workspace>]
 ```
 
-- **Access.** `--membership internal` (the default) sees everything; `external` sees shared items only, for a guest. `--role` defaults to `editor`; `viewer` is read-only. Internal admins and editors may add and invite (`inviteMembers`); only admins change access or remove (`manageWorkspace`).
+- **Access.** A guest sees shared items only. `--role` defaults to `editor`; `viewer` is read-only. Internal access (everything) comes only from owning the workspace or being in its team: to give someone everything, add them to the owning team (`rip team add <team> <email>`; each team member is billed). `--membership internal` is refused `INTERNAL_NEEDS_TEAM`, naming that path (on a personal workspace, internal access is the owner's alone); `--membership external` is accepted and changes nothing, and the flag is going away. Internal admins and editors may add and invite (`inviteMembers`); only admins change a role or remove (`manageWorkspace`).
 - **Invite by email.** An address with no Tokenrip account becomes an invite: the row has `status: "invited"`, `email`, and an `inviteUrl` that is safe to share (it signs no one in). Tokenrip emails the person, naming the inviter (the verified address of the person behind your account), the workspace and the access, with your `--note` (plain text, at most 280 characters), a link to the invite page and a line to paste into an AI assistant. Signing in with the six-digit code emailed to that address, in the browser or through an agent, claims every invite waiting on it; there is no accept step.
 - **Existing users** (a verified address, an alias or an account id) are added at once. An add by address emails them that they were added; an add by alias or account id emails them only when their account has one verified person and yours has one to send from.
-- **Targets.** `set-role` and `remove` take the row `id` from `list`, which stands alone, or an account id, alias or email address with `--workspace-id`. `set-role` changes `--role`, `--membership` or both (at least one; what you omit is kept). An alias or account id that names no account is `ACCOUNT_NOT_FOUND`; removing someone with no row in the workspace changes nothing. An address finds the row of the person who holds it, on their primary account, or the row an add or invite by that address made; for a member on another of their accounts, use the row `id`. `remove` on an invite cancels it.
+- **Targets.** `set-role` and `remove` take the row `id` from `list`, which stands alone, or an account id, alias or email address with `--workspace-id`. `set-role` changes `--role`; the member stays a guest. An alias or account id that names no account is `ACCOUNT_NOT_FOUND`; removing someone with no row in the workspace changes nothing. An address finds the row of the person who holds it, on their primary account, or the row an add or invite by that address made; for a member on another of their accounts, use the row `id`. `remove` on an invite cancels it.
 - **Refusals.** An add by email with no single verified person behind your account is `NO_OPERATOR` / `OPERATOR_AMBIGUOUS`; an add by alias or id then sends no email, and `--note` is `INVALID_FIELD`. Invite emails are limited per person (by default 20 an hour, one per invite an hour, one per address an hour): past them an add is `RATE_LIMITED`, except an add of an existing account by alias or id without a note, which goes ahead without the email. Adding an account that already has internal access through ownership or the team is refused (`WORKSPACE_MEMBER_INTERNAL`).
 
 Each member write takes `--why <text>`.
@@ -216,6 +218,7 @@ Required: `--type`. Options: `--title`, `--content`, `--alias` (per-owner unique
 - **CSV vs table.** A `csv` artifact is a versioned file rendered as a table — for exports and snapshots. A `table` is a living table with a row-level API — for incremental data. `--from-csv` imports a CSV straight into a table (the CLI sends the CSV as the table's `content`); pass `--headers` (first row as column names) or `--schema` (explicit names and types), not both. A column name is 1 to 256 characters with no leading or trailing space, comma or square bracket, so spreadsheet headers such as `Estado (funil)` import as they are; a refused header is named by position (`INVALID_SCHEMA`), and an unclosed quote is `INVALID_CSV`. A CSV-imported table is not strict.
 - **Strict tables.** `--strict` makes row writes reject unknown columns and values that don't match their declared type. Without it an unknown key is silently *added* to the schema as a `text` column and no value is type checked.
 - **Visibility.** `link` is readable by anyone holding the URL; pass `--visibility private` for anything that shouldn't be, such as a content table backing a website. Workspace content omits `--visibility` on publish and uses `--audience`; to open one workspace file to anyone with its URL, publish it, then `rip artifact patch <id> --visibility link`.
+- **Links.** The receipt prints `URL:` (the page) and `Raw:` (`rawUrl`, the file itself at `/s/<id>/raw`: the link to hand a person; none for a table).
 - **Public assets.** `--public-asset` stores the bytes in a public-read bucket and prints a direct CDN `publicUrl`. Not valid with private visibility or on tables; immutable once set.
 
 ### `rip artifact upload <file>`
@@ -242,7 +245,7 @@ Options: `--since <iso|days>`, `--limit <n>` (1–100, default 20), `--type <typ
 
 ### `rip artifact get <identifier>`
 
-Metadata and permissions for an artifact: visibility, folder, teams, workspace and audience, and who can modify it.
+Metadata and permissions for an artifact: visibility, folder, teams, workspace and audience, and who can modify it. The `Versions:` line names the command that lists them (`Versions:    3 (rip artifact versions <id>)`).
 
 ```bash
 rip artifact get 550e8400-...
@@ -403,9 +406,14 @@ List rows with pagination, sorting, filtering, and projection. A table anyone wi
 rip table rows 550e8400-... --filter ignored=false --sort-by discovered_at --sort-order desc
 rip table rows 550e8400-... --filter 'revenue[gte]=75' --filter 'tier[in]=gold,silver'
 rip table rows 550e8400-... --fields slug,title,excerpt --include-total
+rip table rows 550e8400-... --all --filter action=engage
 ```
 
-Options: `--limit <n>` (default 100, max 500), `--after <rowId>`, `--before <rowId>`, `--sort-by <column>` (or `createdAt` / `updatedAt` / `id`), `--sort-order <asc|desc>`, `--filter <key=value>` (repeatable; operators `eq lt lte gt gte ne in contains starts`), `--fields <columns>`, `--include-total` (sends `include_total=true`). A filter or sort naming a column the table doesn't have is an error.
+Options: `--limit <n>` (default 100, max 500), `--after <rowId>`, `--before <rowId>`, `--sort-by <column>` (or `createdAt` / `updatedAt` / `id`), `--sort-order <asc|desc>`, `--filter <key=value>` (repeatable; operators `eq lt lte gt gte ne in contains starts`), `--fields <columns>`, `--include-total` (sends `include_total=true`), `--all`. A filter or sort naming a column the table doesn't have is an error.
+
+The first line says whether the read is whole: `100 rows shown, more remain (--after <id>)` when more rows follow the page, `100 of 2,345 rows` with `--include-total` (plus `, more remain (--after <id>)` when they do), `12 rows` (`1 row`) when no more rows follow (after `--after`, the rows before it are not counted); `No rows.` when none match. The closing `More rows available. Use --after <id>` line stays.
+
+`--all` reads every page: 500 rows a call, following `nextCursor` with the same filters, sort and fields, and `include_total` on the first page only. It stops at 10,000 rows; then the first line says more remain and names the 10,000th row's id to continue from with `--after`, sent with the same filters and sort. `--after` starts the walk from that row; `--limit` and `--before` beside `--all` are refused before any call (`INVALID_ARGS`). A cursor the server answers twice stops the walk (`ROWS_CURSOR_REPEATED`). `--json` prints `{ rows, nextCursor, total? }` (a page's shape without `prevCursor`), with `nextCursor` set only when the cap stopped the walk.
 
 ### `rip table update <rowId>`
 
@@ -1095,13 +1103,13 @@ Option: `--expires <duration>` (default `5m`; e.g. `5m`, `1h`, `1d`).
 ## Config commands
 
 ```bash
-rip config set-key tr_abc123...                  # save a key to config.json; used only for public reads
+rip config set-key tr_abc123...                  # save a key to config.json; public reads when not signed in
 rip config set-url https://api.tokenrip.com      # API server URL
 rip config set-output json                       # default output format: json | human
 rip config show                                  # API URL, key status, config paths
 ```
 
-`set-key` does not sign in: authenticated commands use the current identity's key (or `TOKENRIP_API_KEY`), never the one saved here. To use a key from elsewhere, set `TOKENRIP_API_KEY`; to get a key of your own, sign in with `rip auth login`.
+`set-key` does not sign in: authenticated commands use the current identity's key (or `TOKENRIP_API_KEY`), never the one saved here, and public reads use the saved key only when neither gives one. To use a key from elsewhere, set `TOKENRIP_API_KEY`; to get a key of your own, sign in with `rip auth login`.
 
 ## Updates
 

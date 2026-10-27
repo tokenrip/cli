@@ -77,6 +77,7 @@ export const formatArtifactCreated: Formatter = (data) => {
   if (data.id) lines.push(`  ID:      ${data.id}`);
   if (data.alias) lines.push(`  Alias:   ${data.alias}`);
   if (data.url) lines.push(`  URL:     ${data.url}`);
+  if (data.rawUrl) lines.push(`  Raw:     ${data.rawUrl}`);
   if (data.publicUrl) lines.push(`  Public:  ${data.publicUrl}`);
   if (data.type) lines.push(`  Type:    ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:    ${data.mimeType}`);
@@ -120,7 +121,7 @@ export const formatArtifactList: Formatter = (data) => {
   return lines.join('\n');
 };
 
-const PLAN_LABEL: Record<string, string> = { free: 'Free', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' };
+const PLAN_LABEL: Record<string, string> = { free: 'Free', pro: 'Pro', power: 'Power', enterprise: 'Enterprise' };
 
 /** "860 MB of 1 GB (86%)", or "7.94 GB (no limit)". Floored, so a payer under its limit never reads 100%. */
 function usedAgainstLimit(usedBytes: unknown, limitBytes: unknown): string {
@@ -190,6 +191,7 @@ export const formatStorageUsage: Formatter = (data) => {
 export const formatVersionCreated: Formatter = (data) => {
   const lines = [`Version ${data.version || '?'} published`];
   if (data.url) lines.push(`  URL:         ${data.url}`);
+  if (data.rawUrl) lines.push(`  Raw:         ${data.rawUrl}`);
   if (data.id) lines.push(`  Version ID:  ${data.id}`);
   if (data.artifactId) lines.push(`  Artifact ID: ${data.artifactId}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
@@ -281,10 +283,11 @@ export const formatArtifactMetadata: Formatter = (data) => {
   const lines = [data.title || '(untitled)'];
   if (data.id) lines.push(`  ID:          ${data.id}`);
   if (data.url) lines.push(`  URL:         ${data.url}`);
+  if (data.rawUrl) lines.push(`  Raw:         ${data.rawUrl}`);
   if (data.type) lines.push(`  Type:        ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:        ${data.mimeType}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
-  if (data.versionCount !== undefined) lines.push(`  Versions:    ${data.versionCount}`);
+  if (data.versionCount !== undefined) lines.push(`  Versions:    ${data.versionCount} (rip artifact versions ${data.id})`);
   if (data.creatorContext) lines.push(`  Context:     ${data.creatorContext}`);
   if (data.visibility) lines.push(`  Visibility:  ${data.visibility}`);
   if (data.workspaceId && data.audience) lines.push(`  Audience:    ${data.audience}`);
@@ -542,8 +545,21 @@ export const formatMailbox: Formatter = (data) => {
 export const formatTableRows: Formatter = (data) => {
   const rows = (data as any).rows ?? [];
   const nextCursor = (data as any).nextCursor;
+  const total = (data as any).total;
   if (!Array.isArray(rows) || rows.length === 0) return 'No rows.';
-  const lines = [`${rows.length} row(s):\n`];
+  // The first line says whether the read is whole: a page of a larger table must not read as all of it.
+  const count = (n: number) => n.toLocaleString('en-US');
+  const noun = (n: number) => (n === 1 ? 'row' : 'rows');
+  const more = `more remain (--after ${nextCursor})`;
+  let header: string;
+  if (typeof total === 'number') {
+    header = `${count(rows.length)} of ${count(total)} ${noun(total)}`;
+    if (nextCursor) header += `, ${more}`;
+  } else {
+    header = `${count(rows.length)} ${noun(rows.length)}`;
+    if (nextCursor) header += ` shown, ${more}`;
+  }
+  const lines = [`${header}\n`];
   for (const r of rows) {
     const dataStr = JSON.stringify(r.data);
     const ago = formatTimeAgo(new Date(r.createdAt));

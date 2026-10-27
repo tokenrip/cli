@@ -148,11 +148,11 @@ rip account import blob.txt              # decrypt with the current identity's k
 ```bash
 rip config show                          # API URL, key status, config paths
 rip config set-url https://api.tokenrip.com
-rip config set-key <key>                 # saves a key used only for public reads
+rip config set-key <key>                 # saves a key for public reads when not signed in
 rip config set-output json               # default to JSON output
 ```
 
-`set-key` does not sign in. To use a key from elsewhere (one made with `rip auth keys create`), set `TOKENRIP_API_KEY`; otherwise sign in with `rip auth login`.
+`set-key` does not sign in, and a sign-in (or `TOKENRIP_API_KEY`) takes its place on public reads. To use a key from elsewhere (one made with `rip auth keys create`), set `TOKENRIP_API_KEY`; otherwise sign in with `rip auth login`.
 
 Environment variables override the config file:
 

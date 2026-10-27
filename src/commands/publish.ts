@@ -41,7 +41,7 @@ function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceI
  * when the backend response doesn't echo it.
  */
 function artifactCreatedPayload(
-  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; publicUrl?: string; workspaceId?: string; audience?: string; workspaceRevision?: number },
+  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; rawUrl?: string | null; publicUrl?: string; workspaceId?: string; audience?: string; workspaceRevision?: number },
   url: string,
   aliasFallback: string | undefined,
 ): Record<string, unknown> {
@@ -51,6 +51,7 @@ function artifactCreatedPayload(
     publicId: data.publicId ?? data.id,
     ...(alias ? { alias } : {}),
     url,
+    rawUrl: data.rawUrl ?? null,
     title: data.title,
     type: data.type,
     currentVersionId: data.currentVersionId,

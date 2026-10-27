@@ -64,6 +64,7 @@ export async function upload(filePath: string, options: { title?: string; parent
   outputSuccess({
     id: data.data.id,
     url,
+    rawUrl: data.data.rawUrl ?? null,
     title: data.data.title,
     type: data.data.type,
     mimeType: data.data.mimeType,
