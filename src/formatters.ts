@@ -206,7 +206,8 @@ export const formatVersionDeleted: Formatter = (data) => {
 export const formatVersionsPruned: Formatter = (data) => {
   const removed = Number(data.removed);
   const remaining = Number(data.versionCount);
-  const kept = `${remaining} version${remaining === 1 ? '' : 's'} left`;
+  const inUse = Number(data.keptInUse ?? 0);
+  const kept = `${remaining} version${remaining === 1 ? '' : 's'} left${inUse > 0 ? `; ${inUse} kept because a review round uses ${inUse === 1 ? 'it' : 'them'}` : ''}`;
   if (removed === 0) return `No old versions to delete from artifact ${data.artifactId} (${kept})`;
   return `Deleted ${removed} old version${removed === 1 ? '' : 's'} from artifact ${data.artifactId}, freeing ${formatDecimalBytes(Number(data.freedBytes))} (${kept})`;
 };
@@ -998,21 +999,35 @@ function instructionsOwner(p: TaskPrincipalView): string {
   return `${p.account.alias ? `~${p.account.alias}` : p.account.id}'s agent's`;
 }
 
-/** A decision in words: "approved by ~ana at …, with an edit", "approved on its own: Grok's instructions v4 at …". */
-function decisionWords(decision: Record<string, any>): string {
-  const by = decision.byInstructions
-    ? `on its own: ${instructionsOwner(decision.byInstructions.agent as TaskPrincipalView)} instructions v${decision.byInstructions.version}`
-    : `by ${decision.by ? principalWho(decision.by as TaskPrincipalView) : 'someone no longer named'}`;
-  return `${decision.outcome} ${by} at ${decision.at}${decision.edited ? ', with an edit' : ''}`;
+/** A round's outcome in words; an open round (null) is in review. */
+const ROUND_OUTCOME_WORDS: Record<string, string> = {
+  approved: 'approved', sent_back: 'sent back', cancelled: 'cancelled', withdrawn: 'withdrawn', replaced: 'replaced',
+};
+export function outcomeWords(outcome: string | null | undefined): string {
+  return outcome ? (ROUND_OUTCOME_WORDS[outcome] ?? outcome) : 'in review';
 }
 
-/** Who a listed task is with: its holder, who an In review task waits on, or who it is for. */
+/** A task's latest round as summaries carry it (task rounds plan M5): "round 2 · sent back", "round 1 · in review". */
+export function roundWords(round: { number: number; outcome: string | null }): string {
+  return `round ${round.number} · ${outcomeWords(round.outcome)}`;
+}
+
+/**
+ * Who closed a round, in words: "by ~ana", "on its own: Grok's instructions v4", or nothing when the
+ * round names no one (a replaced round).
+ */
+function deciderWords(r: Record<string, any>): string {
+  if (r.byInstructions) return ` on its own: ${instructionsOwner(r.byInstructions.agent as TaskPrincipalView)} instructions v${r.byInstructions.version}`;
+  return r.decidedBy ? ` by ${principalWho(r.decidedBy as TaskPrincipalView)}` : '';
+}
+
+/** Who a listed task is with, after its latest round: its holder, who an In review task waits on, or who it is for. */
 function taskWho(t: Record<string, any>): string {
-  if (t.holder) return holderWho(t.holder as TaskHolderView);
-  if (t.status === 'review') return `waiting on ${t.reviewer ? principalWho(t.reviewer as TaskPrincipalView) : 'anyone'}`;
-  if (!t.assignee) return '';
-  const forWho = `for ${principalWho(t.assignee as TaskPrincipalView)}`;
-  return t.decision?.outcome === 'approved' && (t.status === 'todo' || t.status === 'doing') ? `approved · ${forWho}` : forWho;
+  const parts: string[] = t.latestRound ? [roundWords(t.latestRound)] : [];
+  if (t.holder) parts.push(holderWho(t.holder as TaskHolderView));
+  else if (t.status === 'review') parts.push(`waiting on ${t.reviewer ? principalWho(t.reviewer as TaskPrincipalView) : 'anyone'}`);
+  else if (t.assignee) parts.push(`for ${principalWho(t.assignee as TaskPrincipalView)}`);
+  return parts.join(' · ');
 }
 
 /** Multi-line text indented under its label, whole. */
@@ -1020,15 +1035,19 @@ function indented(text: string, indent = '  '): string[] {
   return String(text).split('\n').map((line) => (line ? `${indent}${line}` : ''));
 }
 
-/** `rip task list` — one row per task: status, kind, title, then who holds it, who it waits on, or who it is for. */
+/** A task's two tags as one column: `type/step`, `-` for a missing one; `-` alone when it has neither. */
+function taskTags(t: Record<string, any>): string {
+  return t.type || t.step ? `${t.type ?? '-'}/${t.step ?? '-'}` : '-';
+}
+
+/** `rip task list` — one row per task: status, tags (type/step), title, then who holds it, who it waits on, or who it is for. */
 export const formatTaskList: Formatter = (data) => {
   const tasks = ((data as any).tasks ?? []) as Array<Record<string, any>>;
   const nextCursor = (data as any).nextCursor as string | null;
   if (tasks.length === 0) return 'No tasks.';
   const lines = tasks.map((t) => {
     const who = taskWho(t);
-    const kind = t.kind ?? '-';
-    return `${String(t.status).padEnd(9)} ${String(kind).padEnd(16)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]`;
+    return `${String(t.status).padEnd(9)} ${taskTags(t).padEnd(24)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]`;
   });
   // The cursor only encodes the active order's key, so it has to be replayed against the
   // same filters — printing a bare command would silently paginate a different query.
@@ -1037,31 +1056,177 @@ export const formatTaskList: Formatter = (data) => {
 };
 
 /**
- * The approved text's label follows the status: still to carry out (To do, Doing), carried out
- * (Done), or neither (Cancelled). The exact characters are `approvedText` in `--json`; this prints
- * them indented.
+ * The approved round's final text is labelled by the status: still to carry out (To do, Doing),
+ * carried out (Done), or neither (Cancelled). The exact characters are `approvedRound.final.text` in
+ * `--json`; this prints them indented.
  */
-function approvedTextLabel(status: unknown): string {
-  if (status === 'todo' || status === 'doing') return 'Approved text (carry out exactly this):';
-  if (status === 'done') return 'Approved text (carried out):';
-  return 'Approved text:';
+function finalTextLabel(status: unknown, number: number): string {
+  if (status === 'todo' || status === 'doing') return `Approved text (round ${number}, carry out exactly this):`;
+  if (status === 'done') return `Approved text (round ${number}, carried out):`;
+  return `Approved text (round ${number}):`;
 }
 
-/** A history step: when, the action, who, and the why (a browser step states none by design). */
-function historyLine(step: Record<string, any>): string {
+/** A version as a round names it: "v3 (<id>)". */
+function versionWords(version: { id: string; number: number } | null | undefined): string {
+  return version ? `v${version.number} (${version.id})` : '-';
+}
+
+/**
+ * A round's draft files (task rounds plan M7), one per part in the proposer's order: the file by
+ * title and id at its version, the approver's edit, whether the file changed since (and its current
+ * version), and the command that diffs it against its base (the same file in the latest earlier
+ * round at the same step). A purged file, or one the task's readers may not open, reads as such.
+ */
+function draftFileLines(parts: Array<Record<string, any>>): string[] {
+  if (!parts.length) return [];
+  const lines = ['  Files:'];
+  for (const part of parts) {
+    if (!part.artifact) {
+      lines.push(`    ${part.position}. (deleted, or not shared with this task's readers)`);
+      continue;
+    }
+    const edit = part.editedVersion ? `, edited to ${versionWords(part.editedVersion)}` : '';
+    const changed = part.changedSince ? `, changed since: now ${versionWords(part.current)}` : part.current ? '' : ', in the trash';
+    lines.push(`    ${part.position}. ${part.artifact.title ?? 'Untitled'}  [${part.artifact.id}]  ${versionWords(part.version)}${edit}${changed}`);
+    const shown = part.editedVersion ?? part.version;
+    if (part.base && shown) {
+      lines.push(`       changes since round ${part.base.round}: rip artifact diff --version-id ${shown.id} --base ${part.base.versionId}`);
+    }
+  }
+  return lines;
+}
+
+/** A round's outcome with who closed it and when: "sent back by ~ana at …", "in review (waiting for a decision)". */
+function roundOutcomeLine(r: Record<string, any>): string {
+  if (!r.outcome) return 'in review (waiting for a decision)';
+  return `${outcomeWords(r.outcome)}${deciderWords(r)} at ${r.decidedAt}${r.edits?.text != null ? ', with an edit' : ''}`;
+}
+
+/**
+ * One round whole (`rip task show`): its step, proposer, verb and then, how it ended, the then an
+ * approval applied, the decision comment, the draft and the approver's edit. The text the approved
+ * round leaves to carry out is printed once, as Approved text, so here the draft is left out when it
+ * is that text, and the edit always is.
+ */
+function roundLines(heading: string, r: Record<string, any>, approvedNumber: number | null, taskId: string): string[] {
+  const approved = r.number === approvedNumber;
+  const lines = [
+    '', `${heading}:`,
+    `  Step:      ${r.step ?? '-'}`,
+    `  Proposed:  ${principalWho(r.proposedBy as TaskPrincipalView)} at ${r.proposedAt}`,
+  ];
+  if (r.approveVerb) lines.push(`  Approve:   ${r.approveVerb}`);
+  if (r.then) lines.push(`  Then:      ${r.then}`);
+  lines.push(`  Outcome:   ${roundOutcomeLine(r)}`);
+  if (r.appliedThen) lines.push(`  Applied:   then ${r.appliedThen}`);
+  if (r.comment) {
+    lines.push(`  Comment:   [${r.comment.id}]${r.comment.body == null ? ' (deleted)' : ''}`);
+    if (r.comment.body != null) lines.push(...indented(String(r.comment.body).replace(/\n+$/, ''), '    '));
+  }
+  const draft = r.draft?.text;
+  if (draft != null && !(approved && r.edits?.text == null)) {
+    lines.push(`  Draft:${r.draft?.textBase ? ` (changes since round ${r.draft.textBase}: rip task show ${taskId} --round ${r.draft.textBase})` : ''}`, ...indented(draft, '    '));
+  }
+  if (r.edits?.text != null && !approved) lines.push('  Edited text:', ...indented(r.edits.text, '    '));
+  lines.push(...draftFileLines((r.draft?.artifacts ?? []) as Array<Record<string, any>>));
+  return lines;
+}
+
+/**
+ * A round in the timeline (task rounds design §5.8): "Round 2 · draft · sent back by ~ana: <comment>",
+ * a multi-line comment indented beneath, then the whys its proposal and decision were recorded with;
+ * an open round reads as proposed. Its texts are cut to 512 bytes; `cut` points at the round whole.
+ */
+function roundEntryLines(at: string, r: Record<string, any>, taskId: string | undefined): string[] {
+  const what = r.outcome
+    ? `${outcomeWords(r.outcome)}${deciderWords(r)}${r.appliedThen ? `, then ${r.appliedThen}` : ''}${r.edits?.text != null ? ', with an edit' : ''}`
+    : `proposed by ${principalWho(r.proposedBy as TaskPrincipalView)}`;
+  const head = `  ${at}  Round ${r.number}${r.step ? ` · ${r.step}` : ''} · ${what}`;
+  const body = r.comment?.body != null ? String(r.comment.body).replace(/\n+$/, '') : null;
+  const lines = body == null ? [head] : body.includes('\n') ? [`${head}:`, ...indented(body, '    ')] : [`${head}: ${body}`];
+  // The whys its proposal and its decision were recorded with, when those events are still kept.
+  if (r.proposal?.why) lines.push(`    why proposed: ${r.proposal.why}`);
+  if (r.decision?.why && r.outcome) lines.push(`    why ${outcomeWords(r.outcome)}: ${r.decision.why}`);
+  if (r.cut) lines.push(`    (cut: rip task show ${taskId ?? '<id>'} --round ${r.number} prints it whole)`);
+  return lines;
+}
+
+/** A timeline step from the activity log: when, the action, who, and the why (a browser step states none by design). */
+function eventLine(at: string, step: Record<string, any>): string {
   const actor = step.actor as TaskPrincipalView | null;
   let who: string;
   if (!actor) who = 'system';
   else if (step.viaBrowser) who = whoWords({ mine: actor.mine, alias: actor.account.alias, accountId: actor.account.id, inBrowser: true });
   else who = principalWho(actor);
   const why = step.why ?? (step.viaBrowser || !actor ? null : 'no stated goal');
-  return `  ${step.at}  ${verbAction(step.type)}  ${who}${why ? `: ${why}` : ''}`;
+  return `  ${at}  ${verbAction(step.verb)}  ${who}${why ? `: ${why}` : ''}`;
 }
 
 /**
- * `rip task show` — one task: who it is for and who reviews it, the decision, the text to carry out
- * (the approved text, with the draft beside it when edited), the result and links, children and
- * history. Reads principals, never the deprecated window fields.
+ * A comment in the timeline: when, who and its id (what `rip comment update|delete` take), marked
+ * edited, then its text indented whole; a deleted one is its marker alone.
+ */
+function commentLines(at: string, comment: Record<string, any>): string[] {
+  const who = principalWho(comment.author as TaskPrincipalView);
+  if (comment.deleted) return [`  ${at}  comment deleted  ${who}  [${comment.id}]`];
+  return [
+    `  ${at}  comment  ${who}  [${comment.id}]${comment.editedAt ? ' (edited)' : ''}`,
+    ...String(comment.body ?? '').replace(/\n+$/, '').split('\n').map((line) => `    ${line}`),
+  ];
+}
+
+/** One timeline entry: exactly one of a round, a comment or an event (task rounds design §5.8). */
+function timelineLines(entry: Record<string, any>, taskId: string | undefined): string[] {
+  if (entry.round) return roundEntryLines(entry.at, entry.round, taskId);
+  if (entry.comment) return commentLines(entry.at, entry.comment);
+  if (entry.event) return [eventLine(entry.at, entry.event)];
+  return [`  ${entry.at}  -`];
+}
+
+/** `rip task timeline` — the whole timeline, newest first. */
+export const formatTaskTimeline: Formatter = (data) => {
+  const entries = (data.entries ?? []) as Array<Record<string, any>>;
+  const name = typeof data.title === 'string' ? data.title : data.taskId;
+  const taskId = typeof data.taskId === 'string' ? data.taskId : undefined;
+  return [`Timeline of ${name} (${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}, newest first):`, ...entries.flatMap((entry) => timelineLines(entry, taskId))].join('\n');
+};
+
+/** A comment write's reply: the comment, its task, its author and its text (or that it is deleted). */
+export const formatComment: Formatter = (data) => {
+  const c = data as Record<string, any>;
+  const lines = [
+    `Comment ${c.id} on task ${c.taskId}${c.deleted ? ' (deleted)' : c.editedAt ? ' (edited)' : ''}`,
+    `By:      ${principalWho(c.author as TaskPrincipalView)}`,
+    `Written: ${c.createdAt}${c.editedAt ? `, edited ${c.editedAt}` : ''}`,
+  ];
+  if (!c.deleted) lines.push('', ...String(c.body ?? '').replace(/\n+$/, '').split('\n').map((line) => `  ${line}`));
+  return lines.join('\n');
+};
+
+/** A task link as the API reads it (task rounds design §5.5). */
+interface TaskLinkView {
+  role: 'context' | 'result';
+  artifact: { id: string; title: string | null; type: string; version: { id: string; number: number } | null } | null;
+  url: string | null;
+}
+
+/** One link: a file by title and id (with the version it names, else its current one), or the address. */
+function taskLinkLine(link: TaskLinkView): string {
+  if (!link.artifact) return `  ${link.url}`;
+  const { id, title, version } = link.artifact;
+  return `  ${title ?? 'Untitled'}  [${id}]${version ? `  v${version.number} (${version.id})` : ''}`;
+}
+
+/** A start by tags (task rounds plan M8): the task it took, or "No task" when none matched (nothing was taken). */
+export const formatTaskStarted: Formatter = (data) => {
+  const task = data.task as Record<string, unknown> | null | undefined;
+  return task ? formatTask(task) : 'No task: none matches, so nothing was taken.';
+};
+
+/**
+ * `rip task show` — one task: who it is for and who reviews it, the text to carry out (the approved
+ * round's final text), its latest round (and `--round`'s), the result, the files and links it uses
+ * and its result links, children and the newest page of its timeline. Reads principals, never the deprecated window fields.
  */
 export const formatTask: Formatter = (data) => {
   const t = data as Record<string, any>;
@@ -1071,13 +1236,12 @@ export const formatTask: Formatter = (data) => {
     `Workspace:  ${t.workspaceId} (${t.audience})`,
     `Revision:   ${t.revision ?? '-'}`,
     `Status:     ${t.status === 'review' ? 'review (In review: waiting for a decision)' : t.status}`,
-    `Kind:       ${t.kind ?? '-'}`,
+    `Type:       ${t.type ?? '-'}`,
+    `Step:       ${t.step ?? '-'}`,
   ];
   if (t.assignee) lines.push(`For:        ${principalLine(t.assignee as TaskPrincipalView)}`);
   if ('reviewer' in t) lines.push(`Reviewer:   ${t.reviewer ? principalLine(t.reviewer as TaskPrincipalView) : 'any person who can edit tasks'}`);
   if (t.holder) lines.push(`Doing:      ${taskHolderLine(t.holder as TaskHolderView)}`);
-  if (t.decision) lines.push(`Decision:   ${decisionWords(t.decision)}`);
-  if (t.approveVerb) lines.push(`Approve:    ${t.approveVerb}`);
   if (t.parentId) lines.push(`Parent:     ${t.parentId}`);
   if (t.completedAt) lines.push(`Completed:  ${t.completedBy ? principalWho(t.completedBy as TaskPrincipalView) : (t.completedById ?? '-')} at ${t.completedAt}`);
   if (t.status === 'cancelled' && t.cancelledAt) {
@@ -1086,17 +1250,23 @@ export const formatTask: Formatter = (data) => {
   if (t.dueAt) lines.push(`Due:        ${t.dueAt}`);
   lines.push(`Created:    ${t.createdAt} by ${t.createdBy ? principalLine(t.createdBy as TaskPrincipalView) : t.createdById}`);
   if (t.result) lines.push(`Result:     ${t.result}`);
-  if (t.approvedText != null) lines.push('', approvedTextLabel(t.status), ...indented(t.approvedText));
-  if (t.draft != null && (t.approvedText == null || t.editedDraft != null)) lines.push('', 'Draft:', ...indented(t.draft));
+  const approvedNumber: number | null = t.approvedRound?.number ?? null;
+  if (t.approvedRound?.final?.text != null) lines.push('', finalTextLabel(t.status, t.approvedRound.number), ...indented(t.approvedRound.final.text));
+  const finalFiles = (t.approvedRound?.final?.artifacts ?? []) as Array<Record<string, any>>;
+  if (finalFiles.length) {
+    lines.push('', `Approved files (round ${t.approvedRound.number}, these versions):`, ...finalFiles.map((part) => (part.artifact
+      ? `  ${part.position}. ${part.artifact.title ?? 'Untitled'}  [${part.artifact.id}]  ${versionWords(part.version)}`
+      : `  ${part.position}. (deleted, or not shared with this task's readers)`)));
+  }
+  if (t.latestRound) lines.push(...roundLines(`Latest round (${t.latestRound.number})`, t.latestRound, approvedNumber, t.id));
+  if (t.round && t.round.number !== t.latestRound?.number) lines.push(...roundLines(`Round ${t.round.number}`, t.round, approvedNumber, t.id));
   if (t.body) lines.push('', t.body);
   if (t.payload && Object.keys(t.payload).length) lines.push('', 'Payload:', JSON.stringify(t.payload, null, 2));
-  const results = (t.results ?? []) as Array<Record<string, any>>;
-  if (results.length) {
-    lines.push('', 'Results:');
-    for (const r of results) {
-      lines.push(`  ${r.type} ${r.targetId}${r.version != null ? ` v${r.version}` : ''}${r.orphaned ? '  (orphaned)' : ''}`);
-    }
-  }
+  const links = (t.links ?? []) as TaskLinkView[];
+  const context = links.filter((link) => link.role === 'context');
+  const resultLinks = links.filter((link) => link.role === 'result');
+  if (context.length) lines.push('', 'Files & links:', ...context.map(taskLinkLine));
+  if (resultLinks.length) lines.push('', 'Result links:', ...resultLinks.map(taskLinkLine));
   const children = (t.children ?? []) as Array<Record<string, any>>;
   if (children.length) {
     lines.push('', `Children (${children.length}):`);
@@ -1105,10 +1275,10 @@ export const formatTask: Formatter = (data) => {
       lines.push(`  ${child.status}  ${child.title}  [${child.id}]${who ? `  ${who}` : ''}`);
     }
   }
-  const history = (t.history ?? []) as Array<Record<string, any>>;
-  if (history.length) {
-    lines.push('', 'History (newest first):', ...history.map(historyLine));
-    if (t.historyComplete === false) lines.push('  (earlier history not shown)');
+  const timeline = (t.timeline ?? { entries: [], nextCursor: null }) as { entries: Array<Record<string, any>>; nextCursor: string | null };
+  if (timeline.entries.length) {
+    lines.push('', 'Timeline (newest first):', ...timeline.entries.flatMap((entry) => timelineLines(entry, t.id)));
+    if (timeline.nextCursor) lines.push(`  (older entries: rip task timeline ${t.id})`);
   }
   return lines.join('\n');
 };
@@ -1219,7 +1389,7 @@ export const formatWorkspace: Formatter = (data) => {
   ].join('\n');
 };
 
-/** One row per workspace; `needsYou` is how many decisions wait on you (this key) there. */
+/** One row per workspace; `needsYou` is how much waits on you (this key) there: approved tasks to carry out, reviews addressed to it, To do tasks naming it. */
 export const formatWorkspaceList: Formatter = (data) => {
   const rows = data as unknown as Array<Record<string, any>>;
   if (!rows.length) return 'No workspaces.';
@@ -1461,29 +1631,29 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   return lines.join('\n');
 };
 
-/** The agent's instructions here, whole, with its on-its-own kinds; or who writes them when there are none. */
+/** The agent's instructions here, whole, with the task types it may do on its own; or who writes them when there are none. */
 function instructionsLines(instructions: Record<string, any> | null): string[] {
   if (!instructions) return ['', 'No instructions here yet: your person writes them in the dashboard, Members & settings.'];
-  const kinds: string[] = Array.isArray(instructions.onItsOwn) ? instructions.onItsOwn : [];
+  const types: string[] = Array.isArray(instructions.onItsOwn) ? instructions.onItsOwn : [];
   return [
     '', `Instructions (v${instructions.version}):`,
     ...indented(instructions.text ?? ''),
-    `  On its own: ${kinds.length ? kinds.join(', ') : 'nothing (every proposal waits for a decision)'}`,
+    `  On its own (task types): ${types.length ? types.join(', ') : 'nothing (every proposal waits for a decision)'}`,
   ];
 }
 
 const WAITING_WORDS: Record<string, string> = { carry_out: 'carry out', decide: 'decide', do: 'do' };
 const WAITING_NEXT: Record<string, string> = {
-  carry_out: 'carry out: the exact approved text is approvedText in rip task show <id> --json; carry out exactly that, then rip task done <id> --result-text "…"',
-  decide: 'decide: rip task show <id>, then rip task decide <id> --approve|--skip --expected-revision <revision>',
-  do: 'do: read it with rip task show <id>; if it acts outside the workspace, propose first (rip task propose <id>)',
+  carry_out: 'carry out: the exact text is approvedRound.final.text in rip task show <id> --json; carry out exactly that, then rip task done <id> --result-text "…"',
+  decide: 'decide: rip task show <id>, then rip task decide <id> --approve|--send-back --expected-revision <revision> (a send back needs --comment; to say no, rip task cancel <id>)',
+  do: 'do: read it with rip task show <id> (a round sent back says what to change in its comment); if it acts outside the workspace, propose first (rip task propose <id>)',
 };
 
 /** What waits on this key, each with its reason, then the next step for each reason shown. */
 function waitingLines(items: Array<Record<string, any>>, hasMore: boolean, workspaceId: string, notifications: string | null): string[] {
   const rows = items.map((t) => {
     const reason = String(WAITING_WORDS[t.waiting] ?? t.waiting).padEnd(9);
-    return `  ${reason}  ${t.title ?? '(untitled)'}  [${t.id}]${t.waiting === 'decide' && t.revision != null ? `  revision ${t.revision}` : ''}`;
+    return `  ${reason}  ${t.title ?? '(untitled)'}  [${t.id}]${t.waiting === 'decide' && t.revision != null ? `  revision ${t.revision}` : ''}${t.latestRound ? `  ${roundWords(t.latestRound)}` : ''}`;
   });
   const lines = loadSection(`Waiting on you (${items.length}${hasMore ? '+' : ''}):`, rows);
   for (const reason of Object.keys(WAITING_NEXT)) {

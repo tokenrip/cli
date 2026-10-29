@@ -52,7 +52,7 @@ rip workspace list                                            # names, ids, your
 rip workspace load <workspace>                                # its slug or id: bounded context, latest changes, your browser link
 ```
 
-`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the kinds you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the task types you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, a sent-back one among them, each with the next command), your proposals In review and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
 
 **Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
@@ -262,36 +262,40 @@ rip artifact move <id> --folder <folder-id-or-slug>
 
 ## Task Commands
 
-A **task** is one piece of work in a workspace (`todo`, `doing`, `review` — In review, `done`, `cancelled`); every task lives in one. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
+A **task** is one piece of work in a workspace (`todo`, `doing`, `review` (In review), `done`, `cancelled`); every task lives in one. Two free tags carry the workspace's workflow: `--type` (what the work is) and `--step` (where it is); Tokenrip never interprets them. **The claim loop:** start a task (by id, or the next one by tags), work, then propose it (it needs review), complete it, or stop it. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you; comment with questions, requested changes and answers, never status. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`; it may be the assignee, never the one who proposed): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
 
 ```bash
-rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
-rip task propose <id> --draft "…"                    # a task you are doing, or a new draft for your own proposal
-rip task show <id>                                   # who, draft, Approved text (carry out exactly this), decision, result, children, history
+rip task start --workspace-id <ws> --type article --step draft   # claim the oldest matching To do task ("No task": nothing to do)
+rip task start --workspace-id <ws>                    # no tags: only a task for you
+rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
+rip task propose <id> --draft-file a.md --draft-artifact <publicId> --then post   # text and files under review; then: the next step
+rip task show <id>                                   # who, the latest round (a send back's comment), Approved text and files, links, timeline
+rip task timeline <id>                               # every round, comment and step
 rip task done <id> --result-text "4 likes" --link url:https://…
 rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
 rip task report <id> --result-text "12 likes"        # a later result on a Done task
 rip task list --workspace-id <ws> --reviewer me      # reviews addressed to you
-rip task decide <id> --approve|--skip --expected-revision <n> [--edited-draft-file f] [--reason "…"]
+rip task decide <id> --approve|--send-back --expected-revision <n> [--comment "…"] [--then <step>|--no-then] [--edited-draft-file f]
+rip comment add --task <id> "Name the day or the date?"   # a question, a requested change or an answer
 
 rip task list --workspace-id <ws>                    # To do + Doing tasks you can see, with who holds each
-rip task list --workspace-id <ws> --status todo --kind process-call --mine
+rip task list --workspace-id <ws> --status todo --type article --step draft --mine
 rip task list --workspace-id <ws> --status done,cancelled --order finished
-rip task add "<title>" --workspace-id <ws> --assignee <who> --reviewer <who> --kind <kind>
+rip task add "<title>" --workspace-id <ws> --assignee <who> --reviewer <who> --type <type> --step <step> --link artifact:<id>
 rip task add "<title>" --parent-id <id>        # under a task, in its workspace
-rip task update <id> --expected-revision <n> --title "…" --reviewer <who>
+rip task update <id> --expected-revision <n> --title "…" --reviewer <who> --step <step>
 
 rip task start <id> --lease-hours 4                  # your key's hold under a LEASE
 rip task start <id>                                  # again on a long run: renews (never shorter)
-rip task stop <id>                                   # back to To do
-rip task cancel <id> --reason "duplicate"            # also withdraws your own proposal
+rip task stop <id>                                   # back to To do (your own proposal: withdraws it)
+rip task cancel <id> --reason "duplicate"            # also says no to a proposal In review (a reviewer may)
 rip task reopen <id>
-rip workspace changes <ws>                           # task history is workspace activity
+rip workspace changes <ws>                           # task events are workspace activity
 ```
 
-A proposal comes back **In review** (stop; once approved, a later `rip workspace load` lists it under Waiting on you; a skip cancels it) or **doing and approved** when it goes to your own person and its kind is on your instructions' on-its-own list (approved and held by you). Carry out only its approved text, the reviewer's edit included (`decision` says who approved it), then complete it with the result; never act twice. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
+A proposal comes back **In review** (stop) or **approved at once** when it goes to your own person and its type is on your instructions' on-its-own list (`doing`, held by you; with `--then`, To do at that step). On a later run its latest round says how it ended: **approved** (carry out only its approved round's final text and files, the reviewer's edits included, then complete it with the result; never act twice; approved with a then, it moved to that step for whoever does it), **sent back** (its comment says what to change: revise and propose again on the same task, with the same `--then`) or **cancelled** (the task was cancelled: do not carry it out). A review's answers are approve and send back; to say no, cancel the task. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
 
-An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; the person's hold in the dashboard has none. Two agents starting at once resolve at the database — one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start. The old `claim`, `touch`, `release` and `dismiss` commands run hidden with a deprecation note.
+Starting by tags claims the oldest matching To do task in one call; two agents never get the same one. With no tag it takes only a task for this agent; with a tag also one for no one, or for your person with no agent named. Give the step your instructions name (with the type), never a type alone: that also takes approved tasks waiting at the next step. An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; renew it during long work by starting again. Only the holder writes the task's draft files. The person's hold in the dashboard has no lease. Two agents starting one task by id at once resolve at the database: one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start.
 
 `task done` completes a task that is free or yours, from To do as well as Doing; someone else's live hold answers `TASK_TAKEN` and persists nothing, and an In review task `TASK_IN_REVIEW`. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
 
@@ -540,11 +544,15 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `TASK_NOT_STARTED` | `stop` on a task that is not Doing | `rip task show <id>` |
 | `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Cancelled (or, for start, done) / already done / not done or cancelled | `rip task reopen <id>` if the work is still wanted; `rip task show <id>` |
 | `INVALID_ASSIGNEE` | `--assignee` is not a member who can edit tasks in the task's audience, or an unknown or revoked `agent:<handle>` | `rip workspace member list <ws>`; handles from `rip workspace load` |
-| `TASK_IN_REVIEW` | The task waits for a decision; start, stop, complete and assignee or reviewer changes are refused | Your own proposal: stop, and a later load lists it under Waiting on you once approved. Someone else's: leave it to its reviewer |
-| `TASK_NOT_IN_REVIEW` | Nothing to decide (`Decided:` says by whom) | `rip task show <id>` |
+| `TASK_IN_REVIEW` | The task waits for a decision; start and complete are refused (its reviewer and assignee can still change) | Your own proposal: stop (or withdraw it with `rip task stop <id>`); a later load lists it under Waiting on you once decided. Someone else's: leave it to its reviewer |
+| `TASK_NOT_IN_REVIEW` | Nothing to decide (`Latest round:` says how it ended) | `rip task show <id>` |
 | `REVIEW_NOT_YOURS` | The review is addressed to someone else (`Reviewer:` says who); nothing was written | Decide only what `rip task list --reviewer me` lists |
-| `INVALID_REVIEWER` | Not a member who can edit tasks in the audience, the assignee, you, or another reviewer than the task names | Omit `--reviewer` (your own person) or name that one |
-| `TOO_MANY_PROPOSALS` | 200 of your proposals are In review in this workspace | Wait for decisions, or withdraw some with `rip task cancel` |
+| `INVALID_REVIEWER` | Not a member who can edit tasks in the audience, the one who proposed (you, on your own proposal), or another reviewer than the task names | Omit `--reviewer` (your own person) or name that one |
+| `TOO_MANY_PROPOSALS` | 200 of your proposals are In review in this workspace | Wait for decisions, or withdraw some with `rip task stop` |
+| `TOO_MANY_ROUNDS` | The task has had 50 review rounds | Finish it as it stands, or add a new task for the rest |
+| `INVALID_LINKS` | A `--link` or `--draft-artifact` names a file outside the task's workspace or audience, or `--link` names one target twice (a `--draft-artifact` given twice is `INVALID_FIELD`) | Name a file in the workspace, shared on a shared task; nothing was written |
+| `VERSION_IN_USE` | A task's review round uses that version (`In use by:` names it) | It is kept while the task exists; delete another version |
+| `COMMENT_NOT_YOURS` | Only a comment's author changes or deletes it | Add your own comment: `rip comment add --task <id>` |
 | `TASK_NOT_DONE` | A later result on a task that is not Done | `rip task done <id> --result-text "…"` |
 | `INVALID_CURSOR` | Malformed keyset cursor | Cursors are opaque — re-run the query |
 | `SKILL_NOT_FOUND` | No skill by that name in reach of this agent (the message names it) | Add `--team <slug>`, or run as the right agent with `--agent <name>` |

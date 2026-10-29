@@ -22,7 +22,7 @@ import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 import { checkForUpdate } from './update-check.js';
 import { CLI_VERSION } from './version.js';
-import { listCommandsOnUnknown } from './command-hints.js';
+import { listCommandsOnUnknown, nameRenamedOptions } from './command-hints.js';
 
 /**
  * Every writing command states why: one sentence on the person's goal, which the
@@ -345,13 +345,15 @@ artifact
   .argument('[artifact]', 'Artifact UUID, alias, scoped alias (~owner/alias), or full URL: diffs its current version')
   .option('--version-id <versionId>', 'Diff one version by its own id instead (give it alone; it names its artifact)')
   .option('--from-version-id <versionId>', 'Diff the range from this version (its predecessor is the base) up to the diffed one')
-  .description('Show what changed in a version vs. the previous version, or across a range with --from-version-id')
+  .option('--base <versionId>', 'Diff against this version of the same artifact instead (a draft file against its base: rip task show --round)')
+  .description('Show what changed in a version vs. the previous version, across a range with --from-version-id, or against --base')
   .addHelpText('after', `
 EXAMPLES:
   $ rip artifact diff 550e8400-e29b-41d4-a716-446655440000
   $ rip artifact diff --version-id <versionId>
   $ rip artifact diff --version-id <lastVersionId> --from-version-id <firstVersionId>
   $ rip artifact diff my-alias --from-version-id <firstVersionId>
+  $ rip artifact diff --version-id <draftVersionId> --base <baseVersionId>
 `)
   .action(wrapCommand(artifactDiff));
 
@@ -1706,8 +1708,47 @@ EXAMPLES:
     await skillInstall(options);
   }));
 
+// ── comment commands ─────────────────────────────────────────────────
+const comment = program
+  .command('comment')
+  .description('Comments on a task: questions, requested changes and answers (never a status; the task says where work stands)');
+
+withWhy(comment
+  .command('add'))
+  .argument('[text]', 'The comment, markdown (or --file)')
+  .requiredOption('--task <id>', 'The task to comment on')
+  .option('--file <path>', 'Read the comment verbatim from this file')
+  .allowExcessArguments(false)
+  .description('Comment on a task you can read; it lands in the task timeline (rip task timeline)')
+  .action(wrapCommand(async (text, options) => {
+    const { commentAdd } = await import('./commands/comment.js');
+    await commentAdd(text, options);
+  }));
+
+withWhy(comment
+  .command('update'))
+  .argument('<id>', 'Comment id (from rip task show or rip task timeline)')
+  .argument('[text]', 'The new text, replacing the old (or --file)')
+  .option('--file <path>', 'Read the new text verbatim from this file')
+  .allowExcessArguments(false)
+  .description('Replace the text of a comment you wrote; it reads as edited')
+  .action(wrapCommand(async (id, text, options) => {
+    const { commentUpdate } = await import('./commands/comment.js');
+    await commentUpdate(id, text, options);
+  }));
+
+withWhy(comment
+  .command('delete'))
+  .argument('<id>', 'Comment id')
+  .allowExcessArguments(false)
+  .description('Delete a comment you wrote: its text is gone for good, a deleted marker stays in the timeline')
+  .action(wrapCommand(async (id, options) => {
+    const { commentDelete } = await import('./commands/comment.js');
+    await commentDelete(id, options);
+  }));
+
 // ── task commands ────────────────────────────────────────────────────
-const collectResult = (v: string, prev: string[] = []): string[] => prev.concat(v);
+const collectLink = (v: string, prev: string[] = []): string[] => prev.concat(v);
 
 const task = program
   .command('task')
@@ -1718,7 +1759,8 @@ task
   .option('--workspace-id <id>', 'Workspace id or slug: the workspace whose tasks to list (or --parent-id)')
   .option('--parent-id <id>', "Only this task's children; its workspace is the list's (omit --workspace-id)")
   .option('--status <list>', "Comma list of todo,doing,review,done,cancelled or 'all' (default todo,doing)")
-  .option('--kind <kind>', 'Only tasks of this kind')
+  .option('--type <type>', 'Only tasks of this type (a free tag: what kind of work it is)')
+  .option('--step <step>', 'Only tasks at this step (a free tag: where it is in your workflow)')
   .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
   .option('--since <iso>', 'Only tasks created after this ISO timestamp, or this many days back')
@@ -1735,11 +1777,22 @@ task
 task
   .command('show')
   .argument('<id>', 'Task id')
+  .option('--round <n>', 'Also print this review round whole (1 is the first proposal), with each draft file\'s version and the diff command against its base')
   .allowExcessArguments(false)
-  .description('Show one task: who it is for and who reviews it, the draft and the approved text to carry out, the decision, the result and links, children and recent history')
-  .action(wrapCommand(async (id) => {
+  .description('Show one task: who it is for and who reviews it, its latest review round (draft text and files, decision, comment), the approved text and files to carry out, the result and links, children and the newest 30 timeline entries')
+  .action(wrapCommand(async (id, options) => {
     const { taskShow } = await import('./commands/task.js');
-    await taskShow(id);
+    await taskShow(id, options);
+  }));
+
+task
+  .command('timeline')
+  .argument('<id>', 'Task id')
+  .allowExcessArguments(false)
+  .description("A task's whole timeline, newest first: every comment (with its id) and every step, who took it and why")
+  .action(wrapCommand(async (id) => {
+    const { taskTimeline } = await import('./commands/task.js');
+    await taskTimeline(id);
   }));
 
 withWhy(task
@@ -1749,10 +1802,16 @@ withWhy(task
   .option('--title <title>', 'Replace the title')
   .option('--body <markdown>', 'Replace the body')
   .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
-  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle>; never the assignee')
+  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle> (the assignee too; never its proposer)')
   .option('--audience <audience>', 'Visibility: internal or shared')
+  .option('--type <type>', 'What kind of work it is: a free tag (lowercase letters, digits, - and _); you become who set it')
+  .option('--no-type', 'Clear the type')
+  .option('--step <step>', 'Which step of your workflow it is at: a free tag (lowercase letters, digits, - and _)')
+  .option('--no-step', 'Clear the step')
+  .option('--link <type:id>', 'Add a file or page the work uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
+  .option('--remove-link <type:id>', 'Remove one it uses, by target: artifact:<id> or url:<https://…> (repeatable; result links stay)', collectLink, [])
   .allowExcessArguments(false)
-  .description('Update task metadata')
+  .description('Update task metadata, tags and the files and links it uses')
   .action(wrapCommand(async (id, options) => {
     const { taskUpdate } = await import('./commands/task.js');
     await taskUpdate(id, options);
@@ -1765,17 +1824,19 @@ withWhy(task
   .option('--parent-id <id>', 'A task this one belongs under; its workspace is the new task\'s (omit --workspace-id)')
   .option('--audience <audience>', 'Workspace audience: internal | shared')
   .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
-  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle>; never the assignee')
-  .option('--kind <kind>', 'Task kind (lowercase slug, e.g. process-call)')
+  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle> (the assignee too; never its proposer)')
+  .option('--type <type>', 'What kind of work it is: a free tag agents filter on (lowercase letters, digits, - and _, e.g. blog-post)')
+  .option('--step <step>', 'Which step of your workflow it is at: a free tag (e.g. draft)')
   .option('--body <markdown>', 'Details')
   .option('--due <iso>', 'Due date (informational)')
-  .option('--payload <json>', 'Kind-specific JSON payload')
+  .option('--payload <json>', 'Producer-defined JSON payload')
+  .option('--link <type:id>', 'A file or page the work uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
   .allowExcessArguments(false)
   .description('File a task')
   .addHelpText('after', `
 EXAMPLES:
   $ rip task add "Review pricing page copy" --workspace-id 4f2c1b90-... --assignee alek
-  $ rip task add "Draft the launch post" --workspace-id 4f2c1b90-... --assignee agent:9b1d0e2a-... --reviewer alek
+  $ rip task add "Draft the launch post" --workspace-id 4f2c1b90-... --type blog-post --step draft --assignee agent:9b1d0e2a-... --reviewer alek --link artifact:3c9e7f10-...
   $ rip task add "Book the venue" --parent-id 7a1c2d1e-...     # a step of the launch task, in its workspace
 `)
   .action(wrapCommand(async (title, options) => {
@@ -1785,10 +1846,22 @@ EXAMPLES:
 
 withWhy(task
   .command('start'))
-  .argument('<id>', 'Task id')
+  .argument('[id]', 'Task id (or start by tags with --workspace-id)')
+  .option('--workspace-id <id>', 'Start by tags: the workspace (id or slug) to take the oldest To do task from that matches --type and --step')
+  .option('--type <type>', 'Start by tags: only a task of this type; with a tag, a task for no one or for your person is taken too')
+  .option('--step <step>', 'Start by tags: only a task at this step')
   .option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)')
   .allowExcessArguments(false)
-  .description('Start a task: it becomes yours under a lease; starting your own again renews it')
+  .description('Start a task: it becomes yours under a lease; starting your own again renews it. With --workspace-id instead of an id, claim the oldest To do task matching --type and --step: with no tag, only a task for this agent; with a tag, also one for no one or for your person with no agent named. Prints "No task" when none matches (or a match is busy for a moment: try again later)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task start 7a1c2d1e-...                                          # a task by its id
+  $ rip task start --workspace-id content --type article --step draft   # the oldest open article draft
+  $ rip task start --workspace-id content                                # the oldest task for this agent
+
+Renew during long work: start the task again before its lease runs out. Only the holder writes the
+task's draft artifacts.
+`)
   .action(wrapCommand(async (id, options) => {
     const { taskStart } = await import('./commands/task.js');
     await taskStart(id, options);
@@ -1798,7 +1871,7 @@ withWhy(task
   .command('stop'))
   .argument('<id>', 'Task id')
   .allowExcessArguments(false)
-  .description('Stop a task you hold; it goes back to To do (workspace admins may stop anyone\'s)')
+  .description('Stop a task you hold, or withdraw your own proposal In review; it goes back to To do (workspace admins may stop anyone\'s)')
   .action(wrapCommand(async (id, options) => {
     const { taskStop } = await import('./commands/task.js');
     await taskStop(id, options);
@@ -1807,7 +1880,7 @@ withWhy(task
 withWhy(task
   .command('done'))
   .argument('<id>', 'Task id')
-  .option('--link <type:id>', 'Attach a link to what it produced: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .option('--link <type:id>', 'A result link to what it produced: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
   .option('--result-text <text>', 'What came of it, at most 280 characters (e.g. "4 likes")')
   .allowExcessArguments(false)
   .description('Complete a task: one that is free (To do) or yours. An approved proposal: carry out exactly its approved text first')
@@ -1820,8 +1893,9 @@ withWhy(task
   .command('cancel'))
   .argument('<id>', 'Task id')
   .option('--reason <text>', 'Why it will not be done')
+  .option('--expected-revision <n>', 'The revision you read: a task re-proposed, decided or started since is refused CONFLICT and nothing is cancelled')
   .allowExcessArguments(false)
-  .description('Cancel a task that will not be done (reopenable)')
+  .description('Cancel a task that will not be done (reopenable). To say no to a proposal, a reviewer may cancel a task In review; send --expected-revision to cancel only the draft you saw')
   .action(wrapCommand(async (id, options) => {
     const { taskCancel } = await import('./commands/task.js');
     await taskCancel(id, options);
@@ -1846,20 +1920,26 @@ withWhy(task
   .option('--draft <text>', 'The exact text the action uses (the post, the email)')
   .option('--draft-file <path>', 'Read the draft from a file, verbatim')
   .option('--verb <verb>', 'The approve button\'s word, e.g. Post or Send (default Approve)')
-  .option('--kind <kind>', 'The kind of work (lowercase slug, e.g. x-reply); your instructions may let some kinds run on their own')
+  .option('--then <step>', 'The step an approval moves the task to (a free tag, e.g. publish): it is then unassigned, for whoever does that step')
+  .option('--comment <text>', 'A comment for the reviewer, posted with the proposal')
+  .option('--type <type>', 'What kind of work it is (a free tag, e.g. x-reply); your instructions may let some types run on their own')
   .option('--reviewer <who>', 'Who decides: a person or agent:<handle> (default your own person; never you)')
   .option('--body <markdown>', 'A new proposal: context for the reviewer')
   .option('--audience <audience>', 'A new proposal: internal | shared')
-  .option('--link <type:id>', 'Attach a link: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
+  .option('--link <type:id>', 'A file or page the proposal uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
+  .option('--draft-artifact <id[@version]>', 'A file the draft is made of, at a version number or id (else its current one); repeatable, in order, at most 10; each is linked as context', collectLink, [])
   .allowExcessArguments(false)
-  .description('Propose an action before it leaves the workspace; it waits In review, or comes back doing and approved when your instructions allow its kind')
+  .description('Propose an action before it leaves the workspace: a new review round. It waits In review, or comes back approved when your instructions allow its type')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip task propose --workspace-id 4f2c1b90-... --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
-  $ rip task propose 7a1c2d1e-... --draft "Thanks Jen, we ship Thursday!"     # a task you are doing, or your own proposal
+  $ rip task propose --workspace-id 4f2c1b90-... --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
+  $ rip task propose 7a1c2d1e-... --draft-file post.md --then publish --comment "Shorter, as asked"     # a task you are doing, sent back to you, or your own proposal
+  $ rip task propose 7a1c2d1e-... --draft-artifact 3c9e7f10-... --draft-artifact 8d2a4b61-...@2 --then post    # the files under review, each at its version
 
-In review: stop; on a later run, rip workspace load lists it under Waiting on you once it is approved.
-Doing and approved: carry out exactly its approved text now, then rip task done <id> --result-text "…".
+In review: stop; on a later run, rip workspace load lists it under Waiting on you once it is decided
+(approved: carry it out; sent back: the comment says what to change, then propose again).
+Doing and approved: carry out exactly approvedRound.final.text now, then rip task done <id> --result-text "…".
+Approved with a then: the task moved to that step for whoever does it; nothing more for you.
 `)
   .action(wrapCommand(async (id, options) => {
     const { taskPropose } = await import('./commands/task.js');
@@ -1873,8 +1953,8 @@ withWhy(task
   .option('--parent-id <id>', 'A new report: a task it belongs under; its workspace is the report\'s (omit --workspace-id)')
   .option('--title <title>', 'A new report: what you did')
   .option('--result-text <text>', 'What came of it, at most 280 characters; a later result replaces it')
-  .option('--link <type:id>', 'Attach a link: artifact:<publicId>[@version] or url:<https://…> (repeatable)', collectResult, [])
-  .option('--kind <kind>', 'A new report: the kind of work')
+  .option('--link <type:id>', 'A result link to what it produced: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
+  .option('--type <type>', 'A new report: what kind of work it was (a free tag)')
   .option('--body <markdown>', 'A new report: details')
   .option('--audience <audience>', 'A new report: internal | shared')
   .allowExcessArguments(false)
@@ -1889,27 +1969,44 @@ EXAMPLES:
     await taskReport(id, options);
   }));
 
-withWhy(task
+const taskDecideCommand = withWhy(task
   .command('decide'))
   .argument('<id>', 'A task In review whose reviewer is you (rip task list --reviewer me)')
-  .option('--approve', 'Approve it')
-  .option('--skip', 'Skip it: it is cancelled')
+  .option('--approve', 'Approve it: To do, for its proposer to carry out, or at its then step for whoever does it')
+  .option('--send-back', 'Send it back with --comment: To do for whoever it is for, to change and propose again')
   .requiredOption('--expected-revision <n>', 'The revision you read; a draft replaced since is refused CONFLICT')
-  .option('--edited-draft <text>', 'With --approve: the text to carry out instead of the draft')
-  .option('--edited-draft-file <path>', 'With --approve: read the edited draft from a file, verbatim')
-  .option('--reason <text>', 'With --skip: why not')
+  .option('--comment <text>', 'A comment posted with the decision (required with --send-back: what to change)')
+  .option('--then <step>', 'With --approve: move the task to this step instead of the proposal\'s then')
+  .option('--no-then', 'With --approve: apply no then (the proposer carries it out)')
+  .option('--edited-draft-file <path>', 'With --approve: read the text to carry out instead of the draft from a file, verbatim')
+  .option('--edit-artifact <id@version>', 'With --approve: a draft artifact at the later version you saw and approve (repeatable)', collectLink, [])
   .allowExcessArguments(false)
-  .description('Decide a review addressed to you: approve (optionally with an edited draft) or skip')
+  .description('Decide a review addressed to you: approve (optionally with edits or another then) or send it back with a comment. To say no, cancel the task: rip task cancel <id> [--reason]')
   .addHelpText('after', `
 EXAMPLES:
   $ rip task decide 7a1c2d1e-... --approve --expected-revision 3
-  $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edited-draft-file edited.txt
-  $ rip task decide 7a1c2d1e-... --skip --expected-revision 3 --reason "Not this week"
+  $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edited-draft-file edited.txt --then publish
+  $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edit-artifact 3c9e7f10-...@4
+  $ rip task decide 7a1c2d1e-... --send-back --expected-revision 3 --comment "Name the day, not the date"
+  $ rip task cancel 7a1c2d1e-... --reason "Not this week"   # to say no
 `)
   .action(wrapCommand(async (id, options) => {
     const { taskDecide } = await import('./commands/task.js');
     await taskDecide(id, options);
   }));
+// `--edited-draft` became `--edited-draft-file` (task rounds M5), and `--skip`, then `--decline`, folded
+// into `rip task cancel` (plan D22): still unknown, and the refusal names the replacement.
+nameRenamedOptions(taskDecideCommand, {
+  '--skip': 'rip task cancel <id> [--reason <text>]',
+  '--decline': 'rip task cancel <id> [--reason <text>]',
+  '--reason': 'rip task cancel <id> --reason <text>',
+  '--edited-draft': '--edited-draft-file',
+});
+// `--kind` became `--type` (task rounds M2) on every task command that took it.
+for (const name of ['list', 'add', 'propose', 'report']) {
+  const command = task.commands.find((cmd) => cmd.name() === name);
+  if (command) nameRenamedOptions(command, { '--kind': '--type' });
+}
 
 // ── team commands ────────────────────────────────────────────────────
 const team = program.command('team').description('Manage teams');

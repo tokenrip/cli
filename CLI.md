@@ -47,7 +47,7 @@ An unknown subcommand is refused with the group's real commands: `rip table list
 
 `rip workspace` (alias **`rip ws`**) manages **workspaces**: the authoritative home for a project's artifacts, tables, flat folders, and tasks, with an `internal` / `shared` audience per item and guests you add or invite by email. A `<workspace>` argument or `--workspace-id` takes the workspace's **id or slug** (the server resolves a slug among the workspaces you reach, in any case; one it cannot find is `WORKSPACE_NOT_FOUND`, as an unknown id is, and a slug two of them share is `AMBIGUOUS_REFERENCE`, which prints each candidate's id and home: name it by its id). Workflow guide: [`references/workspaces.md`](./references/workspaces.md).
 
-**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|append|patch|fork|move|bulk|delete|delete-version|prune-versions`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|rename|update|share-contents|delete`, `trash restore|purge`. Reads and pins take none.
+**Why.** Every command that writes takes `--why <text>`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). `TOKENRIP_WHY` stands in for the flag (the flag wins). A write to workspace content without it is refused `WHY_REQUIRED`; over 300 characters is `INVALID_FIELD`. Standalone items accept it and do not need it. The commands that take it: `artifact upload|publish|update|append|patch|fork|move|bulk|delete|delete-version|prune-versions`, `table append|update|delete`, `task add|update|propose|report|decide|start|stop|done|cancel|reopen`, `comment add|update|delete`, `workspace create|update|delete|adopt`, `workspace member add|set-role|remove`, `folder create|rename|update|share-contents|delete`, `trash restore|purge`. Reads and pins take none.
 
 ### `rip workspace create <slug>`
 
@@ -62,7 +62,7 @@ Options: `--name <name>` (defaults to the slug), `--description <text>`, `--why 
 
 ### `rip workspace list`
 
-List the workspaces you can access, with your `role`, `membership`, `audiences`, and `capabilities` for each, and `needsYou`: how many decisions wait on this agent key there (the reviews addressed to it, where the In review children of one parent count once). Human output prints it as `needsYou=<n>`; `rip task list --workspace-id <ws> --reviewer me` lists them.
+List the workspaces you can access, with your `role`, `membership`, `audiences`, and `capabilities` for each, and `needsYou`: how much waits on this agent key there (approved tasks for it to carry out, reviews addressed to it, where the In review children of one parent count once, and To do tasks naming it). Human output prints it as `needsYou=<n>`; `rip workspace load` lists them under Waiting on you.
 
 ### `rip workspace show <workspace>`
 
@@ -117,7 +117,7 @@ rip workspace pin remove <artifact>
 
 ### `rip workspace load <workspace>`
 
-Load bounded context, in the order an agent reads it: `notices` first, only when Tokenrip changed how something works since this key last loaded (`[{ id, publishedAt, text }]`, told once, printed under `Tokenrip changed:`); the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason (`carry_out`: approved, carry out its approved text; `decide`: a review addressed to you; `do`: To do, for you), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), the latest changes (50, newest first, each with its `why`) with `unread` (how many changes came after this key's last acknowledgement, counted up to 1000; `unreadTruncated` when there are more), recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: the header `Workspace: <name> (<slug>) [<id>]`, `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own:` kinds (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), `Latest changes (<n>):` newest first (when, `You` or `~alias`, the action, the item's title and id, and its why), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <workspace>` (`1000+` when the count was capped; `rip workspace changes` reads them in order and reports history gaps and access changes, `rip workspace ack` moves your position), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`).
+Load bounded context, in the order an agent reads it: `notices` first, only when Tokenrip changed how something works since this key last loaded (`[{ id, publishedAt, text }]`, told once, printed under `Tokenrip changed:`); the workspace and your capabilities; your `instructions` here (`{ version, text, onItsOwn, savedAt }`, whole and never trimmed, or null); `waiting`, up to 20 tasks for exactly this key, each with its reason and latest round (`carry_out`: approved, carry out its approved round's final text and files; `decide`: a review addressed to you; `do`: To do, naming you, a sent-back one among them), of which the `carry_out` and `do` items (To do or Doing) also appear in `tasks`; open tasks (20); `proposals.inReview` (your proposals waiting for a decision); `agents` (the workspace's agents as you may see them, each `agent.id` a handle to name as `agent:<handle>`); pins, artifacts (50), the latest changes (50, newest first, each with its `why`) with `unread` (how many changes came after this key's last acknowledgement, counted up to 1000; `unreadTruncated` when there are more), recent `sessions { items, hasMore, nextCursor }`, and a `browserLink` that pairs the person's browser tab to your agent key. Loading takes no selector and is safe to repeat: it changes nothing you see (the first load creates this key's reader position and records this agent in the workspace; only `rip workspace ack` moves the position). A workspace in the trash answers 410 `WORKSPACE_DELETED`. Human output prints all of it: the header `Workspace: <name> (<slug>) [<id>]`, `Can:` (capabilities), the browser link, `Instructions (v<n>):` with the whole text and its `On its own (task types):` list (or "No instructions here yet: your person writes them in the dashboard, Members & settings"), `Waiting on you (<n>):` with each task's reason and the next command, `Your proposals In review: <n>`, `Agents` with each `agent:<handle>`, each pin (inline bodies are printed), recent sessions (as `rip workspace sessions` prints them), open tasks (a task waiting on you is printed once, under Waiting on you), `Latest changes (<n>):` newest first (when, `You` or `~alias`, the action, the item's title and id, and its why), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <workspace>` (`1000+` when the count was capped; `rip workspace changes` reads them in order and reports history gaps and access changes, `rip workspace ack` moves your position), the artifact index, and one `rip workspace load <workspace> --<continuation>` line per list that continues. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`).
 
 ```bash
 rip workspace load <workspace>
@@ -324,21 +324,24 @@ What changed in a version compared to the one before it (`GET /v0/diffs`). Word-
 
 With `--from-version-id <versionId>`, one diff of everything the versions from it up to the diffed one changed, compared with the version before it (the header names that base version). A range diff is computed on each read, not cached. `--from-version-id` must be a version of the same artifact and not later than the diffed one (else `INVALID_FIELD`); equal to it is the plain diff.
 
+With `--base <versionId>`, the diffed version against that version of the same artifact (not later than it; else `INVALID_FIELD`), computed on each read: a review round's draft file against its base, the command `rip task show <id> --round <n>` prints. `--base` and `--from-version-id` are one or the other.
+
 ```bash
 rip artifact diff my-alias
 rip artifact diff --version-id <versionId>
 rip artifact diff --version-id <lastVersionId> --from-version-id <firstVersionId>
+rip artifact diff --version-id <draftVersionId> --base <baseVersionId>
 ```
 
-Options: `--version-id <versionId>`, `--from-version-id <versionId>`.
+Options: `--version-id <versionId>`, `--from-version-id <versionId>`, `--base <versionId>`.
 
 ### `rip artifact delete-version <versionId>`
 
-Delete one version by its own id (`DELETE /v0/versions/:versionId`; the version names its artifact; `--expected-workspace-revision` and `--why` go in the request body), immediately and for good (versions do not go to the trash). The last remaining version cannot be deleted — delete the artifact instead. Options: `--dry-run`, `--expected-workspace-revision <n>`, `--why <text>`.
+Delete one version by its own id (`DELETE /v0/versions/:versionId`; the version names its artifact; `--expected-workspace-revision` and `--why` go in the request body), immediately and for good (versions do not go to the trash). The last remaining version cannot be deleted: delete the artifact instead. A version a task's review round uses is kept while the task exists: deleting it is `409 VERSION_IN_USE`, printed with `In use by: task <id>, round <n>`. Options: `--dry-run`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact prune-versions <uuid>`
 
-The artifact may be a UUID, alias or page URL. Delete an artifact's old versions in one step (`DELETE /v0/artifacts/:id/versions`, with `keep`, `expectedWorkspaceRevision` and `why` in the request body), keeping the current one and the newest `--keep <n>` of the others (default 0). Immediate and for good: versions do not go to the trash. Every kept version counts toward the owner's storage, so this frees what the old versions hold. The current version always stays, so pruning never frees a version number; a stored file goes only when no other version uses it (a fork shares its source's). A table is refused (`INVALID_TYPE`). Prints the versions removed, the bytes freed and the versions left; `--json` returns `{ artifactId, removed, freedBytes, versionCount }`. Options: `--keep <n>`, `--expected-workspace-revision <n>`, `--why <text>`.
+The artifact may be a UUID, alias or page URL. Delete an artifact's old versions in one step (`DELETE /v0/artifacts/:id/versions`, with `keep`, `expectedWorkspaceRevision` and `why` in the request body), keeping the current one and the newest `--keep <n>` of the others (default 0). Immediate and for good: versions do not go to the trash. Every kept version counts toward the owner's storage, so this frees what the old versions hold. The current version always stays, so pruning never frees a version number; a stored file goes only when no other version uses it (a fork shares its source's). A table is refused (`INVALID_TYPE`). Versions a task's review round uses are always kept. Prints the versions removed, the bytes freed, the versions left and those kept for review rounds; `--json` returns `{ artifactId, removed, freedBytes, versionCount, keptInUse }`. Options: `--keep <n>`, `--expected-workspace-revision <n>`, `--why <text>`.
 
 ### `rip artifact delete <identifier>`
 
@@ -516,7 +519,7 @@ rip artifact list --unfiled
 
 ## Task commands
 
-A **task** is one piece of work in a workspace — every task lives in exactly one, with an `internal` or `shared` audience. Its status is `todo`, `doing`, `review` (In review: a proposal waiting for a decision), `done` or `cancelled`. Agents **propose** before acting outside the workspace and carry out only what comes back approved, **report** work that needed no approval, and **decide** reviews addressed to them; whoever picks a task up starts it (the hold belongs to that agent's key, under a lease, or to the person in the browser, with none). A task names who it is for (`assignee`) and who reviews it (`reviewer`): a person (account id or alias) or an agent as `agent:<handle>`, a handle from `rip workspace load`. Human output prints them in History's words (`You`, `You · Grok (Claude Code) · this agent`, `~alek`, `~alek's agent · Codex`). Task ids are UUIDs; a non-UUID is a `400`. Guide: [`references/tasks.md`](./references/tasks.md).
+A **task** is one piece of work in a workspace. Every task lives in exactly one, with an `internal` or `shared` audience. Its status is `todo`, `doing`, `review` (In review: a proposal waiting for a decision), `done` or `cancelled`. Two free tags carry the workspace's own workflow: `type` (what the work is) and `step` (where it is); Tokenrip never interprets them. Agents claim work with **start** (by id, or the next task by tags), **propose** before acting outside the workspace or when the work needs review (each proposal a review round: text and up to 10 files, with an optional `then`, the step an approval moves it to) and carry out only what comes back approved, **report** work that needed no approval, **decide** reviews addressed to them (approve, or send back with a comment; to say no, **cancel** the task) and **comment** with questions, requested changes and answers. The hold belongs to the agent's key, under a lease, or to the person in the browser, with none. A task names who it is for (`assignee`) and who reviews it (`reviewer`; it may be the assignee, never the one who proposed): a person (account id or alias) or an agent as `agent:<handle>`, a handle from `rip workspace load`. Human output prints them in History's words (`You`, `You · Grok (Claude Code) · this agent`, `~alek`, `~alek's agent · Codex`). Task ids are UUIDs; a non-UUID is a `400`. Guide: [`references/tasks.md`](./references/tasks.md).
 
 ### `rip task list`
 
@@ -526,16 +529,20 @@ List one workspace's tasks, filtered to the audiences you may see.
 rip task list --workspace-id 7a1c2d1e-…
 rip task list --workspace-id 7a1c2d1e-… --reviewer me
 rip task list --workspace-id 7a1c2d1e-… --status all --limit 20
-rip task list --workspace-id 7a1c2d1e-… --kind process-call --mine --since 7
+rip task list --workspace-id 7a1c2d1e-… --type article --step draft --mine --since 7
 rip task list --parent-id 4f2c1b90-…
 rip task list --workspace-id 7a1c2d1e-… --status done,cancelled --order finished
 ```
 
-Required: `--workspace-id <id>`, or `--parent-id <id>` alone (a task's children, in its workspace); the CLI rejects neither or both before sending a request. Options: `--status <list>` (comma list of `todo,doing,review,done,cancelled` or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order <created|finished>` (`created`, newest first, is the default; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--kind <kind>`, `--mine` (for your account with no agent named, for you as an agent, or held by you; not a sibling agent's), `--reviewer me` (reviews In review addressed to you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row names who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`), who an In review task waits on (`waiting on You`, `waiting on anyone`), or who it is for (`for ~alek`, `approved · for You · Grok (Claude Code)`).
+Required: `--workspace-id <id>`, or `--parent-id <id>` alone (a task's children, in its workspace); the CLI rejects neither or both before sending a request. Options: `--status <list>` (comma list of `todo,doing,review,done,cancelled` or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order <created|finished>` (`created`, newest first, is the default; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--type <type>`, `--step <step>`, `--mine` (for your account with no agent named, for you as an agent, or held by you; not a sibling agent's), `--reviewer me` (reviews In review addressed to you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row shows the task's type and step, its latest round (`round 2 · sent back`) and who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`), who an In review task waits on (`waiting on You`, `waiting on anyone`), or who it is for (`for ~alek`).
 
 ### `rip task show <id>`
 
-One task: who it is for (`For:`) and who reviews it (`Reviewer:`; "any person who can edit tasks" when none), each agent with its `[agent:<handle>]`; the holder (`Doing:` who, since, and an agent hold's lease); the decision (`approved by ~ana at …, with an edit`, `approved on its own: Grok's instructions v4 at …`, `skipped by You at …`); the approve verb; the parent; who completed it; `Result:`; the **Approved text (carry out exactly this)**, with the original `Draft:` beside it when the decider edited it (an In review task shows its draft); body, payload and result links; `Children (<n>):`; and `History (newest first):`, each step with who and why (`(earlier history not shown)` when it does not reach the creation). A cancelled task shows `Cancelled:` with who and the reason.
+One task: its `Type:` and `Step:`; who it is for (`For:`) and who reviews it (`Reviewer:`; "any person who can edit tasks" when none), each agent with its `[agent:<handle>]`; the holder (`Doing:` who, since, and an agent hold's lease); the parent; who completed it; `Result:`; the **Approved text (round n, carry out exactly this)** and **Approved files (round n, these versions)** of the approved round; the **Latest round** (its step, proposer, verb, `then`, the draft text and files, and its outcome: `approved by ~ana at …`, `approved on its own: Grok's instructions v4`, `sent back by You at …` with the comment, `cancelled`, `withdrawn`, `replaced`, or in review); the brief and payload; `Files & links:` and `Result links:`; `Children (<n>):`; and `Timeline (newest first):`, the newest 30 entries (rounds, comments with their ids, and steps with who and why), with `rip task timeline <id>` when there are older ones. A cancelled task shows `Cancelled:` with who and the reason. `--round <n>` adds that round whole, with each draft file's version, whether the file changed since, and the `rip artifact diff … --base …` command against the same file in the previous round at the same step.
+
+### `rip task timeline <id>`
+
+The task's whole timeline, newest first, paged to the end: every review round, every comment (with its id) and every step, with who took it, from which tool, and why. A round's text is cut to 512 bytes here; `rip task show <id> --round <n>` prints it whole.
 
 ### `rip task add <title>`
 
@@ -543,32 +550,46 @@ File a task in a workspace.
 
 ```bash
 rip task add "Review pricing page copy" --workspace-id 7a1c2d1e-… --assignee alek
-rip task add "Draft the launch post" --workspace-id 7a1c2d1e-… --assignee agent:9b1d0e2a-… --reviewer alek
+rip task add "Write the launch article" --workspace-id 7a1c2d1e-… --type article --step draft --reviewer alek --link artifact:3c9e7f10-…
 rip task add "Renew domain" --workspace-id 7a1c2d1e-… --due 2026-10-01
 ```
 
-Required: `<title>`, and `--workspace-id <id>` or `--parent-id <id>` (a task this one belongs under, set once, at most 100 children; the new task goes into the parent's workspace). Options: `--audience <internal|shared>` (default `internal` for internal members, `shared` for external editors), `--why <text>`, `--assignee <who>` (who it is for: a person or `agent:<handle>`, a member who can edit tasks in the audience; advisory, not a lock), `--reviewer <who>` (who decides its proposal, named the same way; never the assignee), `--kind <kind>` (lowercase slug), `--body <markdown>`, `--due <iso>` (informational), `--payload <json>`.
+Required: `<title>`, and `--workspace-id <id>` or `--parent-id <id>` (a task this one belongs under, set once, at most 100 children; the new task goes into the parent's workspace). Options: `--audience <internal|shared>` (default `internal` for internal members, `shared` for external editors), `--why <text>`, `--assignee <who>` (who it is for: a person or `agent:<handle>`, a member who can edit tasks in the audience; advisory, not a lock), `--reviewer <who>` (who decides its proposals, named the same way; it may be the assignee), `--type <type>` and `--step <step>` (free tags: lowercase letters, digits, `-` and `_`, at most 64), `--body <markdown>`, `--link <type:id>` (a file or page the work uses, repeatable: `artifact:<publicId>[@version]` or `url:<https://…>`), `--due <iso>` (informational), `--payload <json>`.
 
 ### `rip task update <id>`
 
-Update title, body, assignee, reviewer, or audience.
+Update the title, brief, roles, audience, tags, or the files and links the work uses.
 
 ```bash
 rip task update 4f2c1b90-… --expected-revision 3 --title "Review pricing copy (v2)"
+rip task update 4f2c1b90-… --expected-revision 4 --step post --link artifact:8d2a4b61-… --remove-link url:https://old.example
 ```
 
-Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--reviewer`, `--audience`, `--why <text>`. The assignee and reviewer do not change while the task is In review, nor on a skipped proposal still for its agent (`TASK_IN_REVIEW`).
+Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--reviewer`, `--audience`, `--type` / `--no-type` (setting it records you as who gave it), `--step` / `--no-step`, `--link <type:id>` (adds a context link, repeatable), `--remove-link <type:id>` (removes one by target, `artifact:<id>` or `url:<…>`; result links stay), `--why <text>`. While the task is In review, a new `--reviewer` re-addresses its open review (never to the one who proposed it: `INVALID_REVIEWER`), and a new `--assignee` is whom a send back returns it to.
+
+### `rip task start [id]`
+
+Start a task: it becomes your key's hold under a lease. By id: a free task (To do, or an agent hold whose lease lapsed); starting a task you already hold renews the lease, never shorter. By tags (`--workspace-id` instead of an id): the oldest To do task there matching `--type` and `--step`, claimed in one call (two agents never get the same one). With no tag it takes only a task for this agent; with a tag it also takes one for no one, or for your person with no agent named; never another agent's or another person's. Give the step (with the type) for routine work, never a type alone, which would also take approved tasks waiting at the next step.
+
+```bash
+rip task start 7a1c2d1e-…
+rip task start --workspace-id content --type article --step draft
+rip task start --workspace-id content
+```
+
+Options: `--workspace-id <id>`, `--type <type>`, `--step <step>`, `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. It prints the task whole (its latest round says what a send back asked; its approved round, what to carry out), or `No task: none matches, so nothing was taken.` (exit 0) when none matches or a match is busy for a moment. By id, someone else's live hold is `TASK_TAKEN`, which names the holder (`Held by: …`); a done or cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`. Renew during long work by starting again before the lease runs out; only the holder writes the task's draft files.
 
 ### `rip task propose [id]`
 
-Propose an action before it leaves the workspace (a post, an email, a booking), with the exact text it uses.
+Propose an action before it leaves the workspace (a post, an email, a booking), or send a draft for review: a new review round with the exact text and files it uses.
 
 ```bash
-rip task propose --workspace-id 7a1c2d1e-… --title "Reply to @jen" --draft-file reply.txt --verb Post --kind x-reply
-rip task propose 4f2c1b90-… --draft "Thanks Jen, we ship Thursday!"
+rip task propose --workspace-id 7a1c2d1e-… --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
+rip task propose 4f2c1b90-… --draft-file article.md --draft-artifact 3c9e7f10-… --draft-artifact 8d2a4b61-…@2 --then post
+rip task propose 4f2c1b90-… --draft "Thanks Jen, we ship Thursday!" --comment "Shorter, as you asked"
 ```
 
-A new proposal needs `--title <title>` and `--workspace-id <id>` (or `--parent-id <id>` alone, the parent's workspace), and takes `--body` and `--audience`. With an `<id>` it proposes on a task that is free or yours (To do or Doing), or replaces your own proposal's draft and verb; the title, parent and audience stay. Options for both: `--draft <text>` or `--draft-file <path>` (read verbatim; up to 64,000 characters), `--verb <word>` (the approve button, at most 24 characters; "Approve" without it), `--kind <kind>` (set only on a task with none), `--reviewer <who>` (a person or `agent:<handle>`; default your own person; the task's own reviewer when it names one), `--link <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`), `--why <text>`. The reply is the task: `review` (In review: stop; once approved it comes back under Waiting on you, and a skip cancels it), or `doing`, approved and held by you when it goes to your own person and its kind is on your instructions' on-its-own list and your own account gave the task that kind. Refusals: `INVALID_REVIEWER`, `TOO_MANY_PROPOSALS` (200 In review per agent per workspace), `TASK_IN_REVIEW` (another agent's proposal), `TASK_TAKEN`, `INVALID_FIELD` (a different kind, a blank draft).
+A new proposal needs `--title <title>` and `--workspace-id <id>` (or `--parent-id <id>` alone, the parent's workspace), and takes `--body` and `--audience`. With an `<id>` it proposes on a task that is free or yours (To do or Doing), or replaces your own open proposal (its round closes `replaced`); the title, parent, audience and assignment stay, and your hold is cleared. Options for both: `--draft <text>` or `--draft-file <path>` (read verbatim; up to 64,000 characters), `--draft-artifact <publicId>[@version]` (a file the draft is made of, at a version number or id, else its current one; repeatable, in order, at most 10, each once; each is linked to the task and the round keeps that version), `--verb <word>` (the approve button, at most 24 characters; "Approve" without it), `--then <step>` (the step an approval moves the task to, unassigned, for whoever does it), `--comment <text>` (for the reviewer, posted with the proposal), `--type <type>` (set only on a task with none), `--reviewer <who>` (a person or `agent:<handle>`; default your own person; the task's own reviewer when it names one; never you), `--link <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`), `--why <text>`. The reply is the task: `review` (In review: stop; a later run reads how its latest round ended: approved, carry it out; sent back, its comment says what to change, then propose again; cancelled, the task was cancelled: do not carry it out), or approved at once when it goes to your own person and its type is on your instructions' on-its-own list and your own account gave the task that type (`doing`, held by you; with `--then`, To do at that step). Refusals: `INVALID_REVIEWER`, `TOO_MANY_ROUNDS` (50 rounds per task), `TOO_MANY_PROPOSALS` (200 In review per proposer per workspace), `TASK_IN_REVIEW` (someone else's proposal), `TASK_TAKEN`, `INVALID_LINKS` (a file outside the workspace or its audience), `DELETED` (a file in the trash), `INVALID_FIELD` (a different type, a blank draft, a draft file twice or an 11th).
 
 ### `rip task report [id]`
 
@@ -579,46 +600,55 @@ rip task report --workspace-id 7a1c2d1e-… --title "Sent the weekly digest" --r
 rip task report 4f2c1b90-… --result-text "12 likes"
 ```
 
-A new report needs `--title` and `--workspace-id` (or `--parent-id` alone); it is born Done, created and completed by you, and takes `--result-text` (at most 280 characters), `--link` (repeatable), `--kind`, `--body`, `--audience` and `--why`. With an `<id>` it takes only `--result-text` (replacing the old text) and `--link` (added), on a Done task (`TASK_NOT_DONE` otherwise).
+A new report needs `--title` and `--workspace-id` (or `--parent-id` alone); it is born Done, created and completed by you, and takes `--result-text` (at most 280 characters), `--link` (result links, repeatable), `--type`, `--body`, `--audience` and `--why`. With an `<id>` it takes only `--result-text` (replacing the old text) and `--link` (added), on a Done task (`TASK_NOT_DONE` otherwise).
 
 ### `rip task decide <id>`
 
-Decide a review addressed to you.
+Decide a review addressed to you: approve it, or send it back with a comment. To say no, cancel the task with `rip task cancel <id>` (a reviewer may).
 
 ```bash
 rip task decide 4f2c1b90-… --approve --expected-revision 3
-rip task decide 4f2c1b90-… --approve --expected-revision 3 --edited-draft-file edited.txt
-rip task decide 4f2c1b90-… --skip --expected-revision 3 --reason "Not this week"
+rip task decide 4f2c1b90-… --approve --expected-revision 3 --edited-draft-file edited.txt --then publish
+rip task decide 4f2c1b90-… --approve --expected-revision 3 --edit-artifact 3c9e7f10-…@4
+rip task decide 4f2c1b90-… --send-back --expected-revision 3 --comment "Name the day, not the date"
+rip task cancel 4f2c1b90-… --reason "Not this week"        # to say no
 ```
 
-Required: exactly one of `--approve` / `--skip`, and `--expected-revision <n>` (the revision you read). `--edited-draft <text>` or `--edited-draft-file <path>` go with `--approve` (the text then carried out, stored only when it differs); `--reason <text>` goes with `--skip` (the cancel reason); `--why <text>`. Approve makes it To do and approved; skip makes it Cancelled and skipped. Only a review whose reviewer is exactly your key: anyone else's, an unaddressed one and your own proposal are `REVIEW_NOT_YOURS` (`Reviewer:` says whose); a decided one is `TASK_NOT_IN_REVIEW` (`Decided:` says by whom); a draft replaced since you read it is `CONFLICT` with `currentRevision`. A person decides theirs in the dashboard, and deciding a whole batch is dashboard-only.
-
-### `rip task start <id>`
-
-Start a free task (To do, or an agent hold whose lease lapsed): it becomes your key's hold under a lease. Starting a task you already hold renews the lease, never shorter.
-
-Options: `--lease-hours <n>` (0.25–72, default 2), `--why <text>`. Someone else's live hold is `TASK_TAKEN`, which names the holder (`Held by: …`); a done or cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`.
+Required: exactly one of `--approve` / `--send-back`, and `--expected-revision <n>` (the revision you read). `--comment <text>` goes with either (posted in the same write) and is required with `--send-back` (what to change). With `--approve`: `--then <step>` (overrides the proposal's then) or `--no-then` (clears it: back to its proposer), `--edited-draft-file <path>` (the text then carried out, kept only when it differs) and `--edit-artifact <publicId>@<version>` (repeatable: a later version of a draft file, the one you saw and approve). `--why <text>`. Approve makes it To do: for its proposer to carry out, or at its then step for whoever does it. Send back makes it To do with its assignment and step unchanged. `--decline` and `--skip` are refused with a hint naming `rip task cancel`, and `--reason` is not a decide option. Only a review whose reviewer is exactly your key: anyone else's, an unaddressed one and your own proposal are `REVIEW_NOT_YOURS` (`Reviewer:` says whose); a decided one is `TASK_NOT_IN_REVIEW` (`Latest round:` says how it ended); a draft replaced since you read it is `CONFLICT` with `currentRevision`; an approval while a draft file is in the trash or purged is `DELETED`. A person decides theirs in the dashboard, and deciding a whole batch is dashboard-only.
 
 ### `rip task stop <id>`
 
-Put a task you hold back in To do. The person may stop their own agents' holds and a workspace admin anyone's; anyone else gets `TASK_TAKEN`. A task that is not Doing is `TASK_NOT_STARTED`. Option: `--why <text>`.
+Put a task you hold back in To do. On your own proposal In review it withdraws it: the round closes `withdrawn` and the task goes back to To do, still for whoever it was for. The person may stop their own agents' holds and a workspace admin anyone's; anyone else gets `TASK_TAKEN`. A task that is not Doing is `TASK_NOT_STARTED`. Option: `--why <text>`.
 
 ### `rip task done <id>`
 
-Complete a task that is free or yours, from To do as well as Doing, recording what it produced. An approved proposal: carry out only its approved text first (`decision` says who approved it).
+Complete a task that is free or yours, from To do as well as Doing, recording what it produced. An approved proposal: carry out only its approved round's final text and files first.
 
 ```bash
 rip task done 4f2c1b90-… --result-text "4 likes" --link url:https://example.com/report
 rip task done 4f2c1b90-… --link artifact:a1b2c3d4-…@2
 ```
 
-Options: `--result-text <text>` (what came of it, at most 280 characters; replaces any earlier text), `--link <type:id>` (repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50; `rip task show` lists them as results), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`. Older results kept after a lost lease still show, flagged `orphaned`.
+Options: `--result-text <text>` (what came of it, at most 280 characters; replaces any earlier text), `--link <type:id>` (result links, repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50; `rip task show` lists them under `Result links:`), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`.
 
 ### `rip task cancel <id>` / `rip task reopen <id>`
 
-Cancel a task that will not be done (from To do, Doing or In review; reopenable), or reopen a done or cancelled one. Cancelling a proposal In review withdraws it: its proposer, the proposer's person or whoever decides it may (`REVIEW_NOT_YOURS` otherwise). Reopening goes back to To do, except a skipped proposal still for its agent, which goes back In review to its reviewer; it always clears the decision and keeps the result. `cancel` takes `--reason <text>`; both take `--why <text>`.
+Cancel a task that will not be done (from To do, Doing or In review; reopenable), or reopen a done or cancelled one. Cancelling a proposal In review is how to say no to it: the round closes `cancelled` and the task is Cancelled. Its proposer, the proposer's person or whoever decides it may cancel it (`REVIEW_NOT_YOURS` otherwise). Reopening goes back to To do, except a proposal cancelled In review and still for its proposer, which goes back In review to its reviewer on a new round with the same draft, whoever cancelled it; it clears the approved round and keeps every round, the result and the links. `cancel` takes `--reason <text>` and `--expected-revision <n>` (optional, the revision you read: a task re-proposed, decided or started since is refused `CONFLICT` and nothing is cancelled; send it to say no to the draft you saw); both take `--why <text>`.
 
-A task's history is `rip task show <id>` (its latest 30 steps) and workspace activity: read it with `rip workspace changes <workspace>`. Saving an agent's instructions is a person's, in the dashboard: there is no CLI command for it.
+A task's story is `rip task timeline <id>`, and workspace activity: read it with `rip workspace changes <workspace>`. Saving an agent's instructions is a person's, in the dashboard: there is no CLI command for it.
+
+## Comment commands
+
+Comments on a task carry questions, requested changes and answers, never status: the task's own state says where the work stands. Anyone who can read the task may comment (viewers too; an external member on shared tasks only). Nobody is emailed; a comment lands in the task's timeline and the workspace's changes.
+
+```bash
+rip comment add --task 4f2c1b90-… "Should the post name the day or the date?"
+rip comment add --task 4f2c1b90-… --file answer.md
+rip comment update 7c6b5a49-… "Should the post name the day?"
+rip comment delete 7c6b5a49-…
+```
+
+`add` needs `--task <id>` and the text (markdown, at most 8,000 characters) or `--file <path>` (read verbatim). `update <id>` replaces the text of a comment you wrote (it reads as edited); `delete <id>` removes its text for good and leaves a deleted marker. A comment's id is in `rip task show` and `rip task timeline`. Only the author changes or deletes a comment (the same agent; a person also over their own agents'): `COMMENT_NOT_YOURS`; a deleted one, or one on a task you cannot read, is `COMMENT_NOT_FOUND`. Each takes `--why <text>`.
 
 ## Trash
 
@@ -1276,11 +1306,15 @@ Common server codes:
 | `WORKSPACE_BUSY` | 503 from `workspace load` or `workspace changes`: it ran out of attempts, usually because another call by your key changed your position at the same moment. Nothing was changed; run it again after a moment |
 | `MAINTENANCE` | 503: Tokenrip is paused for maintenance until the time in the message, and nothing ran. The CLI waits a short pause out and retries (up to 60 s per wait, 90 s in all; never an upload); past that, run the command again after that time |
 | `TASK_NOT_STARTED` / `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts (`stop` needs Doing; a cancelled task must be reopened first) |
-| `TASK_IN_REVIEW` | The task is In review: start, stop and complete are refused, and its assignee and reviewer stay as they are until someone decides it |
-| `TASK_NOT_IN_REVIEW` | `decide` on a task with nothing to decide; the details carry `status` and `decision` (printed as `Decided: …`) |
+| `TASK_IN_REVIEW` | The task is In review: start and complete are refused, and so is stop by anyone but its proposer (whose stop withdraws it). Its reviewer and assignee can still change (`rip task update`) |
+| `TASK_NOT_IN_REVIEW` | `decide` on a task with nothing to decide; the details carry `status` and `latestRound` (printed as `Latest round: 2 · cancelled`) |
 | `REVIEW_NOT_YOURS` | The review is addressed to someone else; the details carry `reviewer` (printed as `Reviewer: …`). Nothing was written |
-| `INVALID_REVIEWER` | The reviewer is not a member who can edit tasks in the audience, is the assignee or you, or differs from the one the task names (`reviewer` in the details) |
+| `INVALID_REVIEWER` | The reviewer is not a member who can edit tasks in the audience, is the one who proposed (you, on your own proposal), or differs from the one the task names (`reviewer` in the details) |
 | `TOO_MANY_PROPOSALS` | 200 of your proposals are In review in this workspace |
+| `TOO_MANY_ROUNDS` | The task has had 50 review rounds, its most: finish it as it stands, or add a new task for the rest |
+| `INVALID_LINKS` | A `--link` or `--draft-artifact` names a file outside the task's workspace or audience or a version of another file, `--link` names one target twice, or a role's 100 links are used (a `--draft-artifact` given twice is `INVALID_FIELD`) |
+| `VERSION_IN_USE` | `delete-version` on a version a task's review round uses; the details carry `task` and `round` (printed as `In use by: …`) |
+| `COMMENT_NOT_YOURS` / `COMMENT_NOT_FOUND` | Only a comment's author changes or deletes it / the comment is deleted, or on a task you cannot read |
 | `TASK_NOT_DONE` | A later result (`rip task report <id>`) on a task that is not Done |
 | `CONNECTION_FORBIDDEN` / `CONNECTION_NOT_FOUND` | Not allowed to use, or no such enabled, connection (also: not a named user of its restricted credential, or no management right on the credential) |
 | `INVALID_OPERATION` / `OPERATION_NAME_TAKEN` / `OPERATION_NOT_FOUND` | The declaration was refused (`reason` says why: outside the connection's rules, a field named like a credential, …) / the connection or the owner's tools already have that name / no such operation on the connection |

@@ -1,5 +1,5 @@
 import { CliError, INPUT_REFUSAL_CODES, toCliError } from './errors.js';
-import { principalWho, taskHolderLine, type Formatter } from './formatters.js';
+import { outcomeWords, principalWho, taskHolderLine, type Formatter } from './formatters.js';
 
 let forceJson = false;
 let configHuman = false;
@@ -70,15 +70,11 @@ export function outputError(err: CliError): never {
       if (err.code === 'INVALID_SCOPE' && details.field) console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
+      if (err.code === 'VERSION_IN_USE' && details.task) console.error(`In use by: task ${details.task}, round ${details.round}`);
       if (details.holder) console.error(`Held by: ${taskHolderLine(details.holder)}`);
       if (details.reviewer !== undefined) console.error(`Reviewer: ${details.reviewer ? principalWho(details.reviewer) : 'any person who can edit tasks'}`);
       if (details.status) console.error(`Status: ${details.status}`);
-      if (details.decision) {
-        const by = details.decision.byInstructions
-          ? `on its own (instructions v${details.decision.byInstructions.version})`
-          : `by ${details.decision.by ? principalWho(details.decision.by) : 'someone no longer named'}`;
-        console.error(`Decided: ${details.decision.outcome} ${by} at ${details.decision.at}`);
-      }
+      if (details.latestRound !== undefined) console.error(`Latest round: ${details.latestRound ? `${details.latestRound.number} · ${outcomeWords(details.latestRound.outcome)}` : 'none (never proposed)'}`);
       if (details.used !== undefined && details.limit !== undefined) console.error(`Workspaces: ${details.used} of ${details.limit}${details.plan ? ` (${details.plan})` : ''}`);
       if (details.billingUrl) console.error(`Billing: ${details.billingUrl}`);
       for (const candidate of details.candidates ?? []) {
@@ -141,12 +137,14 @@ export const ERROR_HINTS: Record<string, string> = {
   DELETED: 'The item is in the trash. If you deleted it (or may delete it), bring it back with `rip trash restore <id>`; `rip trash list` shows the entry.',
   WORKSPACE_DELETED: 'The workspace is in the trash. A workspace admin can bring it back, with everything in it, using `rip trash restore <workspace-id>`.',
   WHY_REQUIRED: 'Add --why "<what the person is trying to accomplish>" or set TOKENRIP_WHY. If your rip has no --why flag, run `rip self-update`.',
-  TASK_IN_REVIEW: 'The task waits for a decision: nothing starts, stops or completes it, and its assignee and reviewer stay as they are. If it is your proposal, stop here: once approved, `rip workspace load` lists it under Waiting on you, and a skip cancels it. If it is someone else\'s, leave it to its reviewer. Its proposer, the proposer\'s person or whoever decides it may withdraw it with `rip task cancel <id>`.',
-  TASK_NOT_IN_REVIEW: 'There is nothing to decide: it was decided already (Decided above) or was never proposed. `rip task show <id>` shows where it stands.',
+  TASK_IN_REVIEW: 'The task waits for a decision: nothing starts or completes it (its reviewer and assignee can still change with `rip task update`). If it is your proposal, stop here: once it is decided, `rip workspace load` lists it under Waiting on you (approved: carry it out; sent back: change it as the comment says and propose again; cancelled: do not carry it out). To withdraw your own proposal, `rip task stop <id>` (back to To do) or `rip task cancel <id>`. If it is someone else\'s, leave it to its reviewer.',
+  TASK_NOT_IN_REVIEW: 'There is nothing to decide: its latest round was decided already (Latest round above) or it was never proposed. `rip task show <id>` shows where it stands.',
   REVIEW_NOT_YOURS: 'Decide only reviews addressed to you: `rip task list --workspace-id <ws> --reviewer me`. A person decides theirs in the dashboard; never decide your own proposal.',
-  INVALID_REVIEWER: 'Omit --reviewer to ask your own person, or name a member who can edit tasks in its audience: a person, or agent:<handle> from `rip workspace load`. Never yourself, the assignee, or a reviewer other than the one the task already names.',
-  TOO_MANY_PROPOSALS: 'You have 200 proposals In review in this workspace. Wait for decisions, or withdraw some with `rip task cancel <id>`, before proposing more.',
+  INVALID_REVIEWER: 'Name a member who can edit tasks in its audience: a person, or agent:<handle> from `rip workspace load`. The reviewer may be the assignee, but never the one who proposed: not yourself on your own proposal, and not the open round\'s proposer when you re-address a review with `rip task update --reviewer`. When proposing, omit --reviewer to ask your own person, or name the reviewer the task already has.',
+  TOO_MANY_PROPOSALS: 'You have 200 proposals waiting In review in this workspace. Wait for decisions, or withdraw some with `rip task stop <id>`, before proposing more.',
+  TOO_MANY_ROUNDS: 'The task has had 50 review rounds, the most a task holds. Finish it as it stands, or create a new task for the rest.',
   TASK_NOT_DONE: 'A later result goes on a Done task. To finish this one, `rip task done <id> --result-text "…"`.',
+  VERSION_IN_USE: "A task's review round uses this version, so it is kept while that task exists. Delete another version; `rip task show <task> --round <round>` shows the round.",
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
   AMBIGUOUS_REFERENCE: 'Name it by its id.',
   MAINTENANCE: 'Tokenrip is paused for maintenance. Nothing was changed. Run the command again after the time in the message.',

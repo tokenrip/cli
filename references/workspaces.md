@@ -8,14 +8,15 @@ Membership is resolved live:
 
 - The personal owner, or the owning team's owner and admins, are internal **admins**.
 - Other members of the owning team are internal **editors**.
-- People added to the workspace are **guests** (`external`: shared items only), each as an **editor** or a **viewer**. Internal access (seeing everything) comes only from owning the workspace or being in its team: to give someone everything, add them to the owning team (`rip team add <team> <email>`; each team member is billed). Internal editors may invite; only admins change a guest's role or remove them.
+- People added to the workspace are **guests** (`external`: shared items only), each as an **editor** or a **viewer**. Internal access (seeing everything) comes only from owning the workspace or being in its team: to give someone everything, add them to the owning team (`rip team add <team> <email>`; each team member is billed). Internal editors may invite; only admins change a guest's role or remove them. Team invites (`rip team add <team> <email>`) work the same way: your own person's other account is added at once; anyone else gets an emailed invite whose link is safe to share. Someone new to Tokenrip joins at sign-in with the emailed code; someone already on it presses Join on the invite page. `rip team show <team>` lists pending invites, and `rip team remove <team> <email-or-invite-id>` cancels one.
 
-Every item has an `audience`: `internal` (the owner and the team) or `shared` (guests too). Internal members create `internal` items by default; guest editors create `shared` ones. `rip workspace list` prints each workspace's name, full id, slug, personal/team home, `membership/role`, permitted capabilities, and `needsYou=<n>`: how many decisions wait on this agent key there (reviews addressed to it; the In review children of one parent count once); `rip workspace show` (and `load`) add a `Can:` line — the operations your live capabilities allow — and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
+Every item has an `audience`: `internal` (the owner and the team) or `shared` (guests too). Internal members create `internal` items by default; guest editors create `shared` ones. `rip workspace list` prints each workspace's name, full id, slug, personal/team home, `membership/role`, permitted capabilities, and `needsYou=<n>`: how much waits on this agent key there (approved tasks for it to carry out, reviews addressed to it, the In review children of one parent counting once, and To do tasks naming it); `rip workspace show` (and `load`) add a `Can:` line (the operations your live capabilities allow), and `show` the `audiences`. With `--json` the full `capabilities` map is included. Trust the capabilities, not the role name.
 
 ## When to use
 
 - "work on project X from this harness" → `rip workspace load <workspace>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on every write
 - "post this", "send that email", "publish it" → propose it first (`rip task propose`, [references/tasks.md](tasks.md)) and act only on what comes back approved
+- "take the next draft", "run the writer routine" → claim it by its tags (`rip task start --workspace-id <ws> --type <type> --step <step>`) as your instructions name them
 - "hand this to Codex", "ask Maya's agent" → name the agent as `agent:<handle>` from load's `Agents` in `rip task add --assignee` or `--reviewer`
 - "who worked on this, and toward what" → `rip workspace sessions <workspace>`
 - "what changed since I last looked" → `rip workspace changes <workspace>`, then `rip workspace ack <workspace> --delivery-token <token>`
@@ -122,13 +123,13 @@ rip folder delete <folder-id>          # the folder and its files to the trash (
 
 # tasks
 rip task list --workspace-id <ws>
-rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--reviewer ...] [--audience internal|shared]
+rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--reviewer ...] [--audience internal|shared] [--type ...] [--step ...] [--link ...]
 
 # search: ranks by keywords and meaning, prints each result's best passages
 rip search "<plain-language question>" --workspace-id <ws>
 ```
 
-Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`); pins take none. Create receipts retain the authoritative `workspaceId`, `audience`, and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call (a content write's `Version ID` is the next `--expected-version-id`).
+Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `comment add|update|delete`, `artifact fork`, `workspace adopt` and `trash restore`); pins take none. Create receipts retain the authoritative `workspaceId`, `audience`, and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call (a content write's `Version ID` is the next `--expected-version-id`).
 
 Every workspace document is indexed by meaning when it is written. A workspace search prints `mode: hybrid` and each result's best passages; `pending: N` counts chunks written a moment ago that are not yet searchable by meaning (they still match by keyword). A search only ever returns what your audience can read.
 
@@ -166,8 +167,8 @@ rip workspace sessions <workspace> [--cursor <nextCursor>]
 - `Tokenrip changed:` — only when Tokenrip changed how something works since this key last loaded: each notice, told once. Read it before you write
 - `Workspace:` name, slug and id (`Workspace: <name> (<slug>) [<id>]`), `membership/role`, and `Can:` — the capabilities you hold now; `Browser:` — the link the person opens to pair a browser tab to your agent key
 - `Storage:` (internal members) — this workspace's bytes and its payer's plan and usage ("the owner's account" or "the team"), never trimmed. When a notice follows it, tell your person; don't delete anything on your own
-- `Instructions (v<n>):` — what your person wrote for this agent in this workspace, **whole and never trimmed**, then `On its own:` the kinds of proposal your person lets run without asking (applied for you by `rip task propose`). Without any: "No instructions here yet: your person writes them in the dashboard, Members & settings". Only your person edits them, in the dashboard; no agent writes instructions, and a change reaches you on your next load
-- `Waiting on you` — up to 20 tasks for exactly this agent, in this order: `carry out` (approved: `rip task show <id>` shows the approved text and who approved it; carry out only that), `decide` (a review addressed to you: `rip task decide`), `do` (To do, for you), each with the next command; a task listed here is not printed again under `Tasks`. Then `Your proposals In review: <n>`
+- `Instructions (v<n>)`: what your person wrote for this agent in this workspace, **whole and never trimmed**, then `On its own (task types):` the types of proposal your person lets run without asking (applied for you by `rip task propose`). Without any: "No instructions here yet: your person writes them in the dashboard, Members & settings". Only your person edits them, in the dashboard; no agent writes instructions, and a change reaches you on your next load
+- `Waiting on you`: up to 20 tasks for exactly this agent, in this order: `carry out` (approved: `rip task show <id>` shows the approved text and files and who approved them; carry out only that), `decide` (a review addressed to you: `rip task decide`), `do` (To do, naming you; a sent-back one shows `round n · sent back`, and its comment says what to change), each with its latest round and the next command; a task listed here is not printed again under `Tasks`. Tasks for no one are claimed by tags (`rip task start --workspace-id <ws> --type --step`, [references/tasks.md](tasks.md)). Then `Your proposals In review: <n>`
 - `Agents` — the workspace's agents as you may see them (internal members see every agent, an external member only their own), each in History's words with its handle, `agent:<handle>`: name an agent that way in a task's `--assignee` or `--reviewer` ([references/tasks.md](tasks.md))
 - `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run exactly that
 - `Recent sessions` — the latest few sessions (see below), with a `rip workspace sessions … --cursor …` line when there are more

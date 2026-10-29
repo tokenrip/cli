@@ -28,8 +28,11 @@ export interface DomainErrorDetails {
   reviewer?: TaskPrincipalDetails | null;
   /** `TASK_NOT_IN_REVIEW`: where the task is now. */
   status?: string;
-  /** `TASK_NOT_IN_REVIEW`: who decided it, when it was decided. */
-  decision?: TaskDecisionDetails | null;
+  /** `VERSION_IN_USE`: the task whose review round keeps the version, and the round; null when the caller reads no such task. */
+  task?: string | null;
+  round?: number | null;
+  /** `TASK_NOT_IN_REVIEW`: the task's latest review round and how it ended; null: never proposed. */
+  latestRound?: TaskRoundDetails | null;
   /**
    * `WORKSPACE_LIMIT_REACHED`: the owner held to its plan, the plan, how many it allows and has, and where its person pays.
    * `STORAGE_LIMIT_REACHED`: the plan and billingUrl too.
@@ -77,13 +80,15 @@ export interface TaskPrincipalDetails {
   mine: boolean;
   isCaller: boolean;
 }
-/** The server's task decision projection (plan D4), copied field by field. */
-export interface TaskDecisionDetails {
-  outcome: 'approved' | 'skipped';
-  at: string;
-  by: TaskPrincipalDetails | null;
-  byInstructions: { version: number; agent: TaskPrincipalDetails } | null;
-  edited: boolean;
+/** The server's `TASK_ROUND_OUTCOMES` (apps/backend/src/db/models/task-vocabulary.ts). */
+export const TASK_ROUND_OUTCOMES = ['approved', 'sent_back', 'cancelled', 'withdrawn', 'replaced'] as const;
+export type TaskRoundOutcome = (typeof TASK_ROUND_OUTCOMES)[number];
+/** The server's `TASK_ROUNDS_MAX`: the most rounds a task holds. */
+const TASK_ROUNDS_MAX = 50;
+/** A task's latest round as the server's summary carries it (task rounds plan M5): its number and outcome (null: open). */
+export interface TaskRoundDetails {
+  number: number;
+  outcome: TaskRoundOutcome | null;
 }
 /** The server's task `holder` projection (workspace tasks plan D5), copied field by field. */
 export interface TaskHolderDetails {
@@ -151,7 +156,7 @@ const CSV_COLUMN_RULES: ReadonlySet<string> = new Set(['column_name', 'duplicate
 const CSV_REASONS: ReadonlySet<string> = new Set(['unbalanced_quote']);
 /** The server's `NOT_FOUND_RESOURCES` (apps/backend/src/execution/failure.ts). */
 const NOT_FOUND_RESOURCES: ReadonlySet<string> = new Set([
-  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection',
+  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection', 'comment',
 ]);
 /** The server's `ROW_QUERY_AVAILABLE_MAX` and `TABLE_COLUMN_NAME_MAX` (apps/backend/src/db/models/table-schema.ts). */
 const AVAILABLE_MAX = 259;
@@ -236,12 +241,15 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   } else if (code === 'MAINTENANCE') {
     if (typeof body.until === 'string' && ISO_DATE.test(body.until)) details.until = body.until;
     if (count(body.retryAfterSeconds)) details.retryAfterSeconds = body.retryAfterSeconds;
+  } else if (code === 'VERSION_IN_USE') {
+    if (body.task === null || (typeof body.task === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.task))) details.task = body.task;
+    if (body.round === null || (typeof body.round === 'number' && Number.isInteger(body.round) && body.round >= 1)) details.round = body.round;
   } else if (code === 'TASK_NOT_IN_REVIEW') {
     if (typeof body.status === 'string' && TASK_STATUSES.has(body.status)) details.status = body.status;
-    if (body.decision === null) details.decision = null;
+    if (body.latestRound === null) details.latestRound = null;
     else {
-      const decision = taskDecisionDetails(body.decision);
-      if (decision) details.decision = decision;
+      const latestRound = taskRoundDetails(body.latestRound);
+      if (latestRound) details.latestRound = latestRound;
     }
   }
   return Object.keys(details).length ? details : undefined;
@@ -290,22 +298,13 @@ function taskPrincipalDetails(value: unknown): TaskPrincipalDetails | undefined 
   };
 }
 
-/** A task decision, every field checked; anything malformed drops the whole decision. */
-function taskDecisionDetails(value: unknown): TaskDecisionDetails | undefined {
+/** A latest round, every field checked; anything malformed drops the whole round. */
+function taskRoundDetails(value: unknown): TaskRoundDetails | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const d = value as Record<string, unknown>;
-  if (d.outcome !== 'approved' && d.outcome !== 'skipped') return undefined;
-  if (typeof d.at !== 'string' || !ISO_DATE.test(d.at) || typeof d.edited !== 'boolean') return undefined;
-  const by = d.by === null ? null : taskPrincipalDetails(d.by);
-  if (by === undefined) return undefined;
-  let byInstructions: TaskDecisionDetails['byInstructions'] = null;
-  if (d.byInstructions !== null) {
-    const cited = d.byInstructions as Record<string, unknown> | undefined;
-    const agent = cited && typeof cited === 'object' ? taskPrincipalDetails(cited.agent) : undefined;
-    if (!cited || !agent || typeof cited.version !== 'number' || !Number.isSafeInteger(cited.version) || cited.version < 1) return undefined;
-    byInstructions = { version: cited.version, agent };
-  }
-  return { outcome: d.outcome, at: d.at, by, byInstructions, edited: d.edited };
+  const r = value as Record<string, unknown>;
+  if (typeof r.number !== 'number' || !Number.isSafeInteger(r.number) || r.number < 1 || r.number > TASK_ROUNDS_MAX) return undefined;
+  if (r.outcome !== null && !(TASK_ROUND_OUTCOMES as readonly unknown[]).includes(r.outcome)) return undefined;
+  return { number: r.number, outcome: r.outcome as TaskRoundOutcome | null };
 }
 
 const NAME_MAX = 255;

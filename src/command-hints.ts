@@ -25,6 +25,20 @@ export function listCommandsOnUnknown(program: Command): void {
   }
 }
 
+/**
+ * A renamed option stays unknown (no alias window: it is refused at once), and its refusal names the
+ * replacement: commander's `error: unknown option '--skip'` gains `--skip is now rip task cancel <id> [--reason <text>].` on its
+ * own line. Only the message changes, so commander still writes and exits as before.
+ */
+export function nameRenamedOptions(cmd: Command, renamed: Readonly<Record<string, string>>): void {
+  const previous = cmd.error;
+  cmd.error = function (this: Command, message: string, options?: ErrorOptions): never {
+    const unknown = options?.code === 'commander.unknownOption' ? /unknown option '(--[^'=]+)/.exec(message)?.[1] : undefined;
+    const replacement = unknown ? renamed[unknown] : undefined;
+    return previous.call(this, replacement ? `${message}\n${unknown} is now ${replacement}.` : message, options);
+  };
+}
+
 /** `cmd`'s errors with commander's `code` gain `hint` on a line of its own; every other error is unchanged. */
 function appendOn(cmd: Command, code: string, hint: string): void {
   cmd.error = function (this: Command, message: string, options?: ErrorOptions): never {

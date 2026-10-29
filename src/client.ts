@@ -289,8 +289,8 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         holder?: unknown;
         /** `REVIEW_NOT_YOURS` / `INVALID_REVIEWER`: whom the review is addressed to. */
         reviewer?: unknown;
-        /** `TASK_NOT_IN_REVIEW`: who decided it. */
-        decision?: unknown;
+        /** `TASK_NOT_IN_REVIEW`: the latest round and how it ended. */
+        latestRound?: unknown;
         /** An input refusal's place, valid columns and CSV header (`INVALID_FIELD`, the row-query and CSV codes). */
         path?: unknown;
         available?: unknown;
@@ -360,7 +360,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
-          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'decision',
+          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'latestRound',
             'usedBytes', 'limitBytes', 'addedBytes', 'plan', 'billingUrl', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
         });
