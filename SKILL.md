@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.12
+version: 2.6.13
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.12 -->
+<!-- tokenrip-skill-version: 2.6.13 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -473,11 +473,11 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `STATE_CONFLICT` | Inspect current state before a corrected request; no resource revision change is implied |
 | `DUPLICATE_UNIQUE_VALUE` | The table's key column already holds the value, or the call repeats it: a key repeated in one append, a plain append of a stored key, `rip table update` onto another row's key, `rip artifact patch --metadata` declaring or moving the key onto a column with repeated values, or a CSV table create with a repeated key (the message names the column and value; the value is withheld for a `sensitive` column). Nothing was written: change or remove the repeated value; to update a stored row instead, append with `--upsert` |
 | `NO_TABLE_KEY` | `--upsert` matches on the table's key, and this table has none: append without `--upsert`, or mark one column `unique: true` |
-| `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions, and deleted files count until their trash is emptied: `rip trash purge --all`, with `--team <slug>` for a team's or `--workspace-id <id>` for files deleted inside a workspace), move growing records into a table, or move to a bigger plan (the message names the step; the refusal carries the Billing link when there is one). Writes that free space are never refused |
+| `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions, and deleted files count until their trash is emptied: `rip trash purge --all`, with `--team <slug>` for a team's or `--workspace-id <id>` for files deleted inside a workspace) or move growing records into a table. Writes that free space are never refused |
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
 | `MAINTENANCE` | Tokenrip is paused for maintenance until the time in the message. Nothing ran. The CLI waits short pauses out itself; when it gives up, run the same command again after that time |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
-| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs Pro or Power, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>`. For a team without a plan (`none`), give the person that link, where a team admin chooses Pro or Power; at the maximum, delete a workspace. Nothing was created or restored; do not retry |
+| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs a paid plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)`. For a team without a plan (`none`), tell the person the limit. At the maximum, delete a workspace. Nothing was created or restored; do not retry |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted (or left by its last member). Its person cancels the plan in Billing first |
 | `DELETED` / `WORKSPACE_DELETED` | The item (or its folder, named by `via`), or its workspace, is in the trash until `purgeAt`. If you may delete it, `rip trash restore <id>`; a 409 `WORKSPACE_DELETED` on restore means restore the workspace first ([Deleting and restoring](#deleting-and-restoring)) |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |

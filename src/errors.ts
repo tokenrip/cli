@@ -34,18 +34,16 @@ export interface DomainErrorDetails {
   /** `TASK_NOT_IN_REVIEW`: the task's latest review round and how it ended; null: never proposed. */
   latestRound?: TaskRoundDetails | null;
   /**
-   * `WORKSPACE_LIMIT_REACHED`: the owner held to its plan, the plan, how many it allows and has, and where its person pays.
-   * `STORAGE_LIMIT_REACHED`: the plan and billingUrl too.
+   * `WORKSPACE_LIMIT_REACHED`: the owner held to its plan, the plan, and how many it allows and has.
+   * `STORAGE_LIMIT_REACHED`: the plan too.
    */
   owner?: { kind: 'personal' | 'team'; id: string; name: string | null };
   plan?: string;
   limit?: number;
   used?: number;
-  billingUrl?: string;
   /**
    * `STORAGE_LIMIT_REACHED`: the payer's bytes used, its plan's limit, what the write would have
-   * added, and the plan. All four or none (a workspace's external member gets none). With them,
-   * `billingUrl` when the payer is the caller's own account or team.
+   * added, and the plan. All four or none (a workspace's external member gets none).
    */
   usedBytes?: number;
   limitBytes?: number;
@@ -231,8 +229,6 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     if (counts.every((value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
       && typeof plan === 'string' && PLAN_KEYS.has(plan)) {
       Object.assign(details, { usedBytes, limitBytes, addedBytes, plan });
-      // The payer's own refusal names its next step, and the Billing link when the step is bought there.
-      if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
     }
   } else if (code === 'AMBIGUOUS_REFERENCE') {
     // Trash restore's ambiguity names no candidates; a workspace slug's does.
@@ -259,7 +255,7 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
 export const PLAN_LABELS: ReadonlySet<string> = new Set(['free', 'pro', 'power', 'none']);
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
-/** A `WORKSPACE_LIMIT_REACHED` refusal's details, field by field: exactly owner, plan, limit, used and billingUrl. */
+/** A `WORKSPACE_LIMIT_REACHED` refusal's details, field by field: exactly owner, plan, limit and used. */
 function workspaceLimitDetails(body: Record<string, unknown>): DomainErrorDetails {
   const details: DomainErrorDetails = {};
   const owner = body.owner as Record<string, unknown> | undefined;
@@ -268,12 +264,7 @@ function workspaceLimitDetails(body: Record<string, unknown>): DomainErrorDetail
   if (typeof body.plan === 'string' && PLAN_LABELS.has(body.plan)) details.plan = body.plan;
   if (count(body.limit)) details.limit = body.limit;
   if (count(body.used)) details.used = body.used;
-  if (isBillingUrl(body.billingUrl)) details.billingUrl = body.billingUrl;
   return details;
-}
-/** A refusal's Billing link (`WORKSPACE_LIMIT_REACHED`, `STORAGE_LIMIT_REACHED`): a bounded http(s) URL. */
-function isBillingUrl(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 2048 && /^https?:\/\/\S+$/.test(value);
 }
 /** The server's `PLAN_KEYS` (apps/backend/src/db/models/plan-keys.ts); `tests/unit/plan-catalog-parity.test.ts` pins it. */
 export const PLAN_KEYS: ReadonlySet<string> = new Set(['free', 'pro', 'power', 'enterprise']);

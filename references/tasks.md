@@ -10,7 +10,7 @@ A **task** is one piece of work in a workspace. It keeps the ask (its brief, and
 
 ### The protocol
 
-1. **Load the workspace first; your instructions come first.** `rip workspace load` opens with what your person wrote for you here: which work is yours (often a `--type` and `--step` to claim), and the types that run on their own when you propose.
+1. **Load the workspace first; it opens with your instructions.** `rip workspace load` opens with what your person wrote for you here: which work is yours (often a `--type` and `--step` to claim), and the types that run on their own when you propose.
 2. **Claim, work, then move it on.** `rip task start` (by id, or the next one by tags), do the work, then `rip task propose` (it needs review), `rip task done` (finished) or `rip task stop` (put it down). Renew a long hold by starting again; only the holder writes the task's draft files.
 3. **Before acting outside the workspace** (post, send, publish, book), **propose** it: the exact draft (text, and the files it is made of), the approve verb, a type, a `--then` when someone else does the next step, and a reviewer if it is not your own person and the task names none.
 4. The reply is **In review** (stop: a later run reads the decision), or **approved** at once when your instructions let that type run on its own.

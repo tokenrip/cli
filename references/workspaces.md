@@ -48,7 +48,7 @@ rip workspace member remove <member> [--workspace-id <workspace>]
 
 `--name` defaults to the slug. `--team` takes the team's slug or id; only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`), nor can a team on a paid plan (`TEAM_HAS_PLAN`).
 
-A team-owned workspace needs Pro or Power, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore` of a workspace, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit, count and the Billing link (`details.billingUrl` with `--json`). For a team without a plan, give the person the link, where a team admin chooses Pro or Power; at the maximum, delete a workspace. Nothing was created or restored.
+A team-owned workspace needs a paid plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore` of a workspace, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit and count. For a team without a plan, tell the person the limit; at the maximum, delete a workspace. Nothing was created or restored.
 
 Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-every-write-says-what-it-is-for)).
 
@@ -273,7 +273,7 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 | `ALREADY_IN_WORKSPACE` / `MIXED_OWNERSHIP` / `INELIGIBLE_STORAGE` / `WORKSPACE_BULK_LIMIT` | Adoption refused before any effect |
 | `CROSS_WORKSPACE_MOVE` | The folder and the artifact belong to different workspaces |
 | `TEAM_OWNS_WORKSPACES` | A team that owns workspaces, including workspaces in the trash, cannot be deleted; a workspace in the trash is removed for good with `rip trash purge <workspace-id>` (or Delete forever in the dashboard) |
-| `WORKSPACE_LIMIT_REACHED` | A create or workspace restore the owner has no room for: `Workspaces: <used> of <limit> (<plan>)` and `Billing: <url>` (`details.owner`, `plan`, `limit`, `used`, `billingUrl` with `--json`). A team without a plan (`none`) needs Pro or Power, which a team admin chooses at that link; at the maximum, you delete a workspace. Nothing was written |
+| `WORKSPACE_LIMIT_REACHED` | A create or workspace restore the owner has no room for: `Workspaces: <used> of <limit> (<plan>)` (`details.owner`, `plan`, `limit`, `used` with `--json`). A team without a plan (`none`) needs a paid plan: tell the person the limit. At the maximum, you delete a workspace. Nothing was written |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted or left by its last member; its person cancels the plan in Billing first |
 | `WHY_REQUIRED` / `INVALID_FIELD` (`why`) | State `--why` (or `TOKENRIP_WHY`); at most 300 characters. No `--why` flag: `rip update` |
 | `INVALID_SCOPE` | `--audience` needs `--workspace-id`, or a `--folder` in a workspace |
