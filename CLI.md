@@ -706,6 +706,20 @@ rip storage --json        # { payer, plan, usedBytes, limitBytes, workspaces, st
 
 A workspace's files count toward the workspace's owner (your account, or the team that owns it), whoever wrote them; your standalone files and every version of your bundles count toward your account. Every kept version and table row counts, and so does the trash until it is emptied: the `Trash:` line, `trashBytes`, is the part of the bytes used that is in the trash, and names how to empty it (`rip trash purge --all` for your own trash, `--team <slug>` for a team's, `--workspace-id <workspace>` for the files deleted inside a workspace, which stay in that workspace's own trash). Sizes print in decimal units (1 GB = 1,000,000,000 bytes), as the plans count them. A team you are not in answers 403 `NOT_A_MEMBER`; an unknown one 404 `TEAM_NOT_FOUND`.
 
+## Actions
+
+### `rip actions`
+
+How many actions your account, or a team you belong to (`--team <slug-or-id>`, any member), has used this month against its plan, when they reset (the 1st of next month, UTC), and which workspaces used them. A platform admin can read another account with `--account <id-or-alias>`.
+
+```bash
+rip actions
+rip actions --team acme
+rip actions --json        # { payer, plan, used, limit, resetsAt, mode, workspaces }
+```
+
+An action is one agent operation that changed a workspace and shows in its history: a bulk change counts once per workspace it changes, and a legacy MCP batch counts each tool call. Reads, failed attempts, a person's own changes in the browser and work outside a workspace are free. A workspace's actions count toward its owner (your account, or the team that owns it), whoever's agent made them. `limit: null` is no limit. `mode` is `measure` (nothing is paused) or `enforce` (agents' workspace changes are refused from the limit with `ACTIONS_LIMIT_REACHED`). A workspace in the trash still lists its count; purged workspaces print as one line. A team you are not in answers 403 `NOT_A_MEMBER`; an unknown one 404 `TEAM_NOT_FOUND`.
+
 ## Activity
 
 ### `rip activity`
@@ -1305,6 +1319,8 @@ Common server codes:
 | `NO_TABLE_KEY` | `rip table append --upsert` on a table without a key (a `unique: true` column). Nothing was written: append without `--upsert`, or declare the key first |
 | `WORKSPACE_BUSY` | 503 from `workspace load` or `workspace changes`: it ran out of attempts, usually because another call by your key changed your position at the same moment. Nothing was changed; run it again after a moment |
 | `MAINTENANCE` | 503: Tokenrip is paused for maintenance until the time in the message, and nothing ran. The CLI waits a short pause out and retries (up to 60 s per wait, 90 s in all; never an upload); past that, run the command again after that time |
+| `RATE_LIMITED` | 429: a limit was reached and nothing ran. When the server says how long to wait, the CLI waits and retries with one stderr line per wait (up to 60 s per wait, 90 s in all, five resends, shared with the two 503s here; never an upload or bundle deploy). A limit with no wait, or a longer one, fails at once: `details.retryAfterSeconds` holds the wait when the server gave one, and `details.limit` (`requests`, `concurrent`, `streams`) and `details.max` say which limit. Slow a loop down |
+| `SERVER_BUSY` | 503: Tokenrip is busy and nothing ran. The CLI waits and retries under the same bounds; past them, or for an upload or bundle deploy, wait a few seconds and run the command again (`details.retryAfterSeconds`) |
 | `TASK_NOT_STARTED` / `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | The task is not in a state that verb accepts (`stop` needs Doing; a cancelled task must be reopened first) |
 | `TASK_IN_REVIEW` | The task is In review: start and complete are refused, and so is stop by anyone but its proposer (whose stop withdraws it). Its reviewer and assignee can still change (`rip task update`) |
 | `TASK_NOT_IN_REVIEW` | `decide` on a task with nothing to decide; the details carry `status` and `latestRound` (printed as `Latest round: 2 · cancelled`) |

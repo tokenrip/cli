@@ -35,11 +35,12 @@ export interface DomainErrorDetails {
   latestRound?: TaskRoundDetails | null;
   /**
    * `WORKSPACE_LIMIT_REACHED`: the owner held to its plan, the plan, and how many it allows and has.
-   * `STORAGE_LIMIT_REACHED`: the plan too.
+   * `STORAGE_LIMIT_REACHED`, `ACTIONS_LIMIT_REACHED`: the plan too.
    */
   owner?: { kind: 'personal' | 'team'; id: string; name: string | null };
   plan?: string;
-  limit?: number;
+  /** A number on `WORKSPACE_LIMIT_REACHED`; on `RATE_LIMITED`, which limit refused. */
+  limit?: number | CapacityLimit;
   used?: number;
   /**
    * `STORAGE_LIMIT_REACHED`: the payer's bytes used, its plan's limit, what the write would have
@@ -48,6 +49,13 @@ export interface DomainErrorDetails {
   usedBytes?: number;
   limitBytes?: number;
   addedBytes?: number;
+  /**
+   * `ACTIONS_LIMIT_REACHED`: the payer's actions this month before the refused write, its limit, the
+   * plan and when the allowance resets. All four or none (a workspace's guest gets none).
+   */
+  usedActions?: number;
+  limitActions?: number;
+  resetsAt?: string;
   /** An input refusal ({@link INPUT_REFUSAL_CODES}): the place below `field` the rule broke (`schema[3].name`). */
   path?: string;
   /** A row-query refusal: the columns valid for `field` (`sort_by`, `filter` or `fields`), and whether the list was cut. */
@@ -58,12 +66,18 @@ export interface DomainErrorDetails {
   rule?: string;
   /** `NOT_FOUND`: which kind of reference named nothing the caller can read. */
   resource?: string;
-  /** `MAINTENANCE`: when the pause is planned to end, and the server's `Retry-After` in seconds. */
+  /** `RATE_LIMITED`: what `limit` allows. */
+  max?: number;
+  /** `MAINTENANCE`: when the pause is planned to end. */
   until?: string;
+  /** `MAINTENANCE`, `RATE_LIMITED`, `SERVER_BUSY`: the server's `Retry-After` in seconds. */
   retryAfterSeconds?: number;
   /** `AMBIGUOUS_REFERENCE` on a workspace slug: each workspace it names, to be named by its id. */
   candidates?: WorkspaceCandidateDetails[];
 }
+/** The server's `CapacityLimit` (apps/backend/src/api/ratelimit/capacity-limits.ts). */
+export type CapacityLimit = 'requests' | 'concurrent' | 'streams';
+const CAPACITY_LIMITS: ReadonlySet<unknown> = new Set<CapacityLimit>(['requests', 'concurrent', 'streams']);
 /** One workspace an ambiguous slug names (`WorkspaceService.resolveReference`), copied field by field. */
 export interface WorkspaceCandidateDetails {
   id: string;
@@ -230,12 +244,24 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       && typeof plan === 'string' && PLAN_KEYS.has(plan)) {
       Object.assign(details, { usedBytes, limitBytes, addedBytes, plan });
     }
+  } else if (code === 'ACTIONS_LIMIT_REACHED') {
+    const { usedActions, limitActions, plan, resetsAt } = body;
+    if (count(usedActions) && count(limitActions) && typeof plan === 'string' && PLAN_KEYS.has(plan)
+      && typeof resetsAt === 'string' && ISO_DATE.test(resetsAt)) {
+      Object.assign(details, { usedActions, limitActions, plan, resetsAt });
+    }
   } else if (code === 'AMBIGUOUS_REFERENCE') {
     // Trash restore's ambiguity names no candidates; a workspace slug's does.
     const candidates = workspaceCandidateDetails(body.candidates);
     if (candidates.length) details.candidates = candidates;
   } else if (code === 'MAINTENANCE') {
     if (typeof body.until === 'string' && ISO_DATE.test(body.until)) details.until = body.until;
+    if (count(body.retryAfterSeconds)) details.retryAfterSeconds = body.retryAfterSeconds;
+  } else if (code === 'RATE_LIMITED') {
+    if (CAPACITY_LIMITS.has(body.limit)) details.limit = body.limit as CapacityLimit;
+    if (count(body.max)) details.max = body.max;
+    if (count(body.retryAfterSeconds)) details.retryAfterSeconds = body.retryAfterSeconds;
+  } else if (code === 'SERVER_BUSY') {
     if (count(body.retryAfterSeconds)) details.retryAfterSeconds = body.retryAfterSeconds;
   } else if (code === 'VERSION_IN_USE') {
     if (body.task === null || (typeof body.task === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.task))) details.task = body.task;

@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.13
+version: 2.6.14
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.13 -->
+<!-- tokenrip-skill-version: 2.6.14 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -98,7 +98,7 @@ rip workspace load <workspace>                                # its slug or id: 
 
 - **Tokenrip changed:** first, only when Tokenrip changed how something works since this key last loaded (shown once): read it before you write;
 - the workspace, your role, what you **Can** do, and the **Browser** link: give it to the person so their tab follows you;
-- **Storage** (internal members): this workspace's bytes and its payer's plan and usage. When a notice follows it, tell your person; don't delete anything on your own;
+- **Storage** and **Actions** (internal members): this workspace's bytes, its payer's plan and usage, and the payer's actions this month. When a notice follows either, tell your person; don't delete anything on your own;
 - your **Instructions** here, whole: what your person wrote for you in this workspace, with their **On its own** task types (applied for you when you propose), or a line saying there are none yet;
 - **Waiting on you**: approved tasks to carry out, reviews addressed to you to decide, and tasks for you to do (a task sent back to you among them, `round n · sent back`), each with the next command; then your proposals In review and the workspace's **Agents** with the `agent:<handle>` that names each one;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
@@ -374,6 +374,9 @@ See what changed between a version and the kept one before it (or, with --from-v
 How much storage is used, and what holds it?
   → rip storage [--team <slug>]            # plan, used and limit, per workspace, largest artifacts with history bytes
 
+How many actions has the plan used this month, and where?
+  → rip actions [--team <slug>]            # plan, used and limit, the reset, per workspace
+
 Free the space old versions hold?
   → rip artifact prune-versions <id-or-alias> [--keep <n>]   # keeps the current version and the newest --keep (default 0); permanent, so only when your person asks
 
@@ -474,8 +477,11 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `DUPLICATE_UNIQUE_VALUE` | The table's key column already holds the value, or the call repeats it: a key repeated in one append, a plain append of a stored key, `rip table update` onto another row's key, `rip artifact patch --metadata` declaring or moving the key onto a column with repeated values, or a CSV table create with a repeated key (the message names the column and value; the value is withheld for a `sensitive` column). Nothing was written: change or remove the repeated value; to update a stored row instead, append with `--upsert` |
 | `NO_TABLE_KEY` | `--upsert` matches on the table's key, and this table has none: append without `--upsert`, or mark one column `unique: true` |
 | `STORAGE_LIMIT_REACHED` | Whoever pays (the workspace's owner, or your account) is at its plan's limit; nothing was stored. Tell your person and don't delete anything on your own: whoever pays can free space (`rip storage` shows what your account or team holds, `rip artifact prune-versions` clears old versions, and deleted files count until their trash is emptied: `rip trash purge --all`, with `--team <slug>` for a team's or `--workspace-id <id>` for files deleted inside a workspace) or move growing records into a table. Writes that free space are never refused |
+| `ACTIONS_LIMIT_REACHED` | This workspace's owner has used this month's actions; nothing was changed. Everything can still be read. Don't repeat the change before the allowance resets on the 1st, UTC. Tell your person; they can still make changes in the browser (`rip actions` shows your account's count, `--team <slug>` a team's) |
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
 | `MAINTENANCE` | Tokenrip is paused for maintenance until the time in the message. Nothing ran. The CLI waits short pauses out itself; when it gives up, run the same command again after that time |
+| `RATE_LIMITED` | A limit was reached and nothing was changed. The CLI waits a short limit out itself (one stderr line per wait; never an upload or a deploy). When it gives up, wait for `Retry after:` when it is shown, then run the same command again; slow a loop down |
+| `SERVER_BUSY` | 503: Tokenrip is busy and nothing was changed. The CLI waits this out itself (never an upload or a deploy). When it gives up, wait a few seconds and run the same command again; slow a loop down |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
 | `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs a paid plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)`. For a team without a plan (`none`), tell the person the limit. At the maximum, delete a workspace. Nothing was created or restored; do not retry |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted (or left by its last member). Its person cancels the plan in Billing first |

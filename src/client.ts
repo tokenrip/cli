@@ -1,4 +1,3 @@
-import { Stream } from 'node:stream';
 import axios, { AxiosInstance, AxiosError, AxiosHeaders, type AxiosRequestConfig, type InternalAxiosRequestConfig, type AxiosResponse, type AxiosAdapter, type CancelToken } from 'axios';
 import { CliError, safeErrorDetails, type TransportErrorDetails } from './errors.js';
 import { createProxyAgentOwner } from './proxy-agents.js';
@@ -89,45 +88,63 @@ export function resolveConversation(env: Record<string, string | undefined> = pr
 }
 
 /** The longest single `Retry-After` the client waits out (plan D3). */
-export const MAINTENANCE_MAX_WAIT_MS = 60_000;
+export const RESEND_MAX_WAIT_MS = 60_000;
 /**
- * The most one request waits for maintenance in all, below agent harnesses' 2-minute tool limit.
+ * The most one request waits in all, below agent harnesses' 2-minute tool limit.
  * It covers waiting only: the final resend still has its own request timeout.
  */
-export const MAINTENANCE_WAIT_CAP_MS = 90_000;
+export const RESEND_WAIT_CAP_MS = 90_000;
 /** The most times one request is sent again, which bounds a run of `Retry-After: 0`. */
-export const MAINTENANCE_MAX_RETRIES = 5;
+export const RESEND_MAX_RETRIES = 5;
 
 /**
- * Whether a request refused with `MAINTENANCE` is sent again, and after how long. A refused
- * request did no work, so sending it again is safe, unless its body was a stream already read.
+ * Whether a refused request is sent again, and after how long. A request refused with
+ * `MAINTENANCE`, `SERVER_BUSY` or `RATE_LIMITED` did no work, so sending it again is safe, unless
+ * its body was a stream already read.
  */
-export function maintenanceRetry(input: {
+export function resendAfterWait(input: {
   retryAfterSeconds: number | undefined; waitedMs: number; attempts: number; streamBody: boolean;
 }): { waitMs: number } | null {
   const { retryAfterSeconds, waitedMs, attempts, streamBody } = input;
-  if (streamBody || attempts >= MAINTENANCE_MAX_RETRIES) return null;
+  if (streamBody || attempts >= RESEND_MAX_RETRIES) return null;
   if (typeof retryAfterSeconds !== 'number' || !Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) return null;
   const waitMs = retryAfterSeconds * 1000;
-  if (waitMs > MAINTENANCE_MAX_WAIT_MS || waitedMs + waitMs > MAINTENANCE_WAIT_CAP_MS) return null;
+  if (waitMs > RESEND_MAX_WAIT_MS || waitedMs + waitMs > RESEND_WAIT_CAP_MS) return null;
   return { waitMs };
 }
 
+/** The refusals that come before any work and say when to come back. Status and code must both match. */
+function refusedBeforeWork(status: number | undefined, code: unknown): boolean {
+  return (status === 503 && (code === 'MAINTENANCE' || code === 'SERVER_BUSY')) || (status === 429 && code === 'RATE_LIMITED');
+}
+
 /**
- * A resent request's maintenance tally rides on the config it is resent with: Axios's config merge
- * copies symbol-keyed values, and the request interceptor moves it into the client's own map.
+ * Whether sending a body uses it up: a Node stream, which `form-data` is, or a web stream. Axios
+ * takes anything with `pipe` as a stream, so this does too. A Buffer, an ArrayBuffer, a Blob, a
+ * string or a native FormData is read afresh by each send.
  */
-const MAINTENANCE_TALLY = Symbol('tokenrip.maintenanceTally');
-type MaintenanceTally = { waitedMs: number; attempts: number };
+function streamBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const { pipe, getReader } = body as { pipe?: unknown; getReader?: unknown };
+  return typeof pipe === 'function' || typeof getReader === 'function';
+}
+
+/**
+ * A resent request's tally rides on the config it is resent with: Axios's config merge copies
+ * symbol-keyed values, and the request interceptor moves it into the client's own map. One tally
+ * covers all three refusals, so a run of mixed ones still stops at the bound.
+ */
+const RESEND_TALLY = Symbol('tokenrip.resendTally');
+type ResendTally = { waitedMs: number; attempts: number };
 /** What one dispatch needs to be sent again: the request as the interceptor received it, and its tally. */
-type Resend = MaintenanceTally & { config: AxiosRequestConfig };
+type Resend = ResendTally & { config: AxiosRequestConfig };
 
 /**
  * Wait out a pause, ending early when the caller cancels (its `signal` or `cancelToken`). The
  * resend that follows a cancel is refused by Axios before anything is sent, so the caller gets
  * exactly the error any cancelled request gets.
  */
-function maintenanceWait(ms: number, config: AxiosRequestConfig): Promise<void> {
+function waitBeforeResend(ms: number, config: AxiosRequestConfig): Promise<void> {
   return new Promise(resolve => {
     const { signal, cancelToken } = config;
     const done = () => {
@@ -149,6 +166,18 @@ function maintenanceWaitLine(until: string | undefined, seconds: number): string
   const at = end && !Number.isNaN(end.getTime())
     ? ` until ${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')} UTC` : '';
   return `Tokenrip is paused for maintenance${at} — waiting ${seconds} s, then retrying.`;
+}
+
+/** What limited the request, by the server's `CapacityLimit`; a Map, so only these words ever print. */
+const LIMIT_WORDS = new Map<unknown, string>([
+  ['requests', 'Too many requests this minute'],
+  ['concurrent', 'Too many requests running at once'],
+  ['streams', 'Too many open streams'],
+]);
+
+function limitWaitLine(code: string, limit: unknown, seconds: number): string {
+  const what = code === 'SERVER_BUSY' ? 'Tokenrip is busy' : LIMIT_WORDS.get(limit) ?? 'A rate limit was reached';
+  return `${what} — waiting ${seconds} s, then retrying.`;
 }
 
 export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
@@ -179,10 +208,10 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   const resends = new WeakMap<InternalAxiosRequestConfig, Resend>();
   client.interceptors.request.use(config => {
     // Snapshot the request before this client wraps its transforms, adapter, agents and cancel
-    // token, so a maintenance resend starts from the caller's request with fresh bookkeeping.
-    const tagged = config as { [MAINTENANCE_TALLY]?: MaintenanceTally };
-    const carried = tagged[MAINTENANCE_TALLY];
-    delete tagged[MAINTENANCE_TALLY];
+    // token, so a resend starts from the caller's request with fresh bookkeeping.
+    const tagged = config as { [RESEND_TALLY]?: ResendTally };
+    const carried = tagged[RESEND_TALLY];
+    delete tagged[RESEND_TALLY];
     const resend: Resend = {
       config: { ...config, headers: new AxiosHeaders(config.headers) },
       waitedMs: carried?.waitedMs ?? 0,
@@ -324,10 +353,11 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
           ? 'The key in TOKENRIP_API_KEY was refused. Replace it, or unset it to use your stored sign-in (rip auth login --email <your email>).'
           : 'This key is not valid. Sign in again: rip auth login --email <your email>');
       }
-      // A maintenance pause refused the request before any work: wait it out and send it again
-      // while the wait stays bounded (plan D3), else fail with the end time.
-      if (error.response?.status === 503 && error.response.data?.error === 'MAINTENANCE') {
+      // These refused the request before any work: wait and send it again while the wait stays
+      // bounded (plan D3). Past the bound MAINTENANCE fails with the end time; the others fail below.
+      if (error.response?.data && refusedBeforeWork(error.response.status, error.response.data.error)) {
         const data = error.response.data;
+        const code = data.error!;
         const details = data.details && typeof data.details === 'object' ? data.details as Record<string, unknown> : {};
         const headers = error.response.headers;
         const header: unknown = headers instanceof AxiosHeaders ? headers.get('retry-after') : headers?.['retry-after'];
@@ -336,18 +366,20 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         else if (typeof details.retryAfterSeconds === 'number') retryAfterSeconds = details.retryAfterSeconds;
         const until = typeof details.until === 'string' ? details.until : undefined;
         const resend = error.config ? resends.get(error.config) : undefined;
-        const decision = resend && maintenanceRetry({
+        const decision = resend && resendAfterWait({
           retryAfterSeconds, waitedMs: resend.waitedMs, attempts: resend.attempts,
-          // A web ReadableStream body is not detected; the CLI never sends one.
-          streamBody: resend.config.data instanceof Stream,
+          streamBody: streamBody(resend.config.data),
         });
         if (resend && decision) {
-          console.error(maintenanceWaitLine(until, decision.waitMs / 1000));
-          await maintenanceWait(decision.waitMs, resend.config);
-          const tally: MaintenanceTally = { waitedMs: resend.waitedMs + decision.waitMs, attempts: resend.attempts + 1 };
-          return client.request({ ...resend.config, [MAINTENANCE_TALLY]: tally } as AxiosRequestConfig);
+          const seconds = decision.waitMs / 1000;
+          console.error(code === 'MAINTENANCE' ? maintenanceWaitLine(until, seconds) : limitWaitLine(code, details.limit, seconds));
+          await waitBeforeResend(decision.waitMs, resend.config);
+          const tally: ResendTally = { waitedMs: resend.waitedMs + decision.waitMs, attempts: resend.attempts + 1 };
+          return client.request({ ...resend.config, [RESEND_TALLY]: tally } as AxiosRequestConfig);
         }
-        throw new CliError('MAINTENANCE', data.message || 'Tokenrip is paused for maintenance.', { until, retryAfterSeconds });
+        if (code === 'MAINTENANCE') throw new CliError('MAINTENANCE', data.message || 'Tokenrip is paused for maintenance.', { until, retryAfterSeconds });
+        // A throttler names its wait only in the header, and the caller never sees the header.
+        if (retryAfterSeconds !== undefined) data.details = { ...details, retryAfterSeconds };
       }
       if (error.response?.data?.error) {
         const data = error.response.data;
@@ -361,7 +393,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
           ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'latestRound',
-            'usedBytes', 'limitBytes', 'addedBytes', 'plan', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
+            'usedBytes', 'limitBytes', 'addedBytes', 'usedActions', 'limitActions', 'resetsAt', 'plan', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
         });
         for (const issue of Array.isArray(safeDetails) ? safeDetails : []) {

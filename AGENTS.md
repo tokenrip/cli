@@ -180,6 +180,7 @@ rip artifact download <id> --output ./report.pdf      # content to a file
 rip artifact download <table-id> --format json        # tables export as csv (default) or json
 rip artifact list [--since <iso>] [--type markdown] [--limit 5] [--folder <slug>] [--team <slug>]
 rip storage [--team <slug>]                           # storage used against the plan, and the largest files
+rip actions [--team <slug>]                           # this month's actions against the plan, and each workspace's count
 ```
 
 ### Delete, fork, bulk

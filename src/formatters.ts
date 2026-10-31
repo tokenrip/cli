@@ -144,6 +144,51 @@ function loadStorageLines(storage: Record<string, any> | undefined): string[] {
   return lines;
 }
 
+/** "1,240 of 2,500 (49%)", or "1,240 (no limit)". Floored, so a payer under its limit never reads 100%. */
+function actionsAgainstLimit(used: unknown, limit: unknown): string {
+  const count = Number(used);
+  if (limit === null || limit === undefined) return `${count.toLocaleString('en-US')} (no limit)`;
+  const allowance = Number(limit);
+  const percent = (count * 100) / allowance; // multiplied first, so a whole percent floors exactly
+  return `${count.toLocaleString('en-US')} of ${allowance.toLocaleString('en-US')} (${count > 0 && percent < 1 ? '<1' : Math.floor(percent)}%)`;
+}
+
+const RESET_DAY = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+
+/**
+ * Load's actions block (internal members only): one line, then the server's sentence to relay near
+ * the limit. Nothing without a block (a shared-audience member, or an older server).
+ */
+function loadActionsLines(actions: Record<string, any> | undefined): string[] {
+  if (!actions?.payer) return [];
+  const payer = actions.payer as Record<string, any>;
+  const lines = [`Actions:   ${actionsAgainstLimit(payer.used, payer.limit)} this month; ${payer.kind === 'team' ? 'the team' : "the owner's account"} on the ${PLAN_LABEL[payer.plan] ?? String(payer.plan)} plan; resets ${RESET_DAY.format(new Date(actions.resetsAt))}`];
+  if (actions.notice) lines.push(`  ${actions.notice}`);
+  return lines;
+}
+
+/** `rip actions`: the payer, this month's count against its limit, the reset in UTC, then each workspace in full. */
+export const formatActionsUsage: Formatter = (data) => {
+  const d = data as Record<string, any>;
+  const payer = d.payer as { kind: string; id: string; name: string | null };
+  const plan = PLAN_LABEL[d.plan] ?? String(d.plan);
+  const who = payer.name ? `${payer.name} (${payer.kind} ${payer.id})` : `${payer.kind} ${payer.id}`;
+  const lines = [`Actions for ${who}, ${plan} plan`, `  Used ${actionsAgainstLimit(d.used, d.limit)} this month`, `  Resets ${RESET_DAY.format(new Date(d.resetsAt))} (UTC)`];
+  if (d.mode === 'enforce' && d.limit !== null && d.limit !== undefined && d.used >= d.limit) {
+    lines.push('  Agents are paused until then; a person can still make changes in the browser.');
+  }
+  lines.push('');
+  const workspaces = (d.workspaces ?? []) as Array<{ id: string | null; name: string | null; actions: number }>;
+  if (workspaces.length === 0) lines.push('Workspaces: none');
+  else {
+    lines.push('Workspaces:');
+    for (const w of workspaces) {
+      lines.push(`  ${w.actions.toLocaleString('en-US')}  ${w.id === null ? '(purged workspaces)' : `${w.name}  (${w.id})`}`);
+    }
+  }
+  return lines.join('\n');
+};
+
 /** `rip storage`: the payer, used against the plan's limit, where the bytes are, then the largest artifacts in full. */
 export const formatStorageUsage: Formatter = (data) => {
   const d = data as Record<string, any>;
@@ -1559,6 +1604,7 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   if (can) lines.push(`Can:       ${can}`);
   if (value.browserLink) lines.push(`Browser:   ${value.browserLink}`);
   lines.push(...loadStorageLines(value.storage));
+  lines.push(...loadActionsLines(value.actions));
   if (workspace.description) lines.push('', String(workspace.description));
 
   // What the agent reads first (plan D16): its instructions, what waits on it, then the agents here.

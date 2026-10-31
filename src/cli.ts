@@ -2534,6 +2534,32 @@ NOTES:
     await storage(options);
   }));
 
+// ── actions ─────────────────────────────────────────────────────────
+program
+  .command('actions')
+  .option('--team <slug-or-id>', "A team's actions (any member may read them)")
+  .option('--account <id-or-alias>', "Another account's actions (platform admins only)")
+  .description("Show this month's actions against your plan, and where they went (default: your account)")
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip actions
+  $ rip actions --team acme
+  $ rip actions --account sam
+  $ rip actions --json
+
+NOTES:
+  An action is one agent operation that changed a workspace and shows in its
+  history. A bulk change counts once per workspace it changes. Reading, failed
+  attempts, a person's own changes in the browser and work outside a workspace
+  are free. A workspace's
+  actions count toward its owner (your account, or the team that owns it), whoever's
+  agent made them. The allowance resets on the 1st of each month, UTC.
+`)
+  .action(wrapCommand(async (options) => {
+    const { actions } = await import('./commands/actions.js');
+    await actions(options);
+  }));
+
 runMigrations();
 
 const _cfg = loadConfig();
