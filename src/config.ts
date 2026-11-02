@@ -30,9 +30,29 @@ function defaultConfig(): TokenripConfig {
   return { configVersion: CURRENT_CONFIG_VERSION, preferences: {} };
 }
 
-export function loadConfig(): TokenripConfig {
+const PRIVATE_DIR_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
+/**
+ * Take group and other access off an existing path, since a write's `mode` applies only on create.
+ * Best effort and silent: a filesystem that refuses chmod must not stop a command, and stdout may
+ * be `--json`.
+ */
+export function tightenMode(target: string): void {
+  if (process.platform === 'win32') return;
   try {
-    const raw = fs.readFileSync(path.join(getConfigDir(), 'config.json'), 'utf-8');
+    const { mode } = fs.statSync(target);
+    if (mode & 0o077) fs.chmodSync(target, mode & 0o700);
+  } catch {
+    // Missing, or refused.
+  }
+}
+
+export function loadConfig(): TokenripConfig {
+  const file = path.join(getConfigDir(), 'config.json');
+  tightenMode(file);
+  try {
+    const raw = fs.readFileSync(file, 'utf-8');
     return JSON.parse(raw) as TokenripConfig;
   } catch {
     return defaultConfig();
@@ -41,8 +61,14 @@ export function loadConfig(): TokenripConfig {
 
 export function saveConfig(config: TokenripConfig): void {
   const dir = getConfigDir();
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
+  const file = path.join(dir, 'config.json');
+  fs.mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
+  // A directory named by TOKENRIP_CONFIG_DIR is the person's to set: it may be shared, and the
+  // files in it are private either way.
+  if (!process.env.TOKENRIP_CONFIG_DIR) tightenMode(dir);
+  // Before the write: an existing 0644 file must not hold the new contents for a moment.
+  tightenMode(file);
+  fs.writeFileSync(file, JSON.stringify(config, null, 2), { encoding: 'utf-8', mode: PRIVATE_FILE_MODE });
 }
 
 export function getApiUrl(config: TokenripConfig): string {

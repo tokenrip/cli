@@ -33,7 +33,8 @@ export async function tableAppend(
   if (options.expectedWorkspaceRevision) body.expectedWorkspaceRevision = Number(options.expectedWorkspaceRevision);
   if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, body);
-  outputSuccess({ rows: data.data, count: data.data.length }, formatRowsAppended);
+  // `data` is the array of rows, so the reply's hints sit beside it; the receipt carries them.
+  outputSuccess({ rows: data.data, count: data.data.length, ...(data.hints ? { hints: data.hints } : {}) }, formatRowsAppended);
 }
 
 /** `rip table rows --all`: rows a call (the server's most) and where the walk stops. */

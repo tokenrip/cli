@@ -17,7 +17,7 @@ Priority (highest wins): `--json` flag → `TOKENRIP_OUTPUT` env var → config 
 ```
 
 - Success and JSON error envelopes go to stdout; human errors and hints go to stderr. Check the exit status when piping JSON.
-- A content write's receipt may carry `hints` (`[{ code, message }]`): a cheaper way to make the next write, such as append instead of re-sending the whole file. Human mode prints each as a `Hint:` line on stderr, terminal or not; `--json` leaves them in `data.hints`. An error's own hint prints only in a terminal. The update banner ("rip X is available (you have Y): run `rip update`, then reload the tokenrip skill.") also goes to stderr: do both.
+- A content write's receipt may carry `hints` (`[{ code, message }]`): a cheaper way to make the next write, such as append instead of re-sending the whole file. A `rip table append` receipt may too, when a one-row upsert overwrote a stored row without its revision. Human mode prints each as a `Hint:` line on stderr, terminal or not; `--json` leaves them in `data.hints`. An error's own hint prints only in a terminal. The update banner ("rip X is available (you have Y): run `rip update`, then reload the tokenrip skill.") also goes to stderr: do both.
 - JSON mode passes the server's data through unchanged. Human mode prints every identifier and URL in full; nothing is truncated.
 - Always parse `data.url` from a successful artifact response and present it to the user. `data.rawUrl` is the link for the file itself (for example, to open an HTML report rendered); it is null for a table.
 - Workspace write receipts carry the new `workspaceRevision`. Carry it into the next write instead of re-reading.

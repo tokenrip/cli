@@ -17,7 +17,7 @@ npm install -g @tokenrip/cli
 
 ## Setup
 
-Sign in with the person's email. Tokenrip emails a six-digit code; ask the person for it (or read it from their inbox if you can):
+Sign in with the person's email. Tokenrip emails a six-digit code; ask the person for it (or, if they tell you to, read it from their inbox):
 
 ```bash
 rip auth login --email ana@example.com
@@ -396,7 +396,7 @@ rip bundle delete <id-or-slug>                                    # to the trash
 
 ## Search
 
-Search across artifact content. Results are ranked by relevance and include snippets. Inside a workspace (`--workspace-id`, or `--artifact-id` of a workspace document) the ranking blends keywords with meaning and each result lists its best passages; `pending: N` counts chunks not yet searchable by meaning. Elsewhere the ranking is by keyword.
+Search across artifact content. Results are ranked by relevance and include snippets. Inside a workspace (`--workspace-id`, or `--artifact-id` of a workspace document) each result lists its best passages and, where the server has an embedding provider, the ranking blends keywords with meaning; `pending: N` counts chunks not yet searchable by meaning. Elsewhere the ranking is by keyword.
 
 ```bash
 rip search "quarterly report"

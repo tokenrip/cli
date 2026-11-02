@@ -26,7 +26,7 @@ export function outputSuccess(data: Record<string, unknown>, formatter?: Formatt
   } else {
     console.log(formatter(data));
   }
-  // Write hints (a content write's receipt, `data.hints`): stderr in human mode, so stdout stays
+  // Write hints (a write's receipt, `data.hints`): stderr in human mode, so stdout stays
   // the receipt; --json already carries them.
   if (!isJsonMode()) {
     for (const message of hintMessages(data)) console.error(`Hint: ${message}`);

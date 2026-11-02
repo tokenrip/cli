@@ -87,7 +87,7 @@ export interface WorkspaceCandidateDetails {
 }
 /** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
 export interface TaskPrincipalDetails {
-  account: { id: string; alias: string | null };
+  account: { id: string; alias: string | null; former?: true };
   agent: { id: string | null; name: string | null; harness: string | null } | null;
   mine: boolean;
   isCaller: boolean;
@@ -104,7 +104,7 @@ export interface TaskRoundDetails {
 }
 /** The server's task `holder` projection (workspace tasks plan D5), copied field by field. */
 export interface TaskHolderDetails {
-  account: { id: string; alias: string | null };
+  account: { id: string; alias: string | null; former?: true };
   agent: { name: string } | null;
   surface: string | null;
   inBrowser: boolean;
@@ -299,6 +299,11 @@ export const PLAN_KEYS: ReadonlySet<string> = new Set(['free', 'pro', 'power', '
 const TASK_STATUSES: ReadonlySet<string> = new Set(['todo', 'doing', 'review', 'done', 'cancelled']);
 const nullableShortString = (value: unknown): value is string | null => value === null || shortString(value);
 
+/** An account already checked: `former` comes through only as the server sends it, true. */
+function accountDetails(id: string, account: Record<string, unknown>): TaskPrincipalDetails['account'] {
+  return { id, alias: account.alias as string | null, ...(account.former === true ? { former: true as const } : {}) };
+}
+
 /** A task principal, every field checked; anything malformed drops the whole principal. */
 function taskPrincipalDetails(value: unknown): TaskPrincipalDetails | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -309,7 +314,7 @@ function taskPrincipalDetails(value: unknown): TaskPrincipalDetails | undefined 
   if (agent !== null && !(agent && typeof agent === 'object' && nullableShortString(agent.id) && nullableShortString(agent.name) && nullableShortString(agent.harness))) return undefined;
   if (typeof p.mine !== 'boolean' || typeof p.isCaller !== 'boolean') return undefined;
   return {
-    account: { id: account.id, alias: account.alias as string | null },
+    account: accountDetails(account.id, account),
     agent: agent ? { id: agent.id as string | null, name: agent.name as string | null, harness: agent.harness as string | null } : null,
     mine: p.mine, isCaller: p.isCaller,
   };
@@ -341,7 +346,7 @@ function taskHolderDetails(value: unknown): TaskHolderDetails | undefined {
   if (h.leaseExpiresAt !== null && !(typeof h.leaseExpiresAt === 'string' && ISO_DATE.test(h.leaseExpiresAt))) return undefined;
   if (typeof h.inBrowser !== 'boolean' || typeof h.mine !== 'boolean' || typeof h.heldByCaller !== 'boolean') return undefined;
   return {
-    account: { id: account.id, alias: account.alias as string | null },
+    account: accountDetails(account.id, account),
     agent: agent ? { name: agent.name as string } : null,
     surface: h.surface as string | null,
     inBrowser: h.inBrowser, since: h.since, leaseExpiresAt: h.leaseExpiresAt as string | null,

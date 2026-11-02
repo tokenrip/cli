@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.14
+version: 2.6.16
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.14 -->
+<!-- tokenrip-skill-version: 2.6.16 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -77,7 +77,7 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 
 ## Critical Rules
 
-1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or read it from their inbox if you can), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed. If your key is in a vault that fills web forms, get a code at https://tokenrip.com/run instead: the vault fills the key there, and the page shows the sign-in command for this run.
+1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or, if they tell you to, read it from their inbox), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed. If your key is in a vault that fills web forms, get a code at https://tokenrip.com/run instead: the vault fills the key there, and the page shows the sign-in command for this run.
 2. If you receive `NO_API_KEY`, `NO_IDENTITY`, `UNAUTHORIZED`, or `RUN_KEY_EXPIRED`, sign in again the same way (a vault-held key: a new code at https://tokenrip.com/run). Signing in never disconnects the person's other agents. Never paste a key into a chat.
 3. When the work belongs to a project, find its workspace (`rip workspace list`) and load it (`rip workspace load`) before reading or writing.
 4. Every write to workspace content states **why**: `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit. "Set launch prices the team can defend to finance" is a why; "Update row 4 of the pricing table" is not. Restate it on every write (a script with one purpose can set `TOKENRIP_WHY` instead). Without it the server refuses `WHY_REQUIRED`.
@@ -215,7 +215,7 @@ A log, a run history or collected results that grow by adding records?
   → a text log or notes file: rip artifact append <id> entry.md   (only the new text is sent; never re-send the whole file to add a line)
 ```
 
-`unique: true` makes that column the table's key (at most one per table): a duplicate is refused (409), comparing the exact stored text ("100" and "100.0" differ). `--upsert` updates the row whose key matches instead, in one call (a table without a key is refused, `NO_TABLE_KEY`); every row must carry the key, a key repeated within one call is refused (409), and a refused call writes no row. `--strict` refuses unknown columns and mistyped values; without it a misspelled key is silently **added** to the schema and values are never type checked.
+`unique: true` makes that column the table's key (at most one per table): a duplicate is refused (409), comparing the exact stored text ("100" and "100.0" differ). `--upsert` updates the row whose key matches instead; every row must carry the key, and a refused call writes no row. Agents sharing a row: a plain append has one winner (`references/workspaces.md` § Coordinating agents on a row). `--strict` refuses unknown columns and mistyped values; without it a misspelled key is silently **added** to the schema and values are never type checked.
 
 ### Folders
 

@@ -183,7 +183,7 @@ rip task add "<title>" --workspace-id <ws> [--audience …]   ·   rip task list
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --audience]
 ```
 
-New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision. History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. Audience requires explicit workspace identity (`INVALID_SCOPE`). Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
+New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision, and a sent revision with no stored row is refused `CONFLICT`. A plain append of a stored key is refused, so when several agents add one key, one wins (`references/workspaces.md` § Coordinating agents on a row). History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. Audience requires explicit workspace identity (`INVALID_SCOPE`). Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
 
 ## Artifact commands
 
@@ -756,7 +756,7 @@ rip search "termination clause" --artifact-id contract-2026 --limit 5
 
 Options: `--since <iso-or-days>`, `--limit <n>` (default 50, max 200; more is refused), `--offset <n>`, `--type <type>` (`markdown`, `html`, `code`, `json`, `text`, `file`, `chart`, `table`, `csv`), `--workspace-id <id>`, `--artifact-id <id>`. Search finds live artifacts only.
 
-- `--workspace-id` searches one workspace, named by its id or slug (a workspace you cannot read is a 404 `WORKSPACE_NOT_FOUND`). Every workspace document is indexed by meaning, so a plain-language question works: the ranking blends keywords with meaning (`mode: hybrid`) and each result lists its best passages (section heading and full text, up to 3). `pending: N` means N chunks are not yet searchable by meaning (just written); they still match by keyword. If the server has no embedding provider, or it is unavailable, the search ranks by keyword (`mode: keyword`).
+- `--workspace-id` searches one workspace, named by its id or slug (a workspace you cannot read is a 404 `WORKSPACE_NOT_FOUND`). Each result lists its best passages. Where the server has an embedding provider, every workspace document is indexed by meaning, so a plain-language question works: the ranking blends keywords with meaning (`mode: hybrid`) (section heading and full text, up to 3). `pending: N` means N chunks are not yet searchable by meaning (just written); they still match by keyword. If the server has no embedding provider, or it is unavailable, the search ranks by keyword (`mode: keyword`).
 - `--artifact-id` scopes the search to one artifact (its id or alias) and returns one result with up to `--limit` passages (default 50), ranked best first; pass a small `--limit` for just the best few. It ranks hybrid when the artifact lives in a workspace, keyword otherwise. Combined with a `--workspace-id` other than the artifact's own, it is a 400 `INVALID_FIELD`.
 - Outside a workspace, search ranks by keyword only.
 
@@ -1248,7 +1248,7 @@ Config lives at `~/.config/tokenrip/config.json` (v3):
 }
 ```
 
-Identities are stored at `~/.config/tokenrip/identities.json` (mode 0600), keyed by account ID; each entry holds the keypair and API key.
+Identities are stored at `~/.config/tokenrip/identities.json` (mode 0600), keyed by account ID; each entry holds the keypair and API key. `config.json` is mode 0600 too, in a 0700 directory.
 
 Environment variables take precedence over the config file:
 

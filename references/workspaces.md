@@ -28,6 +28,7 @@ Every item has an `audience`: `internal` (the owner and the team) or `shared` (g
 - "give the client read access to what we share" → `rip workspace member add <workspace> <email> --role viewer --why "<the goal>"`
 - "give a colleague access to everything" → `rip team add <team> <email>` (the workspace's owning team; a personal workspace's internal access is its owner's alone, so the work moves to a team)
 - "bring an existing artifact or folder into the workspace" → `rip workspace adopt`
+- "only one agent at a time", "send this once", several agents sharing a row → a plain append decides who goes first ([Coordinating agents on a row](#coordinating-agents-on-a-row))
 - "I'm stopping here" → nothing to end: your session is recorded. Complete what you finished (`rip task done`), `rip task stop` what you hold but didn't finish, with its body saying how far it got (`rip task update`); a proposal stays In review ([When you stop](#when-you-stop))
 
 ## Lifecycle and members
@@ -145,6 +146,69 @@ rip trash restore <id>                                # the entry's id (file or 
 Restoring needs `deleteContent`, like deleting. The entry and, for a restorer, the 410 both carry `workspaceId` and `workspaceRevision`. A file whose folder is still in the trash comes back unfiled; restore the folder instead to bring back everything that went with it. While the workspace itself is in the trash, restoring one of its files or folders answers 409 `WORKSPACE_DELETED`: restore the workspace first.
 
 Folders are flat and grant nothing. A shared folder shows its shared children. An internal folder is invisible externally, and its shared children appear at the external root. `folder update --audience` changes only the folder's own visibility; `folder share-contents` is the one-time bulk share (later children do not inherit it).
+
+## Coordinating agents on a row
+
+When agents share a table, two moves let the server decide who wins at the moment of the write. The loser gets a refusal, never a silent overwrite:
+
+- **Create only if absent.** A plain append (no `--upsert`) of a key a stored row holds is refused, atomically, so when several agents add one key, one wins: 409 `DUPLICATE_UNIQUE_VALUE`, MCP `STATE_CONFLICT`.
+- **Change only if unchanged.** A row update or delete that sends the revision you read is refused `CONFLICT` if the row changed since.
+
+Reading a row and then upserting it is neither. An upsert overwrites the columns it sends on its match unless the row sends its revision, so two agents can both read "free" and both write.
+
+Every recipe here needs **a table with a key**, a column declared `unique: true`, and every row must send it: `<key>` below is that column's name. A plain append with no key value is added, never refused, and so is any append to a table without a key, so neither can be a lock: both succeed for every agent. You choose the key values, the other columns and any time limit; Tokenrip defines none of them. To claim a unit of work, a task's hold already does this (`rip task start`, [references/tasks.md](tasks.md)); these recipes are for work that lives in rows.
+
+Human output prints no row revision, so these commands use `--json`. The id and revision are in `data.rows[]` from `table append` and `table rows`, and in `data` from `table update`. On MCP they are `rowIds` and `revisions` from `table_append_rows`, `page.rows[]` from `table_get_rows`, and `id` and `revision` from `table_update_row`.
+
+### A lock
+
+The row exists only while the lock is held, so "free" is no row. A table that stores a free row refuses every taker, forever: delete that row once before using the table as a lock.
+
+```bash
+# Take. Success means you hold it: keep the row id and revision from the reply
+rip --json table append <table> --data '{"<key>":"send-round","holder":"<you>","since":"<now>"}' --why "<the goal>"
+
+# DUPLICATE_UNIQUE_VALUE means it is held. Any other refusal took nothing: don't act on it
+# Read the row by its key. No row means it was just released: take it again
+rip --json table rows <table> --filter <key>=send-round
+# If since is older than your own limit, take it over and keep the new revision. Otherwise stop
+rip --json table update <row-id> --data '{"holder":"<you>","since":"<now>"}' --expected-revision <rev> --why "<the goal>"
+# CONFLICT on the takeover means someone else took it: stop. NOT_FOUND means it was released: take it again
+
+# Release, with the revision you hold
+rip --json table delete --row-ids <row-id> --expected-revisions '{"<row-id>": <rev>}' --why "<the goal>"
+# CONFLICT on the release means it was taken over, so your hold had already ended
+```
+
+| Step | MCP |
+|---|---|
+| Take | `table_append_rows { artifactId, rows: [{ <key>: "send-round", holder, since }], why }`, no `upsert`; `STATE_CONFLICT` means it is held, and any other refusal took nothing |
+| Read | `table_get_rows { artifactId, filters: { <key>: "send-round" } }`; no row means it was just released |
+| Take over | `table_update_row { rowId, data, expectedRevision, why }`; `CONFLICT` means someone else took it; `UNAVAILABLE` means the row is gone, so read the key again |
+| Release | `table_delete_rows { rowIds: [rowId], expectedRevisions: { <rowId>: rev }, why }`; `CONFLICT` means your hold had ended |
+
+A takeover doesn't stop the old holder, which finds out at its release, so pick a limit longer than any round takes.
+
+### An effect that happens once
+
+One ledger table for all agents, its key naming the effect.
+
+```bash
+# Before the effect
+rip --json table append <ledger> --data '{"<key>":"first-email:acme.com"}' --why "<the goal>"
+# DUPLICATE_UNIQUE_VALUE means it is done or in progress: skip it. Any other refusal claimed nothing: don't act on it
+
+# Only when you know the effect did not happen: delete the claim
+rip --json table delete --row-ids <row-id> --why "<the goal>"
+```
+
+On MCP: `table_append_rows` with no `upsert`, where `STATE_CONFLICT` means done or in progress and any other refusal claimed nothing, and `table_delete_rows { rowIds, why }`.
+
+A crash between the claim and the effect leaves the claim, and a failure you can't be sure of should too: a send that timed out may have gone. Keep the claim then, so the effect happens at most once, never twice. An agent that needs at least once decides how to retry from its own record. The server referees only agents that claim: one that skips the claim can still act twice.
+
+### A shared row
+
+Change it with its revision, as a row update already requires: `rip --json table update <row-id> --data '{...}' --expected-revision <rev> --why "<the goal>"`, MCP `table_update_row`. On `CONFLICT`, read the row and redo the change on what it now holds. An upsert takes the same guard per row, as `{ "data": {...}, "expectedRevision": n }`, and refuses the whole call `CONFLICT` if the row changed since or no stored row matches it.
 
 ## Why: every write says what it is for
 

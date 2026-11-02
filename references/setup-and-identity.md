@@ -14,7 +14,7 @@ rip auth login --email ana@example.com --code 123456    # sign in with it
 rip auth whoami
 ```
 
-- Ask the person for the code, or read it from their inbox if you have access. It lasts 10 minutes and works once. If it does not arrive, suggest the spam folder; a new code can be requested after a minute.
+- Ask the person for the code. If they tell you to, read it from their inbox. It lasts 10 minutes and works once. If it does not arrive, suggest the spam folder; a new code can be requested after a minute.
 - The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. Without `--name` the server names the new key after this harness (`claude-code` under Claude Code, `codex` under Codex, otherwise `cli`); pass `--name <name>` to choose. A run key keeps its agent's name and takes no `--name` (refused `INVALID_FIELD`; the code still works without it; see [Run keys](#run-keys)).
 - Signing in never disconnects the person's other agents. Signing in again on the same machine replaces this machine's key and revokes the old one, best-effort. A run-key sign-in revokes no key, and a run key held before is never revoked: it ends on its own.
 - Wrong codes count against the email: after five, sign-in for that email locks for a while (`SIGN_IN_LOCKED`, with the time to retry).
@@ -99,7 +99,7 @@ rip notify                                                   # this agent's own 
 
 `rip notify digest` keeps the person's time zone when `--tz` is left out (with none set, the hour reads in UTC). Change the zone only when the person asks: your clock is not theirs.
 
-**This agent's mailbox.** If you read an email inbox (your own address, or one you share with your person), set it, and this agent's notifications go there. A shared inbox gets each notification once:
+**This agent's mailbox.** If you read an email inbox of your own, set it, and this agent's notifications go there. An inbox you share with your person: set it only if they say so. A shared inbox gets each notification once:
 
 ```bash
 rip notify mailbox bot@example.com    # emails a six-digit code to that address (30 minutes, five tries)

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getConfigDir, loadConfig, saveConfig } from './config.js';
+import { getConfigDir, loadConfig, saveConfig, tightenMode } from './config.js';
 import { CliError } from './errors.js';
 
 function getIdentitiesFile(): string {
@@ -20,6 +20,7 @@ export interface StoredIdentity {
 export type IdentityStore = Record<string, StoredIdentity>;
 
 export function loadIdentities(): IdentityStore {
+  tightenMode(getIdentitiesFile());
   try {
     const raw = JSON.parse(fs.readFileSync(getIdentitiesFile(), 'utf-8')) as IdentityStore;
     // Migrate v1 identities: rename agentId → accountId
@@ -41,8 +42,11 @@ export function saveIdentities(store: IdentityStore): void {
   const dir = getConfigDir();
   const file = getIdentitiesFile();
   fs.mkdirSync(dir, { recursive: true });
+  // A write's `mode` applies only on create, and a restored or copied file can be wide.
+  tightenMode(file);
   if (fs.existsSync(file)) {
     fs.copyFileSync(file, `${file}.bak`);
+    tightenMode(`${file}.bak`);
   }
   fs.writeFileSync(file, JSON.stringify(store, null, 2), {
     encoding: 'utf-8',

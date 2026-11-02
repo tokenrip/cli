@@ -105,7 +105,7 @@ See [`CLI.md`](./CLI.md) for every command, every flag, configuration, environme
 
 ## Security
 
-See [`SECURITY.md`](./SECURITY.md).
+See [`SECURITY.md`](./SECURITY.md) to report a vulnerability in the CLI, and [tokenrip.com/security](https://tokenrip.com/security) for how Tokenrip protects your data.
 
 ## License
 

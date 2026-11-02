@@ -979,9 +979,22 @@ export const formatCredentialList: Formatter = (data) => {
     .join('\n');
 };
 
+/** An account as the server names an actor: `former` comes only for a deleted person, whose alias is null. */
+export interface ActorAccountView {
+  id: string;
+  alias: string | null;
+  former?: true;
+}
+
+/** Anyone but the reader: `Former member`, `~alias`, or their full account id when they have no alias. */
+function accountName(account: { id?: string; alias?: string | null; former?: boolean }): string {
+  if (account.former) return 'Former member';
+  return account.alias ? `~${account.alias}` : (account.id ?? '-');
+}
+
 /** Who holds a task, as the server projects it (`holder`, plan D5). */
 export interface TaskHolderView {
-  account: { id: string; alias: string | null };
+  account: ActorAccountView;
   agent: { name: string } | null;
   surface: string | null;
   inBrowser: boolean;
@@ -994,7 +1007,7 @@ export interface TaskHolderView {
 /** The holder in History's who-words. */
 function holderWho(holder: TaskHolderView): string {
   return whoWords({
-    mine: holder.mine, alias: holder.account.alias, accountId: holder.account.id,
+    mine: holder.mine, alias: holder.account.alias, accountId: holder.account.id, former: holder.account.former,
     agentName: holder.agent?.name, surface: holder.surface, inBrowser: holder.inBrowser,
   });
 }
@@ -1010,7 +1023,7 @@ export function taskHolderLine(holder: TaskHolderView): string {
  * the reader's own account.
  */
 export interface TaskPrincipalView {
-  account: { id: string; alias: string | null };
+  account: ActorAccountView;
   agent: { id: string | null; name: string | null; harness: string | null } | null;
   mine: boolean;
   isCaller: boolean;
@@ -1027,7 +1040,7 @@ export function principalWho(p: TaskPrincipalView): string {
     const words = p.agent.name ? `You · ${p.agent.name}${harness ? ` (${harness})` : ''}` : `You · ${harness ?? 'an agent'}`;
     return p.isCaller ? `${words} · this agent` : words;
   }
-  const person = p.account.alias ? `~${p.account.alias}` : p.account.id;
+  const person = accountName(p.account);
   if (!p.agent) return person;
   return `${person}'s agent${harness ? ` · ${harness}` : ''}`;
 }
@@ -1041,7 +1054,7 @@ function principalLine(p: TaskPrincipalView): string {
 function instructionsOwner(p: TaskPrincipalView): string {
   if (p.mine && p.isCaller) return 'your';
   if (p.mine) return p.agent?.name ? `${p.agent.name}'s` : "your agent's";
-  return `${p.account.alias ? `~${p.account.alias}` : p.account.id}'s agent's`;
+  return `${accountName(p.account)}'s agent's`;
 }
 
 /** A round's outcome in words; an open round (null) is in review. */
@@ -1201,7 +1214,7 @@ function eventLine(at: string, step: Record<string, any>): string {
   const actor = step.actor as TaskPrincipalView | null;
   let who: string;
   if (!actor) who = 'system';
-  else if (step.viaBrowser) who = whoWords({ mine: actor.mine, alias: actor.account.alias, accountId: actor.account.id, inBrowser: true });
+  else if (step.viaBrowser) who = whoWords({ mine: actor.mine, alias: actor.account.alias, accountId: actor.account.id, former: actor.account.former, inBrowser: true });
   else who = principalWho(actor);
   const why = step.why ?? (step.viaBrowser || !actor ? null : 'no stated goal');
   return `  ${at}  ${verbAction(step.verb)}  ${who}${why ? `: ${why}` : ''}`;
@@ -1483,17 +1496,17 @@ function verbAction(type: unknown): string {
 
 /**
  * Who worked, in words (session-log design §5.5). The reader's own work is "You"; another
- * person's leads with their alias, or their full account id when they have none. Another
- * person's agent name is never sent, so their agent reads by harness. Your browser that an
- * agent's sign-in link signed in names that agent.
+ * person's leads with their alias, or their full account id when they have none, and a deleted
+ * person's reads `Former member`. Another person's agent name is never sent, so their agent reads
+ * by harness. Your browser that an agent's sign-in link signed in names that agent.
  */
-function whoWords(who: { mine: boolean; alias?: string | null; accountId?: string; agentName?: string; surface?: string | null; inBrowser: boolean }): string {
+function whoWords(who: { mine: boolean; alias?: string | null; accountId?: string; former?: boolean; agentName?: string; surface?: string | null; inBrowser: boolean }): string {
   if (who.mine) {
     if (who.inBrowser) return who.agentName ? `You · ${who.agentName} · in the browser` : 'You · in the browser';
     if (who.agentName) return `You · ${who.agentName}${who.surface ? ` (${harnessName(who.surface)})` : ''}`;
     return who.surface ? `You · ${harnessName(who.surface)}` : 'You';
   }
-  const name = who.alias ? `~${who.alias}` : (who.accountId ?? '-');
+  const name = accountName({ alias: who.alias, id: who.accountId, former: who.former });
   if (who.inBrowser) return `${name} · in the browser`;
   return who.surface ? `${name}'s agent · ${harnessName(who.surface)}` : name;
 }
@@ -1547,7 +1560,7 @@ function sessionChangeLines(change: Record<string, any>, indent: string): string
 /** A computed session: who and when, then each stated reason with the changes made for it. */
 function sessionLines(session: Record<string, any>, indent = ''): string[] {
   const who = whoWords({
-    mine: Boolean(session.mine), alias: session.account?.alias, accountId: session.account?.id,
+    mine: Boolean(session.mine), alias: session.account?.alias, accountId: session.account?.id, former: session.account?.former,
     agentName: session.agent?.name, surface: session.surface, inBrowser: Boolean(session.inBrowser),
   });
   const lines = [`${indent}${who}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}${session.unread ? '  unread' : ''}`];
@@ -1650,7 +1663,7 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   lines.push(...loadSection(
     `Latest changes (${activityItems.length}${activity.hasMore ? '+' : ''}):`,
     activityItems.flatMap((e) => [
-      `  ${e.createdAt ?? '-'}  ${e.mine ? 'You' : e.actor?.alias ? `~${e.actor.alias}` : (e.actor?.id ?? '-')}  ${verbAction(e.type)}  ${subjectWords(e.subject)}`,
+      `  ${e.createdAt ?? '-'}  ${e.mine ? 'You' : accountName(e.actor ?? {})}  ${verbAction(e.type)}  ${subjectWords(e.subject)}`,
       ...('why' in e ? [`    ${changeGoal(e)}`] : []),
     ]),
   ));
@@ -1735,7 +1748,7 @@ function changeHeading(item: Record<string, any>): string {
   if (actor.type === 'system') return `${actor.id ?? 'system'}: ${changeGoal(item)}`;
   const inBrowser = changeInBrowser(item);
   const who = whoWords({
-    mine: Boolean(item.mine), alias: actor.alias, accountId: actor.id,
+    mine: Boolean(item.mine), alias: actor.alias, accountId: actor.id, former: actor.former,
     agentName: item.agent?.name, surface: actor.surface, inBrowser,
   });
   return inBrowser && item.why == null ? who : `${who}: ${changeGoal(item)}`;

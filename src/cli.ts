@@ -483,13 +483,19 @@ EXAMPLES:
   $ rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
   $ rip table append 550e8400-... --file rows.json
   $ rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert
+  $ rip table append 550e8400-... --data '{"data":{"slug":"post","title":"v3"},"expectedRevision":2}' --upsert
 
 NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
 
-UPSERT: --upsert makes publishing idempotent in one call — no check-then-write,
-no race. It matches on the table's key, its one unique: true column (a table
-without one is refused, NO_TABLE_KEY); every row must carry the key
-(MISSING_FIELD otherwise).
+UPSERT: --upsert makes publishing idempotent in one call. It matches on the
+table's key, its one unique: true column (a table without one is refused,
+NO_TABLE_KEY); every row must carry the key (MISSING_FIELD otherwise).
+
+An upsert overwrites its match unless the row sends the revision you read, as
+{ "data": {...}, "expectedRevision": n }. A row that changed since is refused
+with 409 CONFLICT, and so is a sent revision with no stored row; nothing in the
+call is written. Without --upsert, appending a stored key is refused, so when
+several agents add the same key, one caller wins.
 
 KEY: the key compares the exact stored text: "100" and "100.0" are different keys,
 the number 1 and the string "1" are the same key. Before any row is written,
@@ -1088,17 +1094,17 @@ NOTES:
 program
   .command('search')
   .argument('[query]', 'Search text (omit it to list by recency within the other filters)')
-  .description('Search artifacts: by keyword, and by meaning inside a workspace')
+  .description('Search artifacts by keyword, and inside a workspace by meaning where the server supports it')
   .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
   .option('--type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table, csv')
-  .option('--workspace-id <id>', 'Workspace id or slug: search that workspace, ranked by keywords and meaning, with passages')
+  .option('--workspace-id <id>', 'Workspace id or slug: search that workspace, with passages')
   .option('--artifact-id <id>', 'Scope to one artifact (its id or alias): its passages, best first, up to --limit')
   .addHelpText('after', `
 Inside a workspace (--workspace-id, or --artifact-id of a workspace document) the
-search ranks by keywords and meaning together ("mode: hybrid") and prints each
-result's best passages. "pending: N" counts chunks not yet searchable by
+search prints each result's best passages, and where the server has an embedding
+provider it ranks by keywords and meaning together ("mode: hybrid"). "pending: N" counts chunks not yet searchable by
 meaning. Everywhere else the ranking is by keyword.
 
 EXAMPLES:
