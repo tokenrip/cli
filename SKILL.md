@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.16
+version: 2.6.17
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.16 -->
+<!-- tokenrip-skill-version: 2.6.17 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -274,7 +274,7 @@ A review addressed to you (load: "decide")?
 A question, a requested change or an answer on a task?   rip comment add --task <id> "Name the day or the date?"
 
 Ordinary work?
-  → rip task list --workspace-id <ws> [--mine] [--type <t>] [--step <s>] [--status todo|review]
+  → rip task list --workspace-id <ws> [--mine | --unassigned] [--type <t>] [--step <s>] [--status todo|review]
   → rip task done <id> --link artifact:<publicId>[@version] --result-text "…"
   → rip task stop <id>  ·  rip task cancel <id> --reason "..."  ·  rip task reopen <id>
   → rip task add "<title>" --workspace-id <ws> | --parent-id <id> [--assignee <who>] [--reviewer <who>] [--type <t>] [--step <s>] [--link artifact:<id>]

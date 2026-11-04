@@ -14,6 +14,8 @@ export interface TaskListOptions {
   /** Only tasks at this step (a free tag). */
   step?: string;
   mine?: boolean;
+  /** Only tasks for no one (`assignee=none`); never beside `mine`. */
+  unassigned?: boolean;
   since?: string;
   limit?: string;
   cursor?: string;
@@ -95,12 +97,14 @@ function taskPath(id?: string, verb?: string): string {
 }
 
 export async function taskList(options: TaskListOptions): Promise<void> {
+  if (options.mine && options.unassigned) throw invalid('Use --mine or --unassigned, not both');
   const { client } = requireAuthClient();
   const q = new URLSearchParams(home(options, 'A task list'));
   if (options.status) q.set('status', options.status);
   if (options.type) q.set('type', options.type);
   if (options.step) q.set('step', options.step);
   if (options.mine) q.set('assignee', 'me');
+  if (options.unassigned) q.set('assignee', 'none');
   if (options.since) q.set('since', options.since);
   if (options.limit) q.set('limit', options.limit);
   if (options.cursor) q.set('cursor', options.cursor);

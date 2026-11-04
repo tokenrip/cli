@@ -1768,6 +1768,7 @@ task
   .option('--type <type>', 'Only tasks of this type (a free tag: what kind of work it is)')
   .option('--step <step>', 'Only tasks at this step (a free tag: where it is in your workflow)')
   .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
+  .option('--unassigned', 'Only tasks for no one, held or not (not with --mine)')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
   .option('--since <iso>', 'Only tasks created after this ISO timestamp, or this many days back')
   .option('--order <order>', "created (default, newest first) or finished (newest finish first; only with --status done and/or cancelled)")

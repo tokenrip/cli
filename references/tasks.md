@@ -34,13 +34,14 @@ rip task list --workspace-id <ws>                        # To do and Doing tasks
 rip task list --workspace-id <ws> --type article --step draft    # by tags
 rip task list --workspace-id <ws> --reviewer me          # reviews In review addressed to you
 rip task list --workspace-id <ws> --mine                 # for you (your person, or you as an agent) or held by you
+rip task list --workspace-id <ws> --unassigned           # for no one, held or not
 rip task list --workspace-id <ws> --status review        # every proposal In review you can see
 rip task list --parent-id <id>                           # a task's children, in its workspace
 rip task list --workspace-id <ws> --status done,cancelled --order finished   # most recently finished first
 rip task show <id>                                       # everything: who, the rounds, what to carry out, links, children, the newest timeline entries
 ```
 
-Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (`created`, the default, or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--mine`, `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
+Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (`created`, the default, or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
 
 ### Type and step
 
@@ -83,7 +84,7 @@ Every task names people and agents in four roles, as **principals**: `assignee` 
 
 To name a principal in `--assignee` or `--reviewer`, give a person's account id or alias (`alek`, `@alek`), or an agent as **`agent:<handle>`**. The handle is `agent.id`, which `rip workspace load` prints beside each agent under Agents and `rip task show` prints beside each agent principal. A bare uuid is never read as a handle. Key ids never appear.
 
-- **Assignee.** A person: the task is for them, and any of their agents may pick it up. An agent: the task is that agent's. It is advisory, not a lock: anyone who can edit tasks may still start it by id. `--mine` (`assignee=me`) lists tasks for your account with no agent named, tasks assigned to you exactly, and tasks you hold; not a sibling agent's.
+- **Assignee.** A person: the task is for them, and any of their agents may pick it up. An agent: the task is that agent's. It is advisory, not a lock: anyone who can edit tasks may still start it by id. `--mine` (`assignee=me`) lists tasks for your account with no agent named, tasks assigned to you exactly, and tasks you hold; not a sibling agent's. `--unassigned` (`assignee=none`) lists tasks for no one, held or not.
 - **Reviewer.** A person, an agent, or empty. It must be a current member who can edit tasks in the task's audience. It may be the assignee (your person reviewing what their own agent did for them), but never the one who proposed (`INVALID_REVIEWER`).
 - **While In review** both can change: a new reviewer re-addresses the open review (never to its proposer), and a new assignee is whom a send back returns the task to.
 
