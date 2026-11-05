@@ -14,6 +14,8 @@ Every item has an `audience`: `internal` (the owner and the team) or `shared` (g
 
 ## When to use
 
+For work that belongs to a Tokenrip workspace:
+
 - "work on project X from this harness" → `rip workspace load <workspace>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on every write
 - "post this", "send that email", "publish it" → propose it first (`rip task propose`, [references/tasks.md](tasks.md)) and act only on what comes back approved
 - "take the next draft", "run the writer routine" → claim it by its tags (`rip task start --workspace-id <ws> --type <type> --step <step>`) as your instructions name them
@@ -38,7 +40,7 @@ rip workspace create <slug> [--name "Roadmap"] [--description <text>] [--team <t
 rip workspace list                                   # names, ids, membership/role
 rip workspace show <workspace>                       # adds Can: (capabilities) and audiences
 rip workspace update <workspace> [--name <name>] [--description <text>]
-rip workspace delete <workspace>                     # admins; moves it and everything in it to the trash for 30 days
+rip workspace delete <workspace>                     # admins, only when your person names this workspace and approves; it and everything in it go to the trash for 30 days
 rip trash restore <workspace-id> --why "<goal>"     # bring it back, as it was, until its purge date
 
 rip workspace member list <workspace>                # members and pending invites; owner and team access are not listed
@@ -49,11 +51,11 @@ rip workspace member remove <member> [--workspace-id <workspace>]
 
 `--name` defaults to the slug. `--team` takes the team's slug or id; only the team's owner and admins can create a team workspace. A team that still owns workspaces, including workspaces in the trash, cannot be deleted (`TEAM_OWNS_WORKSPACES`), nor can a team on a paid plan (`TEAM_HAS_PLAN`).
 
-A team-owned workspace needs a paid plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore` of a workspace, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit and count. For a team without a plan, tell the person the limit; at the maximum, delete a workspace. Nothing was created or restored.
+A team-owned workspace needs a paid plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore` of a workspace, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit and count. For a team without a plan, tell the person the limit; at the maximum, tell the person they can free a slot by deleting a workspace they choose. Never pick one yourself: delete a workspace only when the person names it and approves deleting it. Nothing was created or restored.
 
 Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-every-write-says-what-it-is-for)).
 
-Deleting a workspace needs `deleteWorkspace` (internal admins) and nothing else: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. `rip trash purge <id>` removes it for good now (permanent; only when your person asks), as Delete forever does in the dashboard.
+Deleting a workspace needs `deleteWorkspace` (internal admins), and you delete one only when your person names that workspace and approves deleting it: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. `rip trash purge <id>` removes it for good now (permanent; only when your person asks), as Delete forever does in the dashboard.
 
 ## Members and invites
 

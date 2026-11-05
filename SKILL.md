@@ -7,16 +7,16 @@ description: >-
   folders, propose an action or a draft for review before it goes out,
   report finished work, decide reviews, claim the next task by its tags,
   comment on tasks, publish skills, call APIs through stored connections,
-  deploy static sites, search, and share with teams.
+  deploy sites, search, edit your profile, and share with teams.
   Use when: "tokenrip", "use the rip CLI", "load the workspace", "pick up the
   project", "what changed in the workspace", "publish an artifact", "share a
   file", "upload a PDF", "create a table", "import a CSV", "start a task",
   "ask before posting or sending", "propose a draft for approval", "report
   what you did", "approve or send back a review", "cancel a proposal", "call
   an API through a connection", "share with my team", "deploy a site".
-  Do NOT use for: local file operations, web browsing or scraping, database
-  queries, or git operations.
-version: 2.6.18
+  Do NOT use for: local files, web browsing or scraping, direct database
+  connections, or git.
+version: 2.6.19
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -31,6 +31,7 @@ allowed-tools:
   - Bash(rip *)
   - Bash(npm install -g @tokenrip/cli)
   - Bash(which rip)
+  - Bash(command -v rip || npm install -g @tokenrip/cli)
 metadata:
   openclaw:
     requires:
@@ -51,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.18 -->
+<!-- tokenrip-skill-version: 2.6.19 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -59,17 +60,24 @@ metadata:
 > Tokenrip workspace: load it, read and write its artifacts, tables, folders,
 > and tasks, and see what earlier agents worked toward.
 
-## Auto-Installation
+## Installation and version check
 
-The canonical updater lives at
-`https://tokenrip.com/.well-known/skills/tokenrip/update.sh` (single source
-of truth). It installs the CLI if missing, refreshes this
-SKILL.md and its references when the remote version is newer, and exits
-cleanly otherwise.
+The skill needs the `rip` CLI from npm (`@tokenrip/cli`). Install it only if it
+is missing:
 
 ```bash
-curl -fsSL https://tokenrip.com/.well-known/skills/tokenrip/update.sh | bash
+command -v rip || npm install -g @tokenrip/cli
 ```
+
+This file's version is its `version:` line above. Once per session, compare
+it with `rip --version`:
+
+- **The CLI is newer than this file:** the skill is out of date. Tell your
+  person and suggest refreshing it ([CLI Updates](#cli-updates)).
+- **rip prints that a newer rip is available:** suggest `rip update`.
+- **Otherwise:** nothing to do.
+
+Only suggest: run an update or reinstall only when your person asks you to.
 
 # Tokenrip — the shared workspace for people and agents
 
@@ -264,7 +272,7 @@ How did the review end? (rip task show <id>: Latest round; rip workspace load li
   cancelled → it was cancelled and waits on no one: do not carry it out
   It failed? Propose again with what went wrong, or rip task cancel <id> --reason "…". Never act twice.
 
-Did work worth knowing that needed no approval? REPORT it (with an id: a later result on a Done task):
+Did work worth knowing that needed no review (nothing posted, sent or published outside the workspace)? REPORT it (with an id: a later result on a Done task):
   → rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
 
 A review addressed to you (load: "decide")?
@@ -433,7 +441,7 @@ rip task show 7a1c2d1e-... --json   # approvedRound.final.text: the exact text t
 rip task done 7a1c2d1e-... --result-text "Posted" --link url:https://x.com/acme/status/1
 rip task report 7a1c2d1e-... --result-text "12 likes"      # a later result goes on the same task
 
-# 6. Report work that needed no approval. Stopping half done? Put it back to To do, its body saying how far it got
+# 6. Report work that needed no review (nothing posted, sent or published outside the workspace). Stopping half done? Put it back to To do, its body saying how far it got
 rip task report --workspace-id 4f2c1b90-... --title "Drafted the FAQ" --link artifact:<publicId>
 rip task stop 9b2e4f6a-...
 rip task update 9b2e4f6a-... --expected-revision 3 --body "Replied to 4 of 9; the rest need pricing"
@@ -485,7 +493,7 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `RATE_LIMITED` | A limit was reached and nothing was changed. The CLI waits a short limit out itself (one stderr line per wait; never an upload or a deploy). When it gives up, wait for `Retry after:` when it is shown, then run the same command again; slow a loop down |
 | `SERVER_BUSY` | 503: Tokenrip is busy and nothing was changed. The CLI waits this out itself (never an upload or a deploy). When it gives up, wait a few seconds and run the same command again; slow a loop down |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
-| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs a paid plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)`. For a team without a plan (`none`), tell the person the limit. At the maximum, delete a workspace. Nothing was created or restored; do not retry |
+| `WORKSPACE_LIMIT_REACHED` | The owner has no room for another live workspace: a team-owned workspace needs a paid plan, and every owner has a maximum. The error prints `Workspaces: <used> of <limit> (<plan>)`. For a team without a plan (`none`), tell the person the limit. At the maximum, tell the person: they can free a slot by deleting a workspace they choose. Delete one only when the person names that workspace and approves deleting it (`rip workspace delete` moves it and everything in it to the trash). Nothing was created or restored; do not retry |
 | `TEAM_HAS_PLAN` | The team is on a paid plan, so it cannot be deleted (or left by its last member). Its person cancels the plan in Billing first |
 | `DELETED` / `WORKSPACE_DELETED` | The item (or its folder, named by `via`), or its workspace, is in the trash until `purgeAt`. If you may delete it, `rip trash restore <id>`; a 409 `WORKSPACE_DELETED` on restore means restore the workspace first ([Deleting and restoring](#deleting-and-restoring)) |
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
@@ -502,9 +510,10 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 ## CLI Updates
 
 ```bash
-rip update                               # check for and install latest version
+rip update                               # check for and install the latest CLI
 ```
 
-After updating, refresh the skill file:
-- **Claude Code:** `npx skills add tokenrip/cli`
-- **Claude Cowork:** Copy from https://tokenrip.com/.well-known/skills/tokenrip/SKILL.md
+Then refresh this skill file the way it was installed:
+- **Claude Code / skills CLI:** `npx skills add tokenrip/cli`
+- **ClawHub / OpenClaw:** `clawhub update tokenrip-cli`
+- **Claude Cowork or by hand:** copy https://tokenrip.com/.well-known/skills/tokenrip/SKILL.md and its `references/`

@@ -171,7 +171,7 @@ rip connection operation add minimax-image --team quintel --name generate \
 rip connection operation list posthog --team quintel          # each with its toolName and class
 rip connection operation get posthog query --team quintel
 rip connection operation update posthog query --team quintel --title 'Query PostHog with HogQL'
-rip connection operation update minimax-image generate --team quintel --no-kind   # now a read
+rip connection operation update minimax-image generate --team quintel --title 'Generate an image from a prompt'   # still a Write: its --kind adds is kept
 rip connection operation rm posthog query --team quintel      # the tool leaves every agent's list
 ```
 
@@ -185,7 +185,7 @@ rip connection operation rm posthog query --team quintel      # the tool leaves 
 | `--place <field=/pointer>` | Repeatable: where an input goes in the body; a field without one goes to the top level under its own name. GET and DELETE send inputs as query parameters instead |
 | `--response </pointer>` | The part of the provider's JSON answer to return; the whole answer by default |
 | `--kind <kind>` | Repeatable: `adds`, `modifies`, `destroys`, `widens`, `publishes`, `sends`. None means it only reads |
-| `--no-fixed-body`, `--no-place`, `--no-response`, `--no-kind` | `update` only: clear that part (`--no-kind` makes it a read) |
+| `--no-fixed-body`, `--no-place`, `--no-response`, `--no-kind` | `update` only: clear that part. `--no-kind` makes it a read, so use it only when the call truly changes nothing at the provider; an update that keeps the same call keeps its kinds |
 
 **The class follows from the kinds**, and hosts use it to decide when to ask the person: none is **Read**; `adds`, `modifies` or `publishes` is **Write** (a change at the outside service); `destroys`, `widens` or `sends` is **Sensitive** (cannot be undone; hosts ask every time). The kinds are the declarer's honest statement: declare what the call does at the provider. Spending money is not a kind.
 

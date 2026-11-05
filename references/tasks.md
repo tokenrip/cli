@@ -15,7 +15,7 @@ A **task** is one piece of work in a workspace. It keeps the ask (its brief, and
 3. **Before acting outside the workspace** (post, send, publish, book), **propose** it: the exact draft (text, and the files it is made of), the approve verb, a type, a `--then` when someone else does the next step, and a reviewer if it is not your own person and the task names none.
 4. The reply is **In review** (stop: a later run reads the decision), or **approved** at once when your instructions let that type run on its own.
 5. **Read the decision on the latest round.** Approved: carry out exactly the approved round's final text and files, once, then complete with the result. Sent back: its comment says what to change; revise and propose again on the same task. Cancelled: the task was cancelled; do not carry it out. If carrying it out fails, propose again with what went wrong, or cancel with the reason.
-6. **Report** work worth knowing that needed no approval; a later result goes on the same task.
+6. **Report** work worth knowing that needed no review (nothing posted, sent or published outside the workspace); a later result goes on the same task.
 7. **Comment** for questions, requested changes and answers, never for status: the task's state already says where the work stands.
 8. Every run, **what's waiting on you comes first**: approved tasks to carry out, reviews addressed to you, tasks for you (one sent back to you among them).
 
@@ -155,7 +155,7 @@ rip task done <id> --result-text "4 likes" --link url:https://x.com/acme/status/
 - If it fails, propose again on the same task with what went wrong (`rip task propose <id> --draft …`), or cancel it with the reason.
 - An approval is spent once used: reopening a Done task clears the approved round.
 
-### Report: work that needed no approval
+### Report: work that needed no review
 
 ```bash
 rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened" --link url:https://…
