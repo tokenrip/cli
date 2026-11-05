@@ -19,7 +19,7 @@ export interface TaskListOptions {
   since?: string;
   limit?: string;
   cursor?: string;
-  /** `created` (default) or `finished` (done and cancelled only). */
+  /** `created` or `finished` (done and cancelled only); omitted, the server picks queue order for open statuses. */
   order?: string;
   /** `me`: reviews In review addressed to you. */
   reviewer?: string;
@@ -50,7 +50,8 @@ export interface TaskAddOptions {
 }
 
 export interface TaskUpdateOptions {
-  expectedRevision: string;
+  /** The revision read: needed with any field; a move alone (`position`, `before`, `after`) needs none. */
+  expectedRevision?: string;
   title?: string;
   body?: string;
   assignee?: string;
@@ -63,6 +64,12 @@ export interface TaskUpdateOptions {
   link?: string[];
   /** Files and pages to remove from what the work uses, by target: `artifact:<id>` or `url:<address>`. */
   removeLink?: string[];
+  /** Move it to the front (`top`) or back (`bottom`) of the queue. */
+  position?: string;
+  /** Move it just before this task in the queue. */
+  before?: string;
+  /** Move it just after this task in the queue. */
+  after?: string;
   why?: string;
 }
 
@@ -192,10 +199,24 @@ export function parseRevision(value: string): number {
   return revision;
 }
 
+/** The move `--position`, `--before` or `--after` names, at most one, as the server's `position`. */
+function queuePosition(options: TaskUpdateOptions): string | { before: string } | { after: string } | undefined {
+  const given = (['position', 'before', 'after'] as const).filter((flag) => options[flag] !== undefined);
+  if (given.length > 1) throw invalid(`Give one of --position, --before and --after, not ${given.map((flag) => `--${flag}`).join(' and ')}: a task moves to one place.`);
+  if (options.position !== undefined) {
+    if (options.position !== 'top' && options.position !== 'bottom') throw invalid(`--position takes top or bottom, got "${options.position}"; use --before or --after <id> to place it beside a task.`);
+    return options.position;
+  }
+  if (options.before !== undefined) return { before: options.before };
+  if (options.after !== undefined) return { after: options.after };
+  return undefined;
+}
+
 export async function taskUpdate(id: string, options: TaskUpdateOptions): Promise<void> {
-  const expectedRevision = parseRevision(options.expectedRevision);
+  const position = queuePosition(options);
+  const body: Record<string, unknown> = {};
+  if (options.expectedRevision !== undefined) body.expectedRevision = parseRevision(options.expectedRevision);
   const { client } = requireAuthClient();
-  const body: Record<string, unknown> = { expectedRevision };
   if (options.title !== undefined) body.title = options.title;
   if (options.body !== undefined) body.body = options.body;
   if (options.assignee !== undefined) body.assignee = options.assignee;
@@ -207,6 +228,7 @@ export async function taskUpdate(id: string, options: TaskUpdateOptions): Promis
   if (addLinks.length) body.addLinks = addLinks;
   const removeLinks = parseLinkFlags(options.removeLink, '--remove-link', false);
   if (removeLinks.length) body.removeLinks = removeLinks;
+  if (position !== undefined) body.position = position;
   if (options.why !== undefined) body.why = options.why;
   const { data } = await client.patch(taskPath(id), body);
   outputSuccess(data.data, formatTask);
@@ -224,17 +246,17 @@ export interface TaskStartOptions extends TaskWriteOptions {
 
 /**
  * Start a free task by its id, or renew your own hold (an agent's lease; never shorter). Or, with
- * `--workspace-id` and no id, start by tags: the oldest To do task there matching `--type` and
- * `--step`: with no tag, only a task for this agent; with a tag, also one for no one or for its person
+ * `--workspace-id` and no id, start by tags: the first To do task there in queue order matching
+ * `--type` and `--step`: with no tag, only a task for this agent; with a tag, also one for no one or for its person
  * with no agent named. An empty answer prints "No task" and exits 0.
  */
 export async function taskStart(id: string | undefined, options: TaskStartOptions): Promise<void> {
   const byTags = options.workspaceId !== undefined || options.type !== undefined || options.step !== undefined;
   if (id !== undefined && byTags) {
-    throw invalid('Name a task id, or --workspace-id (with --type and --step) to start the oldest task matching them; not both.');
+    throw invalid('Name a task id, or --workspace-id (with --type and --step) to start the first To do task in queue order matching them; not both.');
   }
   if (id === undefined && options.workspaceId === undefined) {
-    throw invalid('Name the task id to start, or --workspace-id (with --type and --step) to start the oldest task matching them.');
+    throw invalid('Name the task id to start, or --workspace-id (with --type and --step) to start the first To do task in queue order matching them.');
   }
   const { client } = requireAuthClient();
   const lease = options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {};

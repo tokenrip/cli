@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local file operations, web browsing or scraping, database
   queries, or git operations.
-version: 2.6.17
+version: 2.6.18
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -51,7 +51,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.17 -->
+<!-- tokenrip-skill-version: 2.6.18 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -103,7 +103,7 @@ rip workspace load <workspace>                                # its slug or id: 
 - **Waiting on you**: approved tasks to carry out, reviews addressed to you to decide, and tasks for you to do (a task sent back to you among them, `round n · sent back`), each with the next command; then your proposals In review and the workspace's **Agents** with the `agent:<handle>` that names each one;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - **Recent sessions**: who worked (`You` for your own account, `~alias` for someone else; their agent or the browser), from which tool, and each step: a stated why followed by the changes made for it (each item with its versions, a `rip artifact diff` command per edit, and row counts);
-- open **Tasks**, **Latest changes**, newest first (who, what happened, the item's title and id, and its why), then how many are unread since your last acknowledgement with the `rip workspace changes <slug>` command that reads them in order, and the **Artifacts** index;
+- open **Tasks** in queue order; **Latest changes**, newest first (who, what happened, the item's title and id, and its why), then how many are unread since your last acknowledgement with the `rip workspace changes <slug>` command that reads them in order, and the **Artifacts** index;
 - `rip workspace load <workspace> --artifact-offset|--task-cursor|--activity-cursor …` lines when a list has more.
 
 Read your instructions and what waits on you first, then the pins and the recent sessions. Loading again is safe: it changes nothing (the first load creates this key's reader position; only `rip workspace ack` moves it). **Sessions record themselves**: the server groups your writes (same key and conversation, no gap over 45 minutes) into a session the next agent sees. There is nothing to start or end. A workspace in the trash answers `WORKSPACE_DELETED` (410) to load and every other call; see [Deleting and restoring](#deleting-and-restoring). With `--json`, pins carry `content.content` (inline) or `content.versionId` (read with the same `artifact cat` command). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused with each candidate's id: use the id.
@@ -128,7 +128,7 @@ Read your instructions and what waits on you first, then the pins and the recent
 
 Creation audience requires a workspace: `--workspace-id`, or a `--folder` that is a workspace folder (it puts the artifact in its workspace). Beside `--workspace-id`, `--folder` names a folder in that workspace. Omit `--visibility`, `--team` and `--public-asset` when creating workspace content. At creation, `private` is standalone owner-private access; it does not mean workspace internal. On an existing workspace artifact, `--visibility private` means no public access. If scope is refused, correct the sharing input and keep the same workspace and why.
 
-Every item in a workspace has an **audience**: `internal` (the owner and the owning team's members) or `shared` (guests too: everyone added to the workspace is a guest). An internal editor can also make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Replacing a file someone else wrote needs its version id ([Updating a file](#updating-a-file)); row and task updates carry their revision, and a patch of description or metadata the workspace revision; insert-only table rows need none unless they expand the schema. The server answers `CONFLICT` if a guard you sent is stale. See `references/workspaces.md`.
+Every item in a workspace has an **audience**: `internal` (the owner and the owning team's members) or `shared` (guests too: everyone added to the workspace is a guest). An internal editor can also make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login, and makes it shared; `--visibility private` or `--audience internal` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Replacing a file someone else wrote needs its version id ([Updating a file](#updating-a-file)); row and task updates carry their revision (moving a task in the queue needs none), and a patch of description or metadata the workspace revision; insert-only table rows need none unless they expand the schema. The server answers `CONFLICT` if a guard you sent is stale. See `references/workspaces.md`.
 
 Activity sequences are positions, not counts or content versions. `load` shows the latest changes and how many are unread; `rip workspace changes` reads the unread ones in order and reports history gaps and access changes. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
 
@@ -237,13 +237,15 @@ A **task** is one piece of work in a workspace: To do, Doing, **In review**, Don
 - **Renew during long work:** start the task again before its lease runs out. Once it lapses another agent may take the task, and your propose is then refused `TASK_TAKEN`.
 - **Only the holder writes the task's draft files.** The hold covers the task, not its files.
 
-**Starting by tags** takes the oldest matching To do task in one call, and two agents never get the same one. With no tag it takes only a task for you as this agent; with a tag it also takes one for no one, or for your person with no agent named. For routine work, give the step your instructions name, with the type, and start by them even when you already see a matching task in a list. Never give a type alone: it would also take approved tasks waiting at the next step. "No task" means nothing matched, or a match was locked for a moment by another write: nothing was taken; try again on a later run.
+**Starting by tags** takes the first matching To do task in queue order in one call, and two agents never get the same one. With no tag it takes only a task for you as this agent; with a tag it also takes one for no one, or for your person with no agent named. For routine work, give the step your instructions name, with the type, and start by them even when you already see a matching task in a list. Never give a type alone: it would also take approved tasks waiting at the next step. "No task" means nothing matched, or a match was locked for a moment by another write: nothing was taken; try again on a later run.
+
+**Queue order:** To do tasks wait in a queue; a new one joins the back. Lists of open tasks and load follow it, front first, and starting by tags takes from the front. Move one with `rip task update <id> --position top|bottom` or `--before|--after <id>`; a move needs only `--why`, no revision.
 
 **Comments** carry questions, requested changes and answers, never status: the task's own state already says where the work stands.
 
 ```
 Routine work your instructions describe (writing drafts, posting what was approved)?
-  → rip task start --workspace-id <ws> --type article --step draft    # the oldest open article draft; "No task": nothing to do
+  → rip task start --workspace-id <ws> --type article --step draft    # the first To do article draft in the queue; "No task": nothing to do
   → rip task start --workspace-id <ws>                               # no tags: only a task for you
   → rip task start <id> [--lease-hours 4]                            # one task; again on long work to renew
 

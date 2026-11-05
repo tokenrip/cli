@@ -174,7 +174,7 @@ rip artifact prune-versions <id> [--keep <n>]                                   
 Accepts a UUID, alias (bare or scoped: `~agent/alias`, `_team/alias`), or full URL.
 
 ```bash
-rip artifact get <id>                                 # metadata + permissions
+rip artifact get <id>                                 # metadata, permissions and the tasks that use it
 rip artifact cat <id> [--version-id <versionId>]      # content to stdout
 rip artifact download <id> --output ./report.pdf      # content to a file
 rip artifact download <table-id> --format json        # tables export as csv (default) or json
@@ -266,7 +266,7 @@ rip artifact move <id> --folder <folder-id-or-slug>
 A **task** is one piece of work in a workspace (`todo`, `doing`, `review` (In review), `done`, `cancelled`); every task lives in one. Two free tags carry the workspace's workflow: `--type` (what the work is) and `--step` (where it is); Tokenrip never interprets them. **The claim loop:** start a task (by id, or the next one by tags), work, then propose it (it needs review), complete it, or stop it. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you; comment with questions, requested changes and answers, never status. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`; it may be the assignee, never the one who proposed): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
 
 ```bash
-rip task start --workspace-id <ws> --type article --step draft   # claim the oldest matching To do task ("No task": nothing to do)
+rip task start --workspace-id <ws> --type article --step draft   # claim the first matching To do task in queue order ("No task": nothing to do)
 rip task start --workspace-id <ws>                    # no tags: only a task for you
 rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
 rip task propose <id> --draft-file a.md --draft-artifact <publicId> --then post   # text and files under review; then: the next step
@@ -285,6 +285,7 @@ rip task list --workspace-id <ws> --status done,cancelled --order finished
 rip task add "<title>" --workspace-id <ws> --assignee <who> --reviewer <who> --type <type> --step <step> --link artifact:<id>
 rip task add "<title>" --parent-id <id>        # under a task, in its workspace
 rip task update <id> --expected-revision <n> --title "…" --reviewer <who> --step <step>
+rip task update <id> --position top|bottom           # move it in the queue (or --before|--after <id>); no revision
 
 rip task start <id> --lease-hours 4                  # your key's hold under a LEASE
 rip task start <id>                                  # again on a long run: renews (never shorter)
@@ -296,7 +297,9 @@ rip workspace changes <ws>                           # task events are workspace
 
 A proposal comes back **In review** (stop) or **approved at once** when it goes to your own person and its type is on your instructions' on-its-own list (`doing`, held by you; with `--then`, To do at that step). On a later run its latest round says how it ended: **approved** (carry out only its approved round's final text and files, the reviewer's edits included, then complete it with the result; never act twice; approved with a then, it moved to that step for whoever does it), **sent back** (its comment says what to change: revise and propose again on the same task, with the same `--then`) or **cancelled** (the task was cancelled: do not carry it out). A review's answers are approve and send back; to say no, cancel the task. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
 
-Starting by tags claims the oldest matching To do task in one call; two agents never get the same one. With no tag it takes only a task for this agent; with a tag also one for no one, or for your person with no agent named. Give the step your instructions name (with the type), never a type alone: that also takes approved tasks waiting at the next step. An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; renew it during long work by starting again. Only the holder writes the task's draft files. The person's hold in the dashboard has no lease. Two agents starting one task by id at once resolve at the database: one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start.
+**Queue order:** a workspace's tasks wait in a queue; a new one joins the back. `rip task list` of open statuses (the default) and load's open tasks follow it, front first (`--order created` is newest first), and starting by tags takes from the front. A move (`rip task update <id> --position top|bottom`, or `--before|--after <id>`, one per call) sent with only `--why` needs no `--expected-revision` and changes no revision.
+
+Starting by tags claims the first matching To do task in queue order in one call; two agents never get the same one. With no tag it takes only a task for this agent; with a tag also one for no one, or for your person with no agent named. Give the step your instructions name (with the type), never a type alone: that also takes approved tasks waiting at the next step. An agent's hold belongs to its key, so two agents of one person never share a task. It has a lease (0.25–72h, default 2) that a minute-by-minute sweep returns to To do when it lapses; renew it during long work by starting again. Only the holder writes the task's draft files. The person's hold in the dashboard has no lease. Two agents starting one task by id at once resolve at the database: one wins, the other gets `TASK_TAKEN` with `holder` saying who. Never check-then-start.
 
 `task done` completes a task that is free or yours, from To do as well as Doing; someone else's live hold answers `TASK_TAKEN` and persists nothing, and an In review task `TASK_IN_REVIEW`. `task list` / `task add` without `--workspace-id` answer `WORKSPACE_REQUIRED`.
 

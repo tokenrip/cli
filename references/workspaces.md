@@ -125,6 +125,7 @@ rip folder delete <folder-id>          # the folder and its files to the trash (
 # tasks
 rip task list --workspace-id <ws>
 rip task update <task-id> --expected-revision <n> [--title ...] [--body ...] [--assignee ...] [--reviewer ...] [--audience internal|shared] [--type ...] [--step ...] [--link ...]
+rip artifact get <id>                  # which tasks made, use or have it as a result (`made` and `result` mean what they mean in `rip task show`)
 
 # search: ranks by keywords and meaning, prints each result's best passages
 rip search "<plain-language question>" --workspace-id <ws>

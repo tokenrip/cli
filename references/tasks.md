@@ -41,7 +41,7 @@ rip task list --workspace-id <ws> --status done,cancelled --order finished   # m
 rip task show <id>                                       # everything: who, the rounds, what to carry out, links, children, the newest timeline entries
 ```
 
-Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (`created`, the default, or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
+Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (omitted: [queue order](#queue-order) when every status is open, else newest first; `created`, newest first; or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
 
 ### Type and step
 
@@ -56,14 +56,27 @@ Two free tags carry your workspace's own workflow. **`type`** is what the work i
 ```bash
 rip task start <id>                                                  # one task by its id
 rip task start <id> --lease-hours 4                                  # again on long work: renews your lease
-rip task start --workspace-id <ws> --type article --step draft       # the oldest To do task matching the tags
-rip task start --workspace-id <ws>                                   # no tags: the oldest To do task for this agent
+rip task start --workspace-id <ws> --type article --step draft       # the first To do task in queue order matching the tags
+rip task start --workspace-id <ws>                                   # no tags: the first To do task in queue order for this agent
 ```
 
 - **By id**: a free task (To do, or an agent hold whose lease lapsed) becomes yours under a lease (default 2 hours, 0.25 to 72). Starting your own hold again renews it, never shorter. Someone else's live hold is `TASK_TAKEN`.
-- **By tags** (`--workspace-id` instead of an id): one call finds the oldest To do task in your audiences that matches `--type` and `--step` and starts it for you; two agents starting at once never get the same task. With **no tag** it takes only a task for you as this agent (what load lists as waiting on you). With **a tag** it also takes one for no one, or for your person with no agent named. It never takes another agent's or another person's task, and never one In review, Doing, Done or Cancelled. It prints **No task** (exit 0) when none matches, or when a match is busy for a moment: nothing was taken; try again on your next run.
+- **By tags** (`--workspace-id` instead of an id): one call finds the first To do task in queue order ([Queue order](#queue-order)) in your audiences that matches `--type` and `--step` and starts it for you; two agents starting at once never get the same task. With **no tag** it takes only a task for you as this agent (what load lists as waiting on you). With **a tag** it also takes one for no one, or for your person with no agent named. It never takes another agent's or another person's task, and never one In review, Doing, Done or Cancelled. It prints **No task** (exit 0) when none matches, or when a match is busy for a moment: nothing was taken; try again on your next run.
 - **Give the step, or no tags; never a type alone.** A type alone also matches approved tasks waiting at the next step (`--type article` would take an article waiting at `post` as readily as one at `draft`).
 - The answer is the task whole: its brief, its files and links, its latest round (a sent-back round's comment says what to change) and its approved round (what to carry out).
+
+### Queue order
+
+A workspace's tasks wait in a queue. A new task joins the back, so until anyone moves one the queue is creation order; a task keeps its place through start, stop, a send back and the rest.
+
+- **What follows it:** `rip task list` when every status asked for is open (the default `todo,doing`, or `--status todo`), front of the queue first; the open tasks in `rip workspace load`; and starting by tags, which takes from the front. `--order created` lists newest first instead; a list with Done or Cancelled is newest first by default.
+- **Moving a task:** `rip task update <id> --position top` (or `bottom`) puts it at the front (or back); `--before <id>` or `--after <id>` puts it beside another task in the workspace you can read. One of the three per call (two are `INVALID_ARGUMENT` before any request); naming the task itself, or one elsewhere, is `INVALID_FIELD`.
+- **A move needs no revision.** Sent with only `--why`, it needs no `--expected-revision`, changes no revision and records no change. Sent beside other fields, `--expected-revision` covers those fields as usual.
+
+```bash
+rip task update <id> --position top --why "Ship the pricing post first"     # started next by tags
+rip task update <id> --after <other-id> --why "Write it after the outline"
+```
 
 **Two rules go with a hold:**
 
@@ -92,6 +105,7 @@ To name a principal in `--assignee` or `--reviewer`, give a person's account id 
 rip task add "Write the launch article" --workspace-id <ws> --type article --step draft --reviewer alek --link artifact:<style-guide-id>
 rip task add "Reply to each launch mention" --parent-id <id>     # under a task: its workspace is the parent's
 rip task update <id> --expected-revision <n> --reviewer agent:<handle>     # title/body/assignee/reviewer/audience/type/step/links
+rip task update <id> --position top                                         # move it in the queue: no revision ([Queue order](#queue-order))
 ```
 
 ### Propose: ask before it goes out
@@ -229,12 +243,32 @@ Every write states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any w
 
 ### Files and links
 
-A task has one list of **links**, each with a role: **context** (what the work uses: the brief's files, the draft files, a post to reply to) or **result** (what came of it). Each points at an artifact in the task's workspace (optionally at a version) or at a URL. `rip task show` prints them under **Files & links** and **Result links**.
+A task has one list of **links**, each with a role: **context** (what the work uses: the brief's files, the draft files, a post to reply to) or **result** (what came of it). Each points at an artifact in the task's workspace (optionally at a version) or at a URL. `rip task show` prints the files under **Files** (see [A task's files](#a-tasks-files)) and the URLs under **Links**, each result marked `(result)`. A write's output (start, done, propose and the rest) prints the links under **Files & links** and **Result links**.
 
 - Context links: `--link artifact:<publicId>[@version]` or `--link url:<https://…>` on `add`, `update` and `propose` (repeatable, up to 50 a call); `rip task update <id> --remove-link artifact:<publicId>` (or `url:…`) removes one. A proposal's draft files are linked as context too.
 - Result links: `--link` on `done` and `report`; they are never removed.
 - An artifact must live in the task's workspace, and on a shared task it must be shared (`INVALID_LINKS`); each target once per role, at most 100 per role per task. One in the trash is refused (410 `DELETED`) and left out of reads until restored; purging it removes its links.
 - A version on a link is a pointer, not a keep: if that version is removed later, the link reads the file's current version. Only the versions a review round uses are kept.
+
+### A task's files
+
+`rip task show` (and `--json`'s `files`) lists every file the task links or names in a round, once, with how the task relates to it:
+
+- **`made`**: a round of this task proposed the file as new (version 1, written by the round's proposer). A draft the task wrote.
+- **`result`**: a result link of this task names it.
+- **`otherTasks`**: how many other tasks you can read link it or name it in a round.
+- **`onlyThisTask`**: no other task uses it, including tasks you cannot see.
+
+A file is **made for this task** when it is `made` and `onlyThisTask`. Files in the trash are not listed.
+
+**Tidying up.** When a task is cancelled, the files made for this task may be moved to the trash. After a task is completed, move them to the folder the workspace's instructions name for finished work; trash them only when the person or the instructions ask:
+
+```bash
+rip artifact bulk delete --ids "<id>,<id>"                     # to the trash, restorable for 30 days
+rip artifact bulk move --ids "<id>,<id>" --folder <slug>       # into the workspace's folder for finished work
+```
+
+Never a file another task uses (`onlyThisTask` false), and never a result, even one the task made (`rip task show` reads `made for this task · result`).
 
 ### Completing
 
@@ -282,8 +316,8 @@ rip artifact update 8d2a4b61-... linkedin-post.md
 rip task propose 7a1c2d1e-... --draft-file article.md --draft-artifact 3c9e7f10-... --draft-artifact 8d2a4b61-... --then post
 # → In review: stop.
 
-# A later writer run: the sent-back task comes back when it is the oldest matching To do task
-# the writer may take (an older matching one comes first; the sent-back task waits its turn)
+# A later writer run: the sent-back task comes back when it is the first matching To do task in
+# queue order the writer may take (one ahead of it comes first; the sent-back task keeps its place)
 rip task start --workspace-id content --type article --step draft
 # → Latest round (1): sent back, with the comment "Cut the pricing paragraph; end with the waitlist link"
 rip artifact update 8d2a4b61-... linkedin-post.md      # revised as the comment asks (and article.md)
@@ -353,7 +387,7 @@ That value lands on the task's `holder.surface` and every activity row — so a 
 | `VERSION_IN_USE` | (`rip artifact delete-version`) A review round uses that version, so it is kept while the task exists; `In use by:` names the task and round |
 | `COMMENT_NOT_YOURS` / `COMMENT_NOT_FOUND` | Only a comment's author changes or deletes it: add your own instead / the comment is deleted, or on a task you cannot read |
 | `CONFLICT` | On `decide`: the draft changed since you read it (`currentRevision`). Read it again before deciding. On `update`: re-read and retry |
-| `PRECONDITION_REQUIRED` | `decide` and `update` need `--expected-revision` |
+| `PRECONDITION_REQUIRED` | `decide` and `update` need `--expected-revision` (a move alone, `--position`/`--before`/`--after` with only `--why`, needs none) |
 | `TASK_NOT_STARTED` | `stop` on a task that is not Doing (or your lease already lapsed). `rip task show <id>` |
 | `TASK_CLOSED` | The task is cancelled (or, for `start`, done). Reopen it first if the work is still wanted |
 | `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Already done (reopen first) / only done or cancelled tasks reopen. `rip task show <id>` |

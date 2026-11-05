@@ -181,6 +181,7 @@ rip table update <row-id> --data … --expected-revision <row-rev>
 rip table delete --row-ids <id,id> [--expected-revisions '{"<row-id>": <rev>}']
 rip task add "<title>" --workspace-id <ws> [--audience …]   ·   rip task list --workspace-id <ws>
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --audience]
+rip task update <task-id> --position top|bottom | --before|--after <task-id>   # a move: no revision
 ```
 
 New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision, and a sent revision with no stored row is refused `CONFLICT`. A plain append of a stored key is refused, so when several agents add one key, one wins (`references/workspaces.md` § Coordinating agents on a row). History sequence numbers never guard content. Workspace creation uses audience; omit standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. Audience requires explicit workspace identity (`INVALID_SCOPE`). Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
@@ -239,9 +240,23 @@ Options: `--since <iso|days>`, `--limit <n>` (1–100, default 20), `--type <typ
 
 Metadata and permissions for an artifact: visibility, folder, teams, workspace and audience, and who can modify it. The `Versions:` line names the command that lists them (`Versions:    3 (rip artifact versions <id>)`); `History:` gives the effective history setting and where it comes from (`off (the default)`, `keep the last 5 earlier versions (from its folder)`; `--json`: `history: { value, from }`, null for a table), and `--json` carries `currentVersionNumber`.
 
+For a workspace member, a file in a workspace also prints the tasks that use it, after `Folder:`: the total, then one line per task (`<status> · <relationship> · <title> (<task id>)`), open tasks first in queue order, then finished ones, latest first, at most 20, and `… and N more` past that. The relationship means what `made` and `result` mean in `rip task show`: `made here` (the task made the file), `result` (one of the task's results), `made here · result` (both), else `uses`. A reader outside the workspace, a standalone file and a file no task uses get no block; `--json` carries `tasks: [{ id, title, status, made, result }]` and `tasksTotal`.
+
 ```bash
 rip artifact get 550e8400-...
 rip artifact get '~alice/dashboard'
+```
+
+```
+Launch plan
+  ID:          550e8400-...
+  ...
+  Folder:      plans
+  Tasks:       3
+    doing · made here · Draft the launch plan (7c9e6679-...)
+    todo · uses · Review the launch plan (a3bb189e-...)
+    done · result · Pick the launch date (16fd2706-...)
+  Modifiable:  yes (your access: write)
 ```
 
 ### `rip artifact cat <identifier>`
@@ -535,11 +550,11 @@ rip task list --parent-id 4f2c1b90-…
 rip task list --workspace-id 7a1c2d1e-… --status done,cancelled --order finished
 ```
 
-Required: `--workspace-id <id>`, or `--parent-id <id>` alone (a task's children, in its workspace); the CLI rejects neither or both before sending a request. Options: `--status <list>` (comma list of `todo,doing,review,done,cancelled` or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order <created|finished>` (`created`, newest first, is the default; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--type <type>`, `--step <step>`, `--mine` (for your account with no agent named, for you as an agent, or held by you; not a sibling agent's), `--unassigned` (for no one, held or not; the CLI refuses it beside `--mine` before sending a request), `--reviewer me` (reviews In review addressed to you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row shows the task's type and step, its latest round (`round 2 · sent back`) and who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`), who an In review task waits on (`waiting on You`, `waiting on anyone`), or who it is for (`for ~alek`).
+Required: `--workspace-id <id>`, or `--parent-id <id>` alone (a task's children, in its workspace); the CLI rejects neither or both before sending a request. Options: `--status <list>` (comma list of `todo,doing,review,done,cancelled` or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order <created|finished>` (omitted, a list whose every status is open, the default `todo,doing` included, comes in queue order, front first; one with `done` or `cancelled` comes newest first. `created` is newest first; `finished` sorts by finish time and needs `--status` of only `done` and/or `cancelled`), `--type <type>`, `--step <step>`, `--mine` (for your account with no agent named, for you as an agent, or held by you; not a sibling agent's), `--unassigned` (for no one, held or not; the CLI refuses it beside `--mine` before sending a request), `--reviewer me` (reviews In review addressed to you), `--since <iso>` (ISO timestamp or a positive number of days), `--limit <n>` (max 200), `--cursor <cursor>` (replay with the same filters and order). Each row shows the task's type and step, its latest round (`round 2 · sent back`) and who holds a Doing task (`You · laptop (Claude Code)`, `~alek's agent · Codex`, `~alek · in the browser`), who an In review task waits on (`waiting on You`, `waiting on anyone`), or who it is for (`for ~alek`).
 
 ### `rip task show <id>`
 
-One task: its `Type:` and `Step:`; who it is for (`For:`) and who reviews it (`Reviewer:`; "any person who can edit tasks" when none), each agent with its `[agent:<handle>]`; the holder (`Doing:` who, since, and an agent hold's lease); the parent; who completed it; `Result:`; the **Approved text (round n, carry out exactly this)** and **Approved files (round n, these versions)** of the approved round; the **Latest round** (its step, proposer, verb, `then`, the draft text and files, and its outcome: `approved by ~ana at …`, `approved on its own: Grok's instructions v4`, `sent back by You at …` with the comment, `cancelled`, `withdrawn`, `replaced`, or in review); the brief and payload; `Files & links:` and `Result links:`; `Children (<n>):`; and `Timeline (newest first):`, the newest 30 entries (rounds, comments with their ids, and steps with who and why), with `rip task timeline <id>` when there are older ones. A cancelled task shows `Cancelled:` with who and the reason. `--round <n>` adds that round whole, with each draft file's version, whether the file changed since, and the `rip artifact diff … --base …` command against the same file in the previous round at the same step.
+One task: its `Type:` and `Step:`; who it is for (`For:`) and who reviews it (`Reviewer:`; "any person who can edit tasks" when none), each agent with its `[agent:<handle>]`; the holder (`Doing:` who, since, and an agent hold's lease); the parent; who completed it; `Result:`; the **Approved text (round n, carry out exactly this)** and **Approved files (round n, these versions)** of the approved round; the **Latest round** (its step, proposer, verb, `then`, the draft text and files, and its outcome: `approved by ~ana at …`, `approved on its own: Grok's instructions v4`, `sent back by You at …` with the comment, `cancelled`, `withdrawn`, `replaced`, or in review); the brief and payload; `Files:`, one line per file the task links or names in a round (its title, `[id]`, its folder's slug, and how the task relates to it: `made for this task`, `made here, also used by N other task(s)`, `made here, used by another task`, `result`, `used by N other task(s)`, `used by another task` or `used only by this task`, with ` · result` after a made line when the file is also a result), and `Links:`, the task's URL links, each result marked `(result)`; `Children (<n>):`; and `Timeline (newest first):`, the newest 30 entries (rounds, comments with their ids, and steps with who and why), with `rip task timeline <id>` when there are older ones. A write's output (start, done, propose and the rest) carries no files, so it prints the links as `Files & links:` and `Result links:` instead. A cancelled task shows `Cancelled:` with who and the reason. `--round <n>` adds that round whole, with each draft file's version, whether the file changed since, and the `rip artifact diff … --base …` command against the same file in the previous round at the same step.
 
 ### `rip task timeline <id>`
 
@@ -559,18 +574,20 @@ Required: `<title>`, and `--workspace-id <id>` or `--parent-id <id>` (a task thi
 
 ### `rip task update <id>`
 
-Update the title, brief, roles, audience, tags, or the files and links the work uses.
+Update the title, brief, roles, audience, tags, or the files and links the work uses; or move the task in the workspace's queue.
 
 ```bash
 rip task update 4f2c1b90-… --expected-revision 3 --title "Review pricing copy (v2)"
 rip task update 4f2c1b90-… --expected-revision 4 --step post --link artifact:8d2a4b61-… --remove-link url:https://old.example
+rip task update 4f2c1b90-… --position top                  # the front of the queue: started next by tags
+rip task update 4f2c1b90-… --after 9b1d0e2a-…
 ```
 
-Required: `--expected-revision <n>`. Options: `--title`, `--body`, `--assignee`, `--reviewer`, `--audience`, `--type` / `--no-type` (setting it records you as who gave it), `--step` / `--no-step`, `--link <type:id>` (adds a context link, repeatable), `--remove-link <type:id>` (removes one by target, `artifact:<id>` or `url:<…>`; result links stay), `--why <text>`. While the task is In review, a new `--reviewer` re-addresses its open review (never to the one who proposed it: `INVALID_REVIEWER`), and a new `--assignee` is whom a send back returns it to.
+`--expected-revision <n>` (the revision you read) is needed whenever another field changes (`PRECONDITION_REQUIRED` without it, `CONFLICT` when stale). A move: one of `--position top|bottom`, `--before <id>` or `--after <id>` (two are `INVALID_ARGUMENT` before any request, as is a position other than top or bottom). `--before`/`--after` name another task in this workspace you can read (`INVALID_FIELD` otherwise). Sent with only `--why`, a move needs no revision, changes no revision and records no change; beside other fields, the revision covers those fields. A task keeps its place through start, stop, a send back and the rest; a new task joins the back. Options: `--title`, `--body`, `--assignee`, `--reviewer`, `--audience`, `--type` / `--no-type` (setting it records you as who gave it), `--step` / `--no-step`, `--link <type:id>` (adds a context link, repeatable), `--remove-link <type:id>` (removes one by target, `artifact:<id>` or `url:<…>`; result links stay), `--why <text>`. While the task is In review, a new `--reviewer` re-addresses its open review (never to the one who proposed it: `INVALID_REVIEWER`), and a new `--assignee` is whom a send back returns it to.
 
 ### `rip task start [id]`
 
-Start a task: it becomes your key's hold under a lease. By id: a free task (To do, or an agent hold whose lease lapsed); starting a task you already hold renews the lease, never shorter. By tags (`--workspace-id` instead of an id): the oldest To do task there matching `--type` and `--step`, claimed in one call (two agents never get the same one). With no tag it takes only a task for this agent; with a tag it also takes one for no one, or for your person with no agent named; never another agent's or another person's. Give the step (with the type) for routine work, never a type alone, which would also take approved tasks waiting at the next step.
+Start a task: it becomes your key's hold under a lease. By id: a free task (To do, or an agent hold whose lease lapsed); starting a task you already hold renews the lease, never shorter. By tags (`--workspace-id` instead of an id): the first To do task there in queue order matching `--type` and `--step`, claimed in one call (two agents never get the same one). With no tag it takes only a task for this agent; with a tag it also takes one for no one, or for your person with no agent named; never another agent's or another person's. Give the step (with the type) for routine work, never a type alone, which would also take approved tasks waiting at the next step.
 
 ```bash
 rip task start 7a1c2d1e-…
@@ -630,7 +647,7 @@ rip task done 4f2c1b90-… --result-text "4 likes" --link url:https://example.co
 rip task done 4f2c1b90-… --link artifact:a1b2c3d4-…@2
 ```
 
-Options: `--result-text <text>` (what came of it, at most 280 characters; replaces any earlier text), `--link <type:id>` (result links, repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50; `rip task show` lists them under `Result links:`), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`.
+Options: `--result-text <text>` (what came of it, at most 280 characters; replaces any earlier text), `--link <type:id>` (result links, repeatable; `artifact:<publicId>[@version]` or `url:<https://…>`, at most 50; `rip task show` lists them under `Files:` (a file) or `Links:` (an address, marked `(result)`)), `--why <text>`. Someone else's live hold is `TASK_TAKEN` and nothing is written; a cancelled task is `TASK_CLOSED`; an In review one is `TASK_IN_REVIEW`.
 
 ### `rip task cancel <id>` / `rip task reopen <id>`
 

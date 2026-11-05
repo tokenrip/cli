@@ -325,6 +325,34 @@ export const formatArtifactDownloaded: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** A task that uses a file, as a member's artifact read lists it (workspace work surface phase 2, D9). */
+interface ArtifactTaskView {
+  id: string;
+  title: string;
+  status: string;
+  made: boolean;
+  result: boolean;
+}
+
+/** What a task is to a file: made here, result (both when both), or uses. */
+function taskRelationship(task: ArtifactTaskView): string {
+  if (task.made) return task.result ? 'made here · result' : 'made here';
+  return task.result ? 'result' : 'uses';
+}
+
+/**
+ * The tasks that use a file: the total, then one line per listed task (open first in queue order, then
+ * finished, latest first, as the server sends them), then how many more. `made` and `result` read as in
+ * `rip task show`: a made file that is also a result says both. None for an outsider or a standalone file.
+ */
+function artifactTaskLines(tasks: ArtifactTaskView[] | undefined, total: number | undefined): string[] {
+  if (!Array.isArray(tasks) || tasks.length === 0) return [];
+  const count = total ?? tasks.length;
+  const lines = [`  Tasks:       ${count}`, ...tasks.map((task) => `    ${task.status} · ${taskRelationship(task)} · ${task.title} (${task.id})`)];
+  if (count > tasks.length) lines.push(`    … and ${count - tasks.length} more`);
+  return lines;
+}
+
 export const formatArtifactMetadata: Formatter = (data) => {
   const lines = [data.title || '(untitled)'];
   if (data.id) lines.push(`  ID:          ${data.id}`);
@@ -346,6 +374,7 @@ export const formatArtifactMetadata: Formatter = (data) => {
     const folderLabel = folder.teamSlug ? `${folder.slug} (team: ${folder.teamSlug})` : folder.slug;
     lines.push(`  Folder:      ${folderLabel}`);
   }
+  lines.push(...artifactTaskLines(data.tasks as ArtifactTaskView[] | undefined, data.tasksTotal as number | undefined));
 
   const teams = data.teams as string[] | undefined;
   if (Array.isArray(teams) && teams.length > 0) lines.push(`  Teams:       ${teams.join(', ')}`);
@@ -1275,6 +1304,45 @@ function taskLinkLine(link: TaskLinkView): string {
   return `  ${title ?? 'Untitled'}  [${id}]${version ? `  v${version.number} (${version.id})` : ''}`;
 }
 
+/** A file of the task detail's `files` (workspace work surface phase 3, D1): derived on read, never on a receipt. */
+interface TaskFileView {
+  artifact: { id: string; title: string | null; type: string; folder: { id: string; slug: string } | null };
+  made: boolean;
+  result: boolean;
+  otherTasks: number;
+  onlyThisTask: boolean;
+}
+
+/** "1 other task", "2 other tasks". */
+const otherTasksWords = (n: number): string => `${n} other task${n === 1 ? '' : 's'}`;
+
+/**
+ * A file's relationship to the task: made for this task (`made && onlyThisTask`), made and used elsewhere,
+ * a result, or used. A made file that is also a result says so: the tidy convention never touches a result.
+ */
+function taskFileRelationship(file: TaskFileView): string {
+  if (file.made) {
+    const made = madeFileWords(file);
+    return file.result ? `${made} · result` : made;
+  }
+  if (file.result) return 'result';
+  if (file.otherTasks > 0) return `used by ${otherTasksWords(file.otherTasks)}`;
+  return file.onlyThisTask ? 'used only by this task' : 'used by another task';
+}
+
+/** A made file: made for this task alone, or made here and used by other tasks (counted when the reader can see them). */
+function madeFileWords(file: TaskFileView): string {
+  if (file.onlyThisTask) return 'made for this task';
+  if (file.otherTasks > 0) return `made here, also used by ${otherTasksWords(file.otherTasks)}`;
+  return 'made here, used by another task';
+}
+
+/** One file: title (else `Untitled`), `[id]`, its folder's slug when it has one, and its relationship. */
+function taskFileLine(file: TaskFileView): string {
+  const { id, title, folder } = file.artifact;
+  return `  ${title ?? 'Untitled'}  [${id}]  ${folder ? `${folder.slug} · ` : ''}${taskFileRelationship(file)}`;
+}
+
 /** A start by tags (task rounds plan M8): the task it took, or "No task" when none matched (nothing was taken). */
 export const formatTaskStarted: Formatter = (data) => {
   const task = data.task as Record<string, unknown> | null | undefined;
@@ -1283,8 +1351,10 @@ export const formatTaskStarted: Formatter = (data) => {
 
 /**
  * `rip task show` — one task: who it is for and who reviews it, the text to carry out (the approved
- * round's final text), its latest round (and `--round`'s), the result, the files and links it uses
- * and its result links, children and the newest page of its timeline. Reads principals, never the deprecated window fields.
+ * round's final text), its latest round (and `--round`'s), the result, its Files (the detail's
+ * derived `files`, each with its relationship) and Links (its URL links, results marked), children
+ * and the newest page of its timeline. A write receipt has no `files`, so it prints "Files & links"
+ * and "Result links" from `links`. Reads principals, never the deprecated window fields.
  */
 export const formatTask: Formatter = (data) => {
   const t = data as Record<string, any>;
@@ -1321,10 +1391,19 @@ export const formatTask: Formatter = (data) => {
   if (t.body) lines.push('', t.body);
   if (t.payload && Object.keys(t.payload).length) lines.push('', 'Payload:', JSON.stringify(t.payload, null, 2));
   const links = (t.links ?? []) as TaskLinkView[];
-  const context = links.filter((link) => link.role === 'context');
-  const resultLinks = links.filter((link) => link.role === 'result');
-  if (context.length) lines.push('', 'Files & links:', ...context.map(taskLinkLine));
-  if (resultLinks.length) lines.push('', 'Result links:', ...resultLinks.map(taskLinkLine));
+  if (Array.isArray(t.files)) {
+    // The detail read: its files (derived, with each one's relationship), then its URL links.
+    const files = t.files as TaskFileView[];
+    const urlLinks = links.filter((link) => link.url != null);
+    if (files.length) lines.push('', 'Files:', ...files.map(taskFileLine));
+    if (urlLinks.length) lines.push('', 'Links:', ...urlLinks.map((link) => `  ${link.url}${link.role === 'result' ? '  (result)' : ''}`));
+  } else {
+    // A write receipt carries links and no files.
+    const context = links.filter((link) => link.role === 'context');
+    const resultLinks = links.filter((link) => link.role === 'result');
+    if (context.length) lines.push('', 'Files & links:', ...context.map(taskLinkLine));
+    if (resultLinks.length) lines.push('', 'Result links:', ...resultLinks.map(taskLinkLine));
+  }
   const children = (t.children ?? []) as Array<Record<string, any>>;
   if (children.length) {
     lines.push('', `Children (${children.length}):`);

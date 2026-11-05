@@ -1771,7 +1771,7 @@ task
   .option('--unassigned', 'Only tasks for no one, held or not (not with --mine)')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
   .option('--since <iso>', 'Only tasks created after this ISO timestamp, or this many days back')
-  .option('--order <order>', "created (default, newest first) or finished (newest finish first; only with --status done and/or cancelled)")
+  .option('--order <order>', "omit for queue order when every status is open (created when any is done or cancelled); created: newest first; finished: newest finish first (only with --status done and/or cancelled)")
   .option('--limit <n>', 'Page size (max 200)')
   .option('--cursor <cursor>', 'Continue from a previous page (same filters and order)')
   .allowExcessArguments(false)
@@ -1805,7 +1805,7 @@ task
 withWhy(task
   .command('update'))
   .argument('<id>', 'Task id')
-  .requiredOption('--expected-revision <n>', 'Current task revision')
+  .option('--expected-revision <n>', 'The revision you read (rip task show): needed when changing any field; a move alone needs none')
   .option('--title <title>', 'Replace the title')
   .option('--body <markdown>', 'Replace the body')
   .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
@@ -1817,8 +1817,17 @@ withWhy(task
   .option('--no-step', 'Clear the step')
   .option('--link <type:id>', 'Add a file or page the work uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
   .option('--remove-link <type:id>', 'Remove one it uses, by target: artifact:<id> or url:<https://…> (repeatable; result links stay)', collectLink, [])
+  .option('--position <top|bottom>', 'Move it to the front (top) or the back (bottom) of the queue')
+  .option('--before <id>', 'Move it just before this task in the queue')
+  .option('--after <id>', 'Move it just after this task in the queue')
   .allowExcessArguments(false)
-  .description('Update task metadata, tags and the files and links it uses')
+  .description('Update task metadata, tags and the files and links it uses, or move it in the queue (one of --position, --before, --after). A move alone changes no revision')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task update 7a1c2d1e-... --expected-revision 3 --title "Draft the launch post"
+  $ rip task update 7a1c2d1e-... --position top                 # started next by tags
+  $ rip task update 7a1c2d1e-... --after 9b1d0e2a-...
+`)
   .action(wrapCommand(async (id, options) => {
     const { taskUpdate } = await import('./commands/task.js');
     await taskUpdate(id, options);
@@ -1854,17 +1863,17 @@ EXAMPLES:
 withWhy(task
   .command('start'))
   .argument('[id]', 'Task id (or start by tags with --workspace-id)')
-  .option('--workspace-id <id>', 'Start by tags: the workspace (id or slug) to take the oldest To do task from that matches --type and --step')
+  .option('--workspace-id <id>', 'Start by tags: the workspace (id or slug) to take the first To do task in queue order from that matches --type and --step')
   .option('--type <type>', 'Start by tags: only a task of this type; with a tag, a task for no one or for your person is taken too')
   .option('--step <step>', 'Start by tags: only a task at this step')
   .option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)')
   .allowExcessArguments(false)
-  .description('Start a task: it becomes yours under a lease; starting your own again renews it. With --workspace-id instead of an id, claim the oldest To do task matching --type and --step: with no tag, only a task for this agent; with a tag, also one for no one or for your person with no agent named. Prints "No task" when none matches (or a match is busy for a moment: try again later)')
+  .description('Start a task: it becomes yours under a lease; starting your own again renews it. With --workspace-id instead of an id, claim the first To do task in queue order matching --type and --step: with no tag, only a task for this agent; with a tag, also one for no one or for your person with no agent named. Prints "No task" when none matches (or a match is busy for a moment: try again later)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip task start 7a1c2d1e-...                                          # a task by its id
-  $ rip task start --workspace-id content --type article --step draft   # the oldest open article draft
-  $ rip task start --workspace-id content                                # the oldest task for this agent
+  $ rip task start --workspace-id content --type article --step draft   # the first To do article draft in queue order
+  $ rip task start --workspace-id content                                # the first To do task for this agent in queue order
 
 Renew during long work: start the task again before its lease runs out. Only the holder writes the
 task's draft artifacts.
