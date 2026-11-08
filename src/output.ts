@@ -1,5 +1,5 @@
 import { CliError, INPUT_REFUSAL_CODES, toCliError } from './errors.js';
-import { outcomeWords, principalWho, taskHolderLine, type Formatter } from './formatters.js';
+import { principalWho, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
 
 let forceJson = false;
 let configHuman = false;
@@ -72,9 +72,10 @@ export function outputError(err: CliError): never {
       if (details.reason) console.error(`Reason: ${details.reason}`);
       if (err.code === 'VERSION_IN_USE' && details.task) console.error(`In use by: task ${details.task}, round ${details.round}`);
       if (details.holder) console.error(`Held by: ${taskHolderLine(details.holder)}`);
+      if (details.output) console.error(`Held by output: ${details.output.id} (${details.output.kind}, ${details.output.status}${details.output.ref ? `, ${details.output.ref}` : ''})`);
       if (details.reviewer !== undefined) console.error(`Reviewer: ${details.reviewer ? principalWho(details.reviewer) : 'any person who can edit tasks'}`);
       if (details.status) console.error(`Status: ${details.status}`);
-      if (details.latestRound !== undefined) console.error(`Latest round: ${details.latestRound ? `${details.latestRound.number} · ${outcomeWords(details.latestRound.outcome)}` : 'none (never proposed)'}`);
+      if (details.latestRound !== undefined) console.error(`Latest round: ${details.latestRound ? `${details.latestRound.number} · ${verdictWords(details.latestRound.verdict)}` : 'none (never proposed)'}`);
       if (err.code === 'RATE_LIMITED' && details.retryAfterSeconds !== undefined) console.error(`Retry after: ${details.retryAfterSeconds} s`);
       if (details.used !== undefined && details.limit !== undefined) console.error(`Workspaces: ${details.used} of ${details.limit}${details.plan ? ` (${details.plan})` : ''}`);
       for (const candidate of details.candidates ?? []) {
@@ -157,6 +158,10 @@ export const ERROR_HINTS: Record<string, string> = {
   TOO_MANY_PROPOSALS: 'You have 200 proposals waiting In review in this workspace. Wait for decisions, or withdraw some with `rip task stop <id>`, before proposing more.',
   TOO_MANY_ROUNDS: 'The task has had 50 review rounds, the most a task holds. Finish it as it stands, or create a new task for the rest.',
   TASK_NOT_DONE: 'A later result goes on a Done task. To finish this one, `rip task done <id> --result-text "…"`.',
+  OUTPUT_EXISTS: 'Another output that is not failed holds this key here: it was claimed or sent, so do not send again. If its claim is stuck, settle it with `rip output update <id> --status sent|failed`.',
+  OUTPUT_SETTLED: 'Only an output still sending is settled; a sent or failed output does not change. Record a new output instead.',
+  JOB_NAME_TAKEN: 'A job in this workspace already has that name, an archived one included: choose another name, or find the archived one with `rip job list --workspace-id <ws> --archived` and restore it (`rip job update <id> --restore`).',
+  JOB_NOT_FOUND: 'No job you can read has that id (a guest sees no jobs): `rip job list --workspace-id <ws>` lists them.',
   VERSION_IN_USE: "A task's review round uses this version, so it is kept while that task exists. Delete another version; `rip task show <task> --round <round>` shows the round.",
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
   AMBIGUOUS_REFERENCE: 'Name it by its id.',
@@ -168,6 +173,7 @@ export const ERROR_HINTS: Record<string, string> = {
   INTERNAL_NEEDS_TEAM: 'Add them as a guest (omit --membership), or give them everything by adding them to the owning team (rip team add <team> <member>); a personal workspace\'s internal access is the owner\'s alone.',
   STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; deleted files count until their trash is emptied, `rip trash purge --all`, with `--team <slug>` for a team\'s or `--workspace-id <id>` for files deleted inside a workspace; `rip artifact prune-versions <id>` clears old versions) or move growing records into a table.',
   ACTIONS_LIMIT_REACHED: 'Nothing was changed. Reading still works. Tell your person: `rip actions` shows your account\'s count and reset, with `--team <slug>` for a team\'s.',
+  FEEDBACK_UNAVAILABLE: 'Nothing was sent. Try again later, or reply to any email from Tokenrip.',
   MAILBOX_CODE_INVALID: 'Use the six-digit code from the latest confirmation email: `rip notify mailbox --code <code>`. Five wrong codes end it; then set the address again.',
   MAILBOX_CODE_EXPIRED: 'The code lasted 30 minutes or five tries. Set the address again for a new one: `rip notify mailbox <address>`.',
   MAILBOX_NOT_PENDING: 'No code is waiting. Set the address first (`rip notify mailbox <address>`), then confirm with the emailed code; `rip notify` shows the mailbox.',

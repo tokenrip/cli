@@ -178,16 +178,26 @@ export const formatActionsUsage: Formatter = (data) => {
     lines.push('  Agents are paused until then; a person can still make changes in the browser.');
   }
   lines.push('');
-  const workspaces = (d.workspaces ?? []) as Array<{ id: string | null; name: string | null; actions: number }>;
+  const workspaces = (d.workspaces ?? []) as Array<{
+    id: string | null; name: string | null; actions: number;
+    agents?: Array<{ agent: TaskPrincipalView; actions: number }>; unattributed?: number;
+  }>;
   if (workspaces.length === 0) lines.push('Workspaces: none');
   else {
     lines.push('Workspaces:');
     for (const w of workspaces) {
       lines.push(`  ${w.actions.toLocaleString('en-US')}  ${w.id === null ? '(purged workspaces)' : `${w.name}  (${w.id})`}`);
+      // Each agent's count, then what no agent is recorded for (a server from before per-agent counts sends neither).
+      for (const row of w.agents ?? []) lines.push(`      ${row.actions.toLocaleString('en-US')}  ${principalLine(row.agent)}`);
+      if (w.agents?.length && w.unattributed) lines.push(`      ${w.unattributed.toLocaleString('en-US')}  no agent recorded`);
     }
   }
   return lines.join('\n');
 };
+
+/** `rip feedback`: the note was accepted (queued), not yet delivered; the team answers by email. */
+export const formatFeedbackSent: Formatter = () =>
+  'Your note is on its way to the Tokenrip team. They may reply to the email on your account.';
 
 /** `rip storage`: the payer, used against the plan's limit, where the bytes are, then the largest artifacts in full. */
 export const formatStorageUsage: Formatter = (data) => {
@@ -1086,17 +1096,26 @@ function instructionsOwner(p: TaskPrincipalView): string {
   return `${accountName(p.account)}'s agent's`;
 }
 
-/** A round's outcome in words; an open round (null) is in review. */
-const ROUND_OUTCOME_WORDS: Record<string, string> = {
+/** A round's verdict in words; an open round (null) is in review. */
+const ROUND_VERDICT_WORDS: Record<string, string> = {
   approved: 'approved', sent_back: 'sent back', cancelled: 'cancelled', withdrawn: 'withdrawn', replaced: 'replaced',
 };
-export function outcomeWords(outcome: string | null | undefined): string {
-  return outcome ? (ROUND_OUTCOME_WORDS[outcome] ?? outcome) : 'in review';
+export function verdictWords(verdict: string | null | undefined): string {
+  return verdict ? (ROUND_VERDICT_WORDS[verdict] ?? verdict) : 'in review';
+}
+
+/**
+ * A round's verdict (null: open). A server before the rename sends only `outcome`, the same value
+ * (window round-outcome-field-window), so a new CLI still reads an old server.
+ */
+export function verdictOf(round: { verdict?: string | null; outcome?: string | null }): string | null {
+  return round.verdict ?? round.outcome ?? null;
 }
 
 /** A task's latest round as summaries carry it (task rounds plan M5): "round 2 · sent back", "round 1 · in review". */
-export function roundWords(round: { number: number; outcome: string | null }): string {
-  return `round ${round.number} · ${outcomeWords(round.outcome)}`;
+// `outcome`: an older server's name for the verdict (window round-outcome-field-window), read by `verdictOf`.
+export function roundWords(round: { number: number; verdict?: string | null; outcome?: string | null }): string {
+  return `round ${round.number} · ${verdictWords(verdictOf(round))}`;
 }
 
 /**
@@ -1127,14 +1146,26 @@ function taskTags(t: Record<string, any>): string {
   return t.type || t.step ? `${t.type ?? '-'}/${t.step ?? '-'}` : '-';
 }
 
-/** `rip task list` — one row per task: status, tags (type/step), title, then who holds it, who it waits on, or who it is for. */
+/** A task's labels as one line (`client:acme, urgent`); empty when it has none, or the server sends none. */
+function taskLabels(t: Record<string, any>): string {
+  return Array.isArray(t.labels) ? (t.labels as string[]).join(', ') : '';
+}
+
+/** A task's job as `name [id]`; `-` when it has none. */
+function taskJob(job: { id?: string; name?: string } | null | undefined): string {
+  return job ? `${job.name} [${job.id}]` : '-';
+}
+
+/** `rip task list` — one row per task: status, tags (type/step), title, then who holds it, who it waits on, or who it is for, the id, its job and its labels. */
 export const formatTaskList: Formatter = (data) => {
   const tasks = ((data as any).tasks ?? []) as Array<Record<string, any>>;
   const nextCursor = (data as any).nextCursor as string | null;
   if (tasks.length === 0) return 'No tasks.';
   const lines = tasks.map((t) => {
     const who = taskWho(t);
-    return `${String(t.status).padEnd(9)} ${taskTags(t).padEnd(24)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]`;
+    const labels = taskLabels(t);
+    const job = t.job ? `  (job ${t.job.name})` : '';
+    return `${String(t.status).padEnd(9)} ${taskTags(t).padEnd(24)} ${String(t.title).slice(0, 60).padEnd(60)} ${who.padEnd(70)} [${t.id}]${job}${labels ? `  ${labels}` : ''}`;
   });
   // The cursor only encodes the active order's key, so it has to be replayed against the
   // same filters — printing a bare command would silently paginate a different query.
@@ -1183,10 +1214,11 @@ function draftFileLines(parts: Array<Record<string, any>>): string[] {
   return lines;
 }
 
-/** A round's outcome with who closed it and when: "sent back by ~ana at …", "in review (waiting for a decision)". */
-function roundOutcomeLine(r: Record<string, any>): string {
-  if (!r.outcome) return 'in review (waiting for a decision)';
-  return `${outcomeWords(r.outcome)}${deciderWords(r)} at ${r.decidedAt}${r.edits?.text != null ? ', with an edit' : ''}`;
+/** A round's verdict with who closed it and when: "sent back by ~ana at …", "in review (waiting for a decision)". */
+function roundVerdictLine(r: Record<string, any>): string {
+  const verdict = verdictOf(r);
+  if (!verdict) return 'in review (waiting for a decision)';
+  return `${verdictWords(verdict)}${deciderWords(r)} at ${r.decidedAt}${r.edits?.text != null ? ', with an edit' : ''}`;
 }
 
 /**
@@ -1204,7 +1236,7 @@ function roundLines(heading: string, r: Record<string, any>, approvedNumber: num
   ];
   if (r.approveVerb) lines.push(`  Approve:   ${r.approveVerb}`);
   if (r.then) lines.push(`  Then:      ${r.then}`);
-  lines.push(`  Outcome:   ${roundOutcomeLine(r)}`);
+  lines.push(`  Verdict:   ${roundVerdictLine(r)}`);
   if (r.appliedThen) lines.push(`  Applied:   then ${r.appliedThen}`);
   if (r.comment) {
     lines.push(`  Comment:   [${r.comment.id}]${r.comment.body == null ? ' (deleted)' : ''}`);
@@ -1225,15 +1257,16 @@ function roundLines(heading: string, r: Record<string, any>, approvedNumber: num
  * an open round reads as proposed. Its texts are cut to 512 bytes; `cut` points at the round whole.
  */
 function roundEntryLines(at: string, r: Record<string, any>, taskId: string | undefined): string[] {
-  const what = r.outcome
-    ? `${outcomeWords(r.outcome)}${deciderWords(r)}${r.appliedThen ? `, then ${r.appliedThen}` : ''}${r.edits?.text != null ? ', with an edit' : ''}`
+  const verdict = verdictOf(r);
+  const what = verdict
+    ? `${verdictWords(verdict)}${deciderWords(r)}${r.appliedThen ? `, then ${r.appliedThen}` : ''}${r.edits?.text != null ? ', with an edit' : ''}`
     : `proposed by ${principalWho(r.proposedBy as TaskPrincipalView)}`;
   const head = `  ${at}  Round ${r.number}${r.step ? ` · ${r.step}` : ''} · ${what}`;
   const body = r.comment?.body != null ? String(r.comment.body).replace(/\n+$/, '') : null;
   const lines = body == null ? [head] : body.includes('\n') ? [`${head}:`, ...indented(body, '    ')] : [`${head}: ${body}`];
   // The whys its proposal and its decision were recorded with, when those events are still kept.
   if (r.proposal?.why) lines.push(`    why proposed: ${r.proposal.why}`);
-  if (r.decision?.why && r.outcome) lines.push(`    why ${outcomeWords(r.outcome)}: ${r.decision.why}`);
+  if (r.decision?.why && verdict) lines.push(`    why ${verdictWords(verdict)}: ${r.decision.why}`);
   if (r.cut) lines.push(`    (cut: rip task show ${taskId ?? '<id>'} --round ${r.number} prints it whole)`);
   return lines;
 }
@@ -1343,6 +1376,30 @@ function taskFileLine(file: TaskFileView): string {
   return `  ${title ?? 'Untitled'}  [${id}]  ${folder ? `${folder.slug} · ` : ''}${taskFileRelationship(file)}`;
 }
 
+/**
+ * A task's workflow (job definitions plan M6), on `rip task show` and the start printers: where it
+ * stands in its job's definition, then the step's instructions. "Workflow: founder-posts › post · at
+ * draft (writer) → next edit"; the last main step says it ends with complete (or, with an approval,
+ * in a proposal that returns to its proposer), a side step says so, a step with an approval names its
+ * verb, and a step no longer in the definition says that.
+ */
+function workflowLines(workflow: Record<string, any>, taskStep: string | null): string[] {
+  const head = `Workflow: ${workflow.job} › ${workflow.definition}`;
+  const step = workflow.step as Record<string, any> | null;
+  const path = (workflow.path ?? []) as string[];
+  const side = (workflow.side ?? []) as string[];
+  const pathLine = `  Path: ${path.join(' › ')}${side.length ? ` · side: ${side.join(', ')}` : ''}`;
+  if (!step) return [`${head} · at ${taskStep ?? '-'} (not a step of the definition)`, pathLine];
+  const where = `at ${step.name}${step.role ? ` (${step.role})` : ''}`;
+  const approval = step.approvalVerb ? ` · ends in a proposal (${step.approvalVerb})` : '';
+  // The last main step ends with complete; with an approval, approving returns it to its proposer (design §8).
+  const last = step.approvalVerb ? ` · the last step: ends in a proposal (${step.approvalVerb}) that returns to its proposer` : ' · the last step: complete it';
+  const onward = step.next ? ` → next ${step.next}${approval}` : side.includes(step.name) ? ` · a side step${approval}` : last;
+  const lines = [`${head} · ${where}${onward}`, pathLine];
+  if (step.instructions) lines.push(...indented(step.instructions));
+  return lines;
+}
+
 /** A start by tags (task rounds plan M8): the task it took, or "No task" when none matched (nothing was taken). */
 export const formatTaskStarted: Formatter = (data) => {
   const task = data.task as Record<string, unknown> | null | undefined;
@@ -1366,7 +1423,10 @@ export const formatTask: Formatter = (data) => {
     `Status:     ${t.status === 'review' ? 'review (In review: waiting for a decision)' : t.status}`,
     `Type:       ${t.type ?? '-'}`,
     `Step:       ${t.step ?? '-'}`,
+    `Labels:     ${taskLabels(t) || '-'}`,
   ];
+  // A server from before jobs sends no `job` key, and no line is printed for it.
+  if ('job' in t) lines.push(`Job:        ${taskJob(t.job)}`);
   if (t.assignee) lines.push(`For:        ${principalLine(t.assignee as TaskPrincipalView)}`);
   if ('reviewer' in t) lines.push(`Reviewer:   ${t.reviewer ? principalLine(t.reviewer as TaskPrincipalView) : 'any person who can edit tasks'}`);
   if (t.holder) lines.push(`Doing:      ${taskHolderLine(t.holder as TaskHolderView)}`);
@@ -1378,6 +1438,7 @@ export const formatTask: Formatter = (data) => {
   if (t.dueAt) lines.push(`Due:        ${t.dueAt}`);
   lines.push(`Created:    ${t.createdAt} by ${t.createdBy ? principalLine(t.createdBy as TaskPrincipalView) : t.createdById}`);
   if (t.result) lines.push(`Result:     ${t.result}`);
+  if (t.workflow) lines.push('', ...workflowLines(t.workflow, t.step ?? null));
   const approvedNumber: number | null = t.approvedRound?.number ?? null;
   if (t.approvedRound?.final?.text != null) lines.push('', finalTextLabel(t.status, t.approvedRound.number), ...indented(t.approvedRound.final.text));
   const finalFiles = (t.approvedRound?.final?.artifacts ?? []) as Array<Record<string, any>>;
@@ -1403,6 +1464,12 @@ export const formatTask: Formatter = (data) => {
     const resultLinks = links.filter((link) => link.role === 'result');
     if (context.length) lines.push('', 'Files & links:', ...context.map(taskLinkLine));
     if (resultLinks.length) lines.push('', 'Result links:', ...resultLinks.map(taskLinkLine));
+  }
+  // The detail read's outputs (leverage plan M5): what went out for the task, newest first.
+  const outputs = (t.outputs ?? []) as Array<Record<string, any>>;
+  if (outputs.length) {
+    lines.push('', `Outputs (${t.outputsTotal ?? outputs.length}):`, ...outputs.map(outputLine));
+    if ((t.outputsTotal ?? 0) > outputs.length) lines.push(`  (all: rip output list --workspace-id ${t.workspaceId} --task ${t.id})`);
   }
   const children = (t.children ?? []) as Array<Record<string, any>>;
   if (children.length) {
@@ -1579,7 +1646,12 @@ function verbAction(type: unknown): string {
  * person's reads `Former member`. Another person's agent name is never sent, so their agent reads
  * by harness. Your browser that an agent's sign-in link signed in names that agent.
  */
-function whoWords(who: { mine: boolean; alias?: string | null; accountId?: string; former?: boolean; agentName?: string; surface?: string | null; inBrowser: boolean }): string {
+function whoWords(who: { mine: boolean; alias?: string | null; accountId?: string; former?: boolean; agentName?: string; surface?: string | null; inBrowser: boolean; agentId?: string | null }): string {
+  // The handle names the agent for `--by-agent` and `agent:<handle>` (a server from before it sends none).
+  return who.agentId ? `${personWords(who)}  [agent:${who.agentId}]` : personWords(who);
+}
+
+function personWords(who: { mine: boolean; alias?: string | null; accountId?: string; former?: boolean; agentName?: string; surface?: string | null; inBrowser: boolean }): string {
   if (who.mine) {
     if (who.inBrowser) return who.agentName ? `You · ${who.agentName} · in the browser` : 'You · in the browser';
     if (who.agentName) return `You · ${who.agentName}${who.surface ? ` (${harnessName(who.surface)})` : ''}`;
@@ -1640,7 +1712,7 @@ function sessionChangeLines(change: Record<string, any>, indent: string): string
 function sessionLines(session: Record<string, any>, indent = ''): string[] {
   const who = whoWords({
     mine: Boolean(session.mine), alias: session.account?.alias, accountId: session.account?.id, former: session.account?.former,
-    agentName: session.agent?.name, surface: session.surface, inBrowser: Boolean(session.inBrowser),
+    agentName: session.agent?.name, surface: session.surface, inBrowser: Boolean(session.inBrowser), agentId: session.agentId,
   });
   const lines = [`${indent}${who}  ${session.startedAt ?? '-'} → ${session.lastAt ?? '-'}${session.unread ? '  unread' : ''}`];
   if (session.stepsTruncated) lines.push(`${indent}  … earlier steps not shown`);
@@ -1656,8 +1728,8 @@ function sessionLines(session: Record<string, any>, indent = ''): string[] {
   return lines;
 }
 
-/** `rip workspace sessions`: recent computed sessions, newest first, with the next-page command. */
-export const formatWorkspaceSessions = (data: unknown, workspace?: string): string => {
+/** `rip workspace sessions`: recent computed sessions, newest first, with the next-page command (carrying the filters). */
+export const formatWorkspaceSessions = (data: unknown, workspace?: string, filters: { byAgent?: string; by?: string } = {}): string => {
   const value = data as Record<string, any>;
   const items: Array<Record<string, any>> = Array.isArray(value.items) ? value.items : [];
   const continues = Boolean(value.hasMore && value.nextCursor && workspace);
@@ -1667,7 +1739,8 @@ export const formatWorkspaceSessions = (data: unknown, workspace?: string): stri
     ? items.flatMap((session, index) => [...(index ? [''] : []), ...sessionLines(session)])
     : ['No sessions in this range.'];
   if (continues) {
-    lines.push('', `More: rip workspace sessions ${workspaceShellArgument(workspace)} --cursor ${workspaceShellArgument(value.nextCursor)}`);
+    const flags = `${filters.byAgent ? ` --by-agent ${workspaceShellArgument(filters.byAgent)}` : ''}${filters.by ? ` --by ${workspaceShellArgument(filters.by)}` : ''}`;
+    lines.push('', `More: rip workspace sessions ${workspaceShellArgument(workspace)}${flags} --cursor ${workspaceShellArgument(value.nextCursor)}`);
   }
   return lines.join('\n');
 };
@@ -1699,9 +1772,11 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   lines.push(...loadActionsLines(value.actions));
   if (workspace.description) lines.push('', String(workspace.description));
 
-  // What the agent reads first (plan D16): its instructions, what waits on it, then the agents here.
-  // A server from before instructions sends none of these keys, and nothing is printed for them.
+  // What the agent reads first (plan D16): its instructions, its jobs, what waits on it, then the agents here.
+  // A server from before instructions (or jobs) sends none of these keys, and nothing is printed for them;
+  // a guest gets no jobs.
   if ('instructions' in value) lines.push(...instructionsLines(value.instructions));
+  if (value.jobs) lines.push(...loadJobsLines(value.jobs, workspaceId));
   const waiting = value.waiting ?? null;
   const waitingItems: Array<Record<string, any>> = Array.isArray(waiting?.items) ? waiting.items : [];
   if (waiting) lines.push(...waitingLines(waitingItems, Boolean(waiting.hasMore), workspaceId, waiting.notifications ?? null));
@@ -1766,6 +1841,246 @@ export const formatWorkspaceLoad: Formatter = (data) => {
     lines.push('', 'More:');
     for (const flag of more) lines.push(`  rip workspace load ${workspaceShellArgument(workspaceId)} ${flag}`);
   }
+  return lines.join('\n');
+};
+
+/** An agent's part in a job: `role writer`; empty when it has none. */
+function jobPartWords(part: { role?: string | null }): string {
+  return part.role ? `role ${part.role}` : '';
+}
+
+/** A load section's count: `2`, or `1 of 3` when load trimmed the list to fit. */
+function trimmedCount(shown: number, total: unknown): string {
+  return typeof total === 'number' && total > shown ? `${shown} of ${total}` : String(shown);
+}
+
+/** A step's cadence in load's words: `every 60 min`, or `on demand` with none. */
+function stepCadenceWords(everyMinutes: unknown): string {
+  return typeof everyMinutes === 'number' ? `every ${everyMinutes} min` : 'on demand';
+}
+
+/**
+ * Load's jobs (leverage plan M3; job definitions plan M6): the agent's own live jobs first, each
+ * with its part, its purpose, its steps for that part (each `definition › step` and how often to
+ * check it) and its description whole (or where to read one load cut), then the other live jobs by
+ * name and purpose. A trimmed list says how many there are and where to read them all.
+ */
+function loadJobsLines(jobs: Record<string, any>, workspaceId: string): string[] {
+  const mine: Array<Record<string, any>> = Array.isArray(jobs.mine) ? jobs.mine : [];
+  const others: Array<Record<string, any>> = Array.isArray(jobs.others) ? jobs.others : [];
+  const more = `  More: rip job list --workspace-id ${workspaceShellArgument(workspaceId)}`;
+  const lines = loadSection(`Your jobs (${trimmedCount(mine.length, jobs.mineTotal)}):`, mine.flatMap((job) => {
+    const part = jobPartWords(job);
+    const head = [`  ${job.name}  [${job.id}]${part ? `  ${part}` : ''}`];
+    if (job.purpose) head.push(`    Purpose: ${job.purpose}`);
+    const steps: Array<Record<string, any>> = Array.isArray(job.steps) ? job.steps : [];
+    if (steps.length) head.push(`    Your steps: ${steps.map((step) => `${step.definition} › ${step.step} (${stepCadenceWords(step.everyMinutes)})`).join(', ')}`);
+    if (job.descriptionCut) return [...head, `    (description cut; rip job show ${job.id})`];
+    return job.description ? [...head, ...indented(job.description, '    ')] : head;
+  }));
+  if (typeof jobs.mineTotal === 'number' && jobs.mineTotal > mine.length) lines.push(more);
+  lines.push(`Other jobs (${trimmedCount(others.length, jobs.othersTotal)}):`,
+    ...(others.length ? others.map((job) => `  ${job.name}  [${job.id}]${job.purpose ? `  ${job.purpose}` : ''}`) : ['  (none)']));
+  // Load cut their purposes to fit (job definitions plan M6 review): the job list reads them.
+  if (jobs.othersPurposeCut && others.length) lines.push(`  (purposes cut to fit; rip job list --workspace-id ${workspaceShellArgument(workspaceId)})`);
+  if (typeof jobs.othersTotal === 'number' && jobs.othersTotal > others.length) lines.push(more);
+  return lines;
+}
+
+/**
+ * One of a job's agents: `agent:<handle>` (as `--job-agent` takes it), who it is, its role, then when
+ * it was last seen (`last seen <time>`, or `not seen yet`), information only. A server before last
+ * seen names the agent by its bare handle and has none.
+ */
+function jobAgentLine(a: Record<string, any>): string {
+  const principal: TaskPrincipalView | null = a.agent && typeof a.agent === 'object' ? a.agent : null;
+  const handle = principal ? principal.agent?.id : a.agent;
+  const words = [`  agent:${handle}`];
+  if (principal) words.push(principalWho(principal));
+  const part = jobPartWords(a);
+  if (part) words.push(part);
+  if ('lastSeenAt' in a) words.push(a.lastSeenAt ? `last seen ${a.lastSeenAt}` : 'not seen yet');
+  return words.join('  ');
+}
+
+/** A step's cadence in the largest whole unit: `1d`, `1h`, `90m`. */
+function everyWords(minutes: number): string {
+  if (minutes % 1440 === 0) return `${minutes / 1440}d`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
+}
+
+/** One step in a lane: its name, then `[role, cadence]` with whichever it has. */
+function laneStep(step: Record<string, any>): string {
+  const tags = [step.role, typeof step.everyMinutes === 'number' ? everyWords(step.everyMinutes) : null].filter(Boolean);
+  return tags.length ? `${step.name} [${tags.join(', ')}]` : String(step.name);
+}
+
+/**
+ * One task definition as a lane (job definitions plan M3): `name (types): ` then the main steps in
+ * order joined by ` → `, where a step that ends in an approval draws ` ⇒ Verb ⇒ ` to the next (and a
+ * trailing ` ⇒ Verb` on the last), then `; side: ` and the side steps.
+ */
+function definitionLane(definition: Record<string, any>): string {
+  const steps: Array<Record<string, any>> = Array.isArray(definition.steps) ? definition.steps : [];
+  const main = steps.filter((step) => !step.side);
+  const side = steps.filter((step) => step.side);
+  let lane = '';
+  main.forEach((step, index) => {
+    if (index > 0) lane += main[index - 1]!.approvalVerb ? ` ⇒ ${main[index - 1]!.approvalVerb} ⇒ ` : ' → ';
+    lane += laneStep(step);
+  });
+  const last = main[main.length - 1];
+  if (last?.approvalVerb) lane += ` ⇒ ${last.approvalVerb}`;
+  const types = Array.isArray(definition.types) ? definition.types.join(', ') : '';
+  return `${definition.name} (${types}): ${lane}${side.length ? `; side: ${side.map(laneStep).join(', ')}` : ''}`;
+}
+
+/** A definition's lines in `rip job show`: its lane, then its "Creating one" and each step's instructions, indented. */
+function definitionLines(definition: Record<string, any>): string[] {
+  const lines = [`  ${definitionLane(definition)}`];
+  if (definition.instructions) lines.push('    Creating one:', ...indented(definition.instructions, '      '));
+  for (const step of Array.isArray(definition.steps) ? definition.steps : []) {
+    if (step.instructions) lines.push(`    ${step.name}:`, ...indented(step.instructions, '      '));
+  }
+  return lines;
+}
+
+/** A step's health in words (job definitions plan M5). */
+const STEP_HEALTH_WORDS: Record<string, string> = { on_time: 'on time', late: 'late', not_checked: 'not checked yet', no_schedule: 'no schedule' };
+
+/** The job's schedule state in words, the page's header: by its worst scheduled step. */
+function scheduleWords(health: { state?: string; late?: number; notChecked?: number }): string {
+  const steps = (n: number) => `${n} step${n === 1 ? '' : 's'}`;
+  if (health.state === 'late') return `${steps(health.late ?? 0)} late`;
+  if (health.state === 'not_checked') return `not checked yet (${steps(health.notChecked ?? 0)})`;
+  return health.state === 'on_schedule' ? 'on schedule' : 'no schedule';
+}
+
+/**
+ * The job's schedule in `rip job show` (job definitions plan M5): its state, then one line per
+ * scheduled step of each definition: `definition › step [role, every …]: health`, and its last
+ * check (when, and by whom: a job agent as who it is, another agent as `agent:<handle>`). Nothing for a job with no scheduled step, or a reply without health (a
+ * server before checks, or the list's outline).
+ */
+function scheduleLines(job: Record<string, any>): string[] {
+  if (!job.health || !Array.isArray(job.definitions)) return [];
+  // A check names its agent by handle: a job agent reads as who it is, anyone else as agent:<handle>.
+  const agents = new Map<string, TaskPrincipalView>();
+  for (const a of Array.isArray(job.agents) ? job.agents as Array<Record<string, any>> : []) {
+    if (a.agent && typeof a.agent === 'object' && a.agent.agent?.id) agents.set(a.agent.agent.id, a.agent as TaskPrincipalView);
+  }
+  const who = (handle: string) => (agents.has(handle) ? principalWho(agents.get(handle)!) : `agent:${handle}`);
+  const lines: string[] = [];
+  for (const definition of job.definitions as Array<Record<string, any>>) {
+    for (const step of Array.isArray(definition.steps) ? definition.steps as Array<Record<string, any>> : []) {
+      if (typeof step.everyMinutes !== 'number' || !step.health) continue;
+      const tags = [step.role, `every ${everyWords(step.everyMinutes)}`].filter(Boolean).join(', ');
+      const check = step.lastCheck ? `, last checked ${step.lastCheck.at} by ${who(String(step.lastCheck.agent))}` : '';
+      lines.push(`  ${definition.name} › ${step.name} [${tags}]: ${STEP_HEALTH_WORDS[step.health] ?? step.health}${check}`);
+    }
+  }
+  return lines.length ? [`Schedule: ${scheduleWords(job.health)}`, ...lines] : [];
+}
+
+/**
+ * `rip job show|create|update` — one job: its name, id, workspace, purpose, revision (for `rip job
+ * update --expected-revision`), whether it is archived, its agents (each `agent:<handle>`, as
+ * `--job-agent` takes it, with who it is, its role and when it was last seen), its description
+ * whole, its task definitions, each a lane with its instructions (job definitions plan M3), and its
+ * schedule: each scheduled step's health and last check (M5).
+ */
+export const formatJob: Formatter = (data) => {
+  const job = data as Record<string, any>;
+  const agents: Array<Record<string, any>> = Array.isArray(job.agents) ? job.agents : [];
+  const lines = [
+    `${job.name}`,
+    `ID:         ${job.id}`,
+    `Workspace:  ${job.workspaceId}`,
+    ...('purpose' in job ? [`Purpose:    ${job.purpose ?? '(none)'}`] : []),
+    `Revision:   ${job.revision ?? '-'}`,
+    `Archived:   ${job.archived ? `yes, since ${job.archivedAt ?? '-'} (rip job update ${job.id} --restore)` : 'no'}`,
+    `Agents (${agents.length}):`,
+    ...(agents.length ? agents.map(jobAgentLine) : ['  (none)']),
+    'Description:',
+    ...(job.description ? indented(job.description) : ['  (none)']),
+  ];
+  // A server before job definitions sends neither field: print nothing for them then.
+  if (Array.isArray(job.definitions)) {
+    lines.push(`Definitions (${job.definitions.length}):`, ...(job.definitions.length ? job.definitions.flatMap(definitionLines) : ['  (none)']));
+  }
+  lines.push(...scheduleLines(job));
+  if (job.createdAt) lines.push(`Created:    ${job.createdAt}`);
+  if (job.updatedAt) lines.push(`Updated:    ${job.updatedAt}`);
+  // A job read whole (rip job show) carries its newest outputs and their counts; a write receipt does not.
+  if (Array.isArray(job.outputs)) {
+    const counts = job.outputCounts ?? {};
+    lines.push('', `Outputs (${counts.sent ?? 0} sent, ${counts.sending ?? 0} sending, ${counts.failed ?? 0} failed):`,
+      ...(job.outputs.length ? job.outputs.map(outputLine) : ['  (none)']));
+  }
+  return lines.join('\n');
+};
+
+/** `rip job list` — one row per job: its name, id, revision, how many agents, and whether it is archived. */
+export const formatJobList: Formatter = (data) => {
+  const jobs = ((data as any).jobs ?? []) as Array<Record<string, any>>;
+  if (jobs.length === 0) return 'No jobs.';
+  return jobs.map((job) => {
+    const count = Array.isArray(job.agents) ? job.agents.length : 0;
+    const agents = count === 0 ? 'no agents' : `${count} agent${count === 1 ? '' : 's'}`;
+    return `${String(job.name).padEnd(24)} [${job.id}]  revision ${job.revision ?? '-'}  ${agents}${job.archived ? '  archived' : ''}`;
+  }).join('\n');
+};
+
+/**
+ * One output on a line (leverage plan M5): its status, kind, where it went and its reference, who
+ * recorded it and its id; used by `rip output list`, `rip task show` and `rip job show`.
+ */
+function outputLine(o: Record<string, any>): string {
+  const words = [`  ${String(o.status).padEnd(7)}  ${o.kind}`];
+  if (o.target) words.push(`to ${o.target}`);
+  if (o.ref) words.push(o.ref);
+  if (o.agent) words.push(`by ${principalWho(o.agent as TaskPrincipalView)}`);
+  else if (o.recordedBy) words.push(`by ${o.recordedBy.alias ? `~${o.recordedBy.alias}` : o.recordedBy.id}`);
+  words.push(`[${o.id}]`);
+  return words.join('  ');
+}
+
+/**
+ * `rip output record|update` — one output whole: what it was, where it went, its reference and text,
+ * the file it was made from, its task and job, labels, approval (who approved the task's round, or
+ * none), who recorded it, its status and key (for `rip output update`).
+ */
+export const formatOutput: Formatter = (data) => {
+  const o = data as Record<string, any>;
+  const approval = o.approval
+    ? `round ${o.approval.round}${o.approval.decidedBy ? `, approved by ${principalWho(o.approval.decidedBy as TaskPrincipalView)}` : o.approval.byInstructions ? `, approved on its own (instructions v${o.approval.byInstructions.version})` : ''}`
+    : 'none';
+  const lines = [
+    `${o.kind}${o.target ? ` to ${o.target}` : ''}`,
+    `ID:         ${o.id}`,
+    `Workspace:  ${o.workspaceId} (${o.audience})`,
+    `Status:     ${o.status}${o.status === 'sending' ? ` (claimed: rip output update ${o.id} --status sent|failed)` : ''}${o.sentAt ? `, sent ${o.sentAt}` : ''}`,
+  ];
+  if (o.ref) lines.push(`Ref:        ${o.ref}`);
+  if (o.key) lines.push(`Key:        ${o.key}`);
+  if (o.task) lines.push(`Task:       ${o.task.title}  [${o.task.id}]`);
+  if (o.job) lines.push(`Job:        ${o.job.name}  [${o.job.id}]`);
+  if (Array.isArray(o.labels) && o.labels.length) lines.push(`Labels:     ${o.labels.join(', ')}`);
+  if (o.file) lines.push(`File:       ${o.file.artifact}${o.file.version ? `  version ${o.file.version.number}` : ''}`);
+  lines.push(`Approval:   ${approval}`);
+  lines.push(`Recorded:   ${o.createdAt} by ${o.agent ? principalWho(o.agent as TaskPrincipalView) : (o.recordedBy?.alias ? `~${o.recordedBy.alias}` : o.recordedBy?.id ?? '-')}`);
+  if (o.text) lines.push('', ...indented(o.text));
+  return lines.join('\n');
+};
+
+/** `rip output list` — one line per output, newest first, then the command that reads older ones. */
+export const formatOutputList: Formatter = (data) => {
+  const d = data as { outputs?: Array<Record<string, any>>; nextCursor?: string | null };
+  const outputs = d.outputs ?? [];
+  if (outputs.length === 0) return 'No outputs.';
+  const lines = [`Outputs (${outputs.length}, newest first):`, ...outputs.map(outputLine)];
+  if (d.nextCursor) lines.push(`  (older: add --cursor ${d.nextCursor})`);
   return lines.join('\n');
 };
 

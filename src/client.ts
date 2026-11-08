@@ -392,7 +392,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
-          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'latestRound',
+          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'latestRound', 'output',
             'usedBytes', 'limitBytes', 'addedBytes', 'usedActions', 'limitActions', 'resetsAt', 'plan', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
         });

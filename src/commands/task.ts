@@ -13,6 +13,10 @@ export interface TaskListOptions {
   type?: string;
   /** Only tasks at this step (a free tag). */
   step?: string;
+  /** Only tasks with all of these labels: `--label`, repeated or a comma list. */
+  label?: string[];
+  /** Only tasks of this job (its name). */
+  job?: string;
   mine?: boolean;
   /** Only tasks for no one (`assignee=none`); never beside `mine`. */
   unassigned?: boolean;
@@ -40,6 +44,10 @@ export interface TaskAddOptions {
   type?: string;
   /** Which step of the workspace's workflow it is at: a free tag. */
   step?: string;
+  /** Labels: the person's own words for grouping work (`--label`, repeatable). */
+  label?: string[];
+  /** The job it is part of, by name: a live job in its workspace. */
+  job?: string;
   body?: string;
   due?: string;
   payload?: string;
@@ -60,6 +68,11 @@ export interface TaskUpdateOptions {
   /** A tag to set, or `false` (`--no-type`, `--no-step`) to clear it. */
   type?: string | false;
   step?: string | false;
+  /** A job's name to set, or `false` (`--no-job`) to clear it. */
+  job?: string | false;
+  /** Labels to add and to remove (`--add-label`, `--remove-label`, each repeatable). */
+  addLabel?: string[];
+  removeLabel?: string[];
   /** Files and pages to add to what the work uses, as `--link` on add. */
   link?: string[];
   /** Files and pages to remove from what the work uses, by target: `artifact:<id>` or `url:<address>`. */
@@ -96,6 +109,11 @@ function home(options: { workspaceId?: string; parentId?: string }, needed: stri
   throw invalid(`${needed} needs --workspace-id, or --parent-id for a task under another one.`);
 }
 
+/** `--label` values, each repeated or a comma list, as one list (the server checks each and drops a repeat). */
+export function labelFlags(values: string[] | undefined): string[] {
+  return (values ?? []).flatMap((value) => value.split(',')).map((label) => label.trim()).filter(Boolean);
+}
+
 function taskPath(id?: string, verb?: string): string {
   let p = '/v0/tasks';
   if (id) p += `/${encodeURIComponent(id)}`;
@@ -110,6 +128,9 @@ export async function taskList(options: TaskListOptions): Promise<void> {
   if (options.status) q.set('status', options.status);
   if (options.type) q.set('type', options.type);
   if (options.step) q.set('step', options.step);
+  const labels = labelFlags(options.label);
+  if (labels.length) q.set('labels', labels.join(','));
+  if (options.job) q.set('job', options.job);
   if (options.mine) q.set('assignee', 'me');
   if (options.unassigned) q.set('assignee', 'none');
   if (options.since) q.set('since', options.since);
@@ -175,6 +196,9 @@ export async function taskAdd(title: string, options: TaskAddOptions): Promise<v
   if (options.reviewer) body.reviewer = options.reviewer;
   if (options.type) body.type = options.type;
   if (options.step) body.step = options.step;
+  const labels = labelFlags(options.label);
+  if (labels.length) body.labels = labels;
+  if (options.job) body.job = options.job;
   if (options.body) body.body = options.body;
   if (options.due) body.due = options.due;
   const links = parseLinkFlags(options.link);
@@ -190,11 +214,14 @@ export async function taskAdd(title: string, options: TaskAddOptions): Promise<v
   outputSuccess(data.data, formatTask);
 }
 
-/** `--expected-revision`: the revision read, a decimal whole number of at least 1 (never `0x3` or `1.5`). */
-export function parseRevision(value: string): number {
+/**
+ * `--expected-revision`: the revision read, a decimal whole number of at least 1 (never `0x3` or
+ * `1.5`). `readWith` is the command that reads it, named in the refusal.
+ */
+export function parseRevision(value: string, readWith = 'rip task show <id>'): number {
   const revision = /^[1-9][0-9]*$/.test(value) ? Number(value) : NaN;
   if (!Number.isSafeInteger(revision)) {
-    throw new CliError('INVALID_ARGUMENT', `--expected-revision must be a whole number of at least 1: the revision you read (rip task show <id>), got "${value}".`);
+    throw new CliError('INVALID_ARGUMENT', `--expected-revision must be a whole number of at least 1: the revision you read (${readWith}), got "${value}".`);
   }
   return revision;
 }
@@ -224,6 +251,11 @@ export async function taskUpdate(id: string, options: TaskUpdateOptions): Promis
   if (options.audience !== undefined) body.audience = options.audience;
   if (options.type !== undefined) body.type = options.type === false ? null : options.type;
   if (options.step !== undefined) body.step = options.step === false ? null : options.step;
+  if (options.job !== undefined) body.job = options.job === false ? null : options.job;
+  const addLabels = labelFlags(options.addLabel);
+  if (addLabels.length) body.addLabels = addLabels;
+  const removeLabels = labelFlags(options.removeLabel);
+  if (removeLabels.length) body.removeLabels = removeLabels;
   const addLinks = parseLinkFlags(options.link);
   if (addLinks.length) body.addLinks = addLinks;
   const removeLinks = parseLinkFlags(options.removeLink, '--remove-link', false);
@@ -242,6 +274,8 @@ export interface TaskStartOptions extends TaskWriteOptions {
   type?: string;
   /** Start by tags: only a task at this step. */
   step?: string;
+  /** Start by tags: only a task of this job; with --step, Tokenrip records that this agent checked the step. */
+  job?: string;
 }
 
 /**
@@ -251,12 +285,12 @@ export interface TaskStartOptions extends TaskWriteOptions {
  * with no agent named. An empty answer prints "No task" and exits 0.
  */
 export async function taskStart(id: string | undefined, options: TaskStartOptions): Promise<void> {
-  const byTags = options.workspaceId !== undefined || options.type !== undefined || options.step !== undefined;
+  const byTags = options.workspaceId !== undefined || options.type !== undefined || options.step !== undefined || options.job !== undefined;
   if (id !== undefined && byTags) {
-    throw invalid('Name a task id, or --workspace-id (with --type and --step) to start the first To do task in queue order matching them; not both.');
+    throw invalid('Name a task id, or --workspace-id (with --type, --step and --job) to start the first To do task in queue order matching them; not both.');
   }
   if (id === undefined && options.workspaceId === undefined) {
-    throw invalid('Name the task id to start, or --workspace-id (with --type and --step) to start the first To do task in queue order matching them.');
+    throw invalid('Name the task id to start, or --workspace-id (with --type, --step and --job) to start the first To do task in queue order matching them.');
   }
   const { client } = requireAuthClient();
   const lease = options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {};
@@ -269,6 +303,7 @@ export async function taskStart(id: string | undefined, options: TaskStartOption
     workspaceId: options.workspaceId,
     ...(options.type !== undefined ? { type: options.type } : {}),
     ...(options.step !== undefined ? { step: options.step } : {}),
+    ...(options.job !== undefined ? { job: options.job } : {}),
     ...lease, ...attribution(options),
   };
   const { data } = await client.post('/v0/tasks/start', body);
@@ -381,6 +416,8 @@ export interface TaskProposeOptions extends TaskWriteOptions {
   type?: string;
   /** Whom the review is addressed to; your own person when neither you nor the task names one. */
   reviewer?: string;
+  /** A new proposal: the job it serves, by name (a job with task definitions fills its step, then and verb). */
+  job?: string;
   /** `artifact:<publicId>[@version]` or `url:<https://…>`, repeatable. */
   link?: string[];
   /** `<publicId>[@version]`, repeatable: the files the draft is made of, in order (at most 10). */
@@ -413,7 +450,7 @@ export function parseEditArtifacts(raw: string[] | undefined): { artifact: strin
  * doing (carry out `approvedRound.final.text` now), or with `then`, at that step for whoever takes it.
  */
 export async function taskPropose(id: string | undefined, options: TaskProposeOptions): Promise<void> {
-  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body' }, 'proposal');
+  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body', job: '--job' }, 'proposal');
   const draft = textFrom(options.draft, options.draftFile, 'draft');
   const links = parseLinkFlags(options.link);
   const draftArtifacts = parseDraftArtifacts(options.draftArtifact);
@@ -423,6 +460,7 @@ export async function taskPropose(id: string | undefined, options: TaskProposeOp
     body.title = options.title;
     if (options.body !== undefined) body.body = options.body;
     if (options.audience !== undefined) body.audience = options.audience;
+    if (options.job !== undefined) body.job = options.job;
   }
   if (draft !== undefined) body.draft = draft;
   if (draftArtifacts.length) body.draftArtifacts = draftArtifacts;
@@ -446,6 +484,10 @@ export interface TaskReportOptions extends TaskWriteOptions {
   audience?: 'internal' | 'shared';
   /** A new report: what kind of work it was. */
   type?: string;
+  /** A new report: its labels (`--label`, repeatable). */
+  label?: string[];
+  /** A new report: the job it was part of, by name. */
+  job?: string;
   /** What came of it, at most 280 characters; a later result replaces the text. */
   resultText?: string;
   link?: string[];
@@ -453,7 +495,7 @@ export interface TaskReportOptions extends TaskWriteOptions {
 
 /** Report work already done that needed no approval: a new task born Done, or a later result on a Done task. */
 export async function taskReport(id: string | undefined, options: TaskReportOptions): Promise<void> {
-  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body', type: '--type' }, 'report');
+  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body', type: '--type', label: '--label', job: '--job' }, 'report');
   const links = parseLinkFlags(options.link);
   const body: Record<string, unknown> = {};
   if (id === undefined) {
@@ -462,6 +504,9 @@ export async function taskReport(id: string | undefined, options: TaskReportOpti
     if (options.body !== undefined) body.body = options.body;
     if (options.audience !== undefined) body.audience = options.audience;
     if (options.type !== undefined) body.type = options.type;
+    const labels = labelFlags(options.label);
+    if (labels.length) body.labels = labels;
+    if (options.job !== undefined) body.job = options.job;
   }
   if (options.resultText !== undefined) body.result = options.resultText;
   if (links.length) body.links = links;

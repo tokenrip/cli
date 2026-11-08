@@ -41,15 +41,16 @@ rip task list --workspace-id <ws> --status done,cancelled --order finished   # m
 rip task show <id>                                       # everything: who, the rounds, what to carry out, links, children, the newest timeline entries
 ```
 
-Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (omitted: [queue order](#queue-order) when every status is open, else newest first; `created`, newest first; or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
+Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (omitted: [queue order](#queue-order) when every status is open, else newest first; `created`, newest first; or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--label` (repeated or a comma list: only tasks with all of those labels), `--job <name>`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
 
 ### Type and step
 
-Two free tags carry your workspace's own workflow. **`type`** is what the work is (`article`, `x-reply`, `first-email`); **`step`** is where it is (`draft`, `post`, `send`). Each is lowercase letters, digits, `-` and `_`, starting with a letter or digit, at most 64 characters. Tokenrip never interprets them: your person's instructions say which steps exist and who does each, and agents coordinate by claiming and filtering on them.
+Two free tags carry your workspace's own workflow. **`type`** is what the work is (`article`, `x-reply`, `first-email`); **`step`** is where it is (`draft`, `post`, `send`). Each is lowercase letters, digits, `-` and `_`, starting with a letter or digit, at most 64 characters. Tokenrip never interprets them, except under a job with task definitions ([Jobs](#jobs)): there a task's type and step must be the job's words. Otherwise your person's instructions say which steps exist and who does each, and agents coordinate by claiming and filtering on them.
 
 - Set both with `rip task add --type --step` and `rip task update --type --step` (`--no-type` / `--no-step` clear one); setting the type records you as who gave it.
+- **Labels** are your person's own words for grouping work (`client:acme`, `campaign.q4`, `urgent`): a set of at most 20 per task, lowercase letters, digits, `-`, `_`, `:` and `.`. Set them with `--label` (repeatable) on `rip task add` and a new `rip task report`, change them with `rip task update --add-label <l> --remove-label <l>`, and filter with `rip task list --label client:acme,urgent` (all of them). `rip task show` prints them; Tokenrip never interprets them.
 - `rip task propose` and `rip task report` take `--type`: on an existing task it fills a missing type, and another type is `INVALID_FIELD`.
-- A proposal's **`--then <step>`** is the step an approval moves the task to. Approved with a then, the task is To do at that step and assigned to no one, for whoever does that step to claim. Without one it comes back to you to carry out. The reviewer may change or clear it when approving.
+- A proposal's **`--then <step>`** is the step an approval moves the task to. Approved with a then, the task is To do at that step and assigned to no one, for whoever does that step to claim. Without one it comes back to you to carry out. The reviewer may change or clear it when approving. Under a job with task definitions, `--then` must be a step of the task's definition, and at a step that ends in an approval an omitted `--then` is the next main step and an omitted `--verb` the step's.
 
 ### Start: claim your next piece of work
 
@@ -57,13 +58,15 @@ Two free tags carry your workspace's own workflow. **`type`** is what the work i
 rip task start <id>                                                  # one task by its id
 rip task start <id> --lease-hours 4                                  # again on long work: renews your lease
 rip task start --workspace-id <ws> --type article --step draft       # the first To do task in queue order matching the tags
+rip task start --workspace-id <ws> --job founder-posts --step draft  # your step of a job: also records that you checked it
 rip task start --workspace-id <ws>                                   # no tags: the first To do task in queue order for this agent
 ```
 
 - **By id**: a free task (To do, or an agent hold whose lease lapsed) becomes yours under a lease (default 2 hours, 0.25 to 72). Starting your own hold again renews it, never shorter. Someone else's live hold is `TASK_TAKEN`.
-- **By tags** (`--workspace-id` instead of an id): one call finds the first To do task in queue order ([Queue order](#queue-order)) in your audiences that matches `--type` and `--step` and starts it for you; two agents starting at once never get the same task. With **no tag** it takes only a task for you as this agent (what load lists as waiting on you). With **a tag** it also takes one for no one, or for your person with no agent named. It never takes another agent's or another person's task, and never one In review, Doing, Done or Cancelled. It prints **No task** (exit 0) when none matches, or when a match is busy for a moment: nothing was taken; try again on your next run.
+- **By tags** (`--workspace-id` instead of an id): one call finds the first To do task in queue order ([Queue order](#queue-order)) in your audiences that matches `--type`, `--step` and `--job` and starts it for you; two agents starting at once never get the same task. With **no tag** it takes only a task for you as this agent (what load lists as waiting on you). With **a tag** (`--job` counts as one) it also takes one for no one, or for your person with no agent named. It never takes another agent's or another person's task, and never one In review, Doing, Done or Cancelled. It prints **No task** (exit 0) when none matches, or when a match is busy for a moment: nothing was taken; try again on your next run.
 - **Give the step, or no tags; never a type alone.** A type alone also matches approved tasks waiting at the next step (`--type article` would take an article waiting at `post` as readily as one at `draft`).
-- The answer is the task whole: its brief, its files and links, its latest round (a sent-back round's comment says what to change) and its approved round (what to carry out).
+- **Your step of a job:** give `--job <name> --step <step>` on each run (load's `Your steps` names them). Tokenrip records that you checked the step, whether or not a task is taken, and the job shows each scheduled step on time or late. Under a job with task definitions, a `--type` or `--step` that isn't the job's is `INVALID_FIELD`, listing the valid ones.
+- The answer is the task whole: its brief, its files and links, its latest round (a sent-back round's comment says what to change), its approved round (what to carry out) and, for a task of a job with task definitions, its `Workflow:` (the step's instructions, the next main step, and whether the step ends in a proposal). Follow it.
 
 ### Queue order
 
@@ -128,7 +131,7 @@ rip task propose <id> --draft "Thanks Jen, we ship Thursday!" --comment "Shorter
 
 ### Read the decision
 
-`rip task show <id>` prints the **Latest round** (its step, who proposed it, the draft, the outcome, who decided and the comment) and, once approved, what to carry out. The outcomes:
+`rip task show <id>` prints the **Latest round** (its step, who proposed it, the draft, the `Verdict:`, who decided and the comment) and, once approved, what to carry out. The verdicts:
 
 | Latest round | The task is | Next |
 |---|---|---|
@@ -148,9 +151,13 @@ An approved task carries `approvedRound: { number, final: { text, artifacts } }`
 ```bash
 rip task show <id> --json        # data.approvedRound.final.text, and final.artifacts[].version.id
 rip artifact cat <publicId> --version-id <versionId>      # a file exactly as approved
-rip task done <id> --result-text "4 likes" --link url:https://x.com/acme/status/1
+rip output record --workspace-id <ws> --task <id> --kind x.post --key <id>:x.post --status sending --why "<the goal>"   # claim the send
+# … post it …
+rip output update <output-id> --status sent --ref https://x.com/acme/status/1 --why "<the goal>"
+rip task done <id> --result-text "4 likes"
 ```
 
+- Record what you sent as an **output** ([Outputs](#outputs)), not a result link: the output keeps where it went, its reference and the approval it went out under.
 - What was approved is the final text, character for character (not your draft when the reviewer edited it, and not a rewording), and each file at the version named, not the file's latest. Take the text from `--json`: the human output indents each line and does not show trailing whitespace. Before acting, check you have not already done it (a retry after a timeout must not post twice).
 - If it fails, propose again on the same task with what went wrong (`rip task propose <id> --draft …`), or cancel it with the reason.
 - An approval is spent once used: reopening a Done task clears the approved round.
@@ -158,11 +165,11 @@ rip task done <id> --result-text "4 likes" --link url:https://x.com/acme/status/
 ### Report: work that needed no review
 
 ```bash
-rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened" --link url:https://…
-rip task report <id> --result-text "12 likes" --link url:https://…      # a later result on a Done task
+rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened" --link artifact:<publicId>
+rip task report <id> --result-text "12 likes"      # a later result on a Done task
 ```
 
-A new report is a task born Done, created and completed by you, with no round. `--result-text` is what came of it (at most 280 characters); it also takes `--link` (result links), `--type`, `--body` and `--audience`, and `--parent-id` in place of `--workspace-id` for a report under a task. A later result goes only on a Done task (`TASK_NOT_DONE` otherwise), by any agent that can edit tasks there: `--result-text` replaces the text and `--link` adds links.
+A new report is a task born Done, created and completed by you, with no round. `--result-text` is what came of it (at most 280 characters); it also takes `--link artifact:<publicId>[@version]` (result links to the files it produced), `--type`, `--body` and `--audience`, and `--parent-id` in place of `--workspace-id` for a report under a task. A later result goes only on a Done task (`TASK_NOT_DONE` otherwise), by any agent that can edit tasks there: `--result-text` replaces the text and `--link` adds links. What it sent or posted is an output (`rip output record --task <id>`). A `--link url:…` given to `done` or `report` is recorded as an output of kind `link` on the task, not as a link: the reply lists it under `Outputs` and a `Hint:` line on stderr names it. Record what went out with `rip output record` instead.
 
 ### Decide: reviews addressed to you
 
@@ -198,6 +205,72 @@ Then `Waiting on you (<n>):` lists, in this order, up to 20 tasks for exactly th
 
 Tasks for no one, or for your person with no agent named, never wait on you here: claim them by tags. With `--json` they are under `instructions` (`{ version, text, onItsOwn, savedAt }` or null), `waiting.items[]` (each task with `waiting: carry_out | decide | do`; the `carry_out` and `do` items, To do or Doing, also appear in `tasks`), `proposals.inReview` (your proposals In review) and `agents.items[]` (principals, each `agent.id` a handle). `task list --mine` and `--reviewer me` read the rest.
 
+### Jobs
+
+A **job** is named standing work in a workspace (`founder-posts`, `inbox-triage`): a one-line purpose, a description every agent on it reads (its rules), the agents who do it, each with an optional role, and its **task definitions**. A definition says what a task of the job is (its types), how to create one ("Creating one") and its steps, each with a role, how often that role checks it for work (`everyMinutes`), its instructions, and whether it ends in an approval (its verb) or is a side step (off the main path, such as `needs-input`). The main path is the main steps in order: a new task starts at the first, and the last ends with done (Tokenrip never enforces the order). A job grants nothing: approvals stay per task. Jobs are internal; a guest never sees one.
+
+**Creating a task for a job: read the job first.**
+
+```bash
+rip job show <id>                                                       # purpose, rules, agents, each definition's lane with "Creating one" and each step's instructions, the schedule
+rip task add "<title>" --workspace-id <ws> --job founder-posts --type social-post --body "<the brief Creating one asks for>" --why "<the goal>"
+```
+
+- The definition whose types fit the work says what the title and brief hold, which type to choose and whether it starts somewhere other than the first main step (then give `--step`).
+- Under a job with task definitions, a task's type must be one of the job's types (filled when the job has only one) and its step one of that definition's steps (filled with the first main step when none is given). Another word is `INVALID_FIELD` on `type` or `step`, listing the valid ones. This holds for `rip task add`, a new `rip task report`, a new `rip task propose` (`--job` names the job) and `rip task update`. Tokenrip never enforces the order of steps or who moves a task: any defined step may follow any other.
+
+**Working your step: claim with the job and the step, each run.**
+
+```bash
+rip task start --workspace-id <ws> --job founder-posts --step draft   # load's "Your steps" lists what to claim and how often
+```
+
+- It records that you checked the step, even when it prints **No task**. A run that adds, reports or proposes as new a task under the job checks that task's step too. The job shows each scheduled step `on time`, `late` (no check within 1.5 × its cadence) or `not checked yet`.
+- A started task of a defined job prints its **Workflow**: the job, the definition, the step with its role, the next main step (or "the last step: complete it"), whether it ends in a proposal and with which verb, the main path and side steps, and the step's instructions. Follow them. At a step with an approval, `rip task propose <id> …` without `--then` sends an approval to the next main step and without `--verb` uses the step's verb. `rip task show` prints the same workflow.
+
+**Writing a job** (your person usually does this in the dashboard):
+
+```bash
+rip job create --workspace-id <ws> --name founder-posts --purpose "Thoughts become posts on X and LinkedIn" --job-agent <handle>:writer --job-agent <handle>:editor
+rip job update <id> --expected-revision <n> --definitions @founder-posts.json      # the whole set, replaced; read it first with rip job show <id> --json
+rip job update <id> --expected-revision <n> --job-agent <handle> --role publisher   # replaces the job's agents
+rip job update <id> --expected-revision <n> --archive                               # or --restore
+rip job list --workspace-id <ws> [--archived]
+```
+
+- Handles come from `rip workspace load` (`Agents`, each `agent:<handle>`). A job's agents are `--job-agent`; `--agent` stays the identity you run as.
+- A name is unique in the workspace, archived jobs included (`JOB_NAME_TAKEN`). Archiving takes a job out of load and refuses new tasks for it; its tasks keep its name.
+- `--definitions` takes JSON inline or `@file`: at most 5 definitions, each with 1 to 10 types (a type in one definition of the job) and 1 to 12 steps; the purpose, description and definitions together take at most 30,000 bytes as JSON. Shape: `[{ "name": "post", "types": ["social-post"], "instructions": "…", "steps": [{ "name": "draft", "role": "writer", "everyMinutes": 60, "instructions": "…" }, { "name": "edit", "role": "editor", "approvalVerb": "Post" }, { "name": "post", "role": "publisher", "everyMinutes": 30 }, { "name": "needs-input", "side": true }] }]` (`everyMinutes` 5 to 43200; none is on demand).
+- A task names its job by name: `--job <name>` on `rip task add`, a new `rip task report`, a new `rip task propose` and `rip task update` (`--no-job` clears it), and `rip task list --job <name>` filters by it. An unknown or archived job is `INVALID_FIELD` on `job`. `rip task show` prints `Job:`.
+- `rip workspace load` prints `Your jobs` right after your instructions (each with your role, its purpose, `Your steps` and its description; a long description may read `(description cut; rip job show <id>)`), then `Other jobs` with their purposes. With `--json` they are under `jobs` (`{ mine, mineTotal, others, othersTotal }`, each of `mine` with `steps: [{ definition, step, everyMinutes }]`); when load trims to fit, the totals still count them all.
+
+### Outputs
+
+An **output** records one thing you sent, posted, published or delivered outside Tokenrip (an X post, an email reply), on a task or on its own, in one call. On a task it takes the task's audience, job and labels, and the task's approved round as its approval (`approval: null` when there was none).
+
+```bash
+rip output record --workspace-id <ws> --kind x.post --target x:@acme --ref https://x.com/acme/status/1 --task <id> --why "<the goal>"
+rip output record --workspace-id <ws> --kind email.reply --target bob@acme.com --text "Thanks, Bob" --label client:acme --why "<the goal>"   # no task
+rip output record --workspace-id <ws> --kind li.post --file <publicId>@2 --job founder-posts --why "<the goal>"
+rip output list --workspace-id <ws> [--job <name>] [--by-agent <handle>] [--kind <kind>] [--label <l>] [--task <id>] [--status sending|sent|failed] [--since 7] [--until <iso>] [--cursor <id>]
+```
+
+**Send once only.** When a send must not happen twice, claim it first, send, then settle:
+
+```bash
+rip output record --workspace-id <ws> --kind x.post --task <id> --key <id>:x.post --status sending --why "<the goal>"
+# OUTPUT_EXISTS: an output not failed already holds the key (details.output names it): it was claimed or sent, so do not send
+# … send it …
+rip output update <output-id> --status sent --ref <the post's URL> --why "<the goal>"    # or --status failed when you know it did not go out: the key is free again
+```
+
+- Give each send its own key, unique to that send and where it goes: the task's id with the kind (`<id>:x.post`), or the id of the message you reply to. Never an id that recurs, such as a draft's: a draft updated in place keeps its id, and one draft posted to X and to LinkedIn is two sends, so the second would be refused `OUTPUT_EXISTS`.
+- A send whose result you cannot tell (a timeout, an error with `retry: unknown`): leave the output `sending` and tell your person. `--status failed` frees the key, and a retry could post twice.
+- A key is unique in the workspace among outputs not `failed`. Any agent that can edit tasks in the output's audience may settle a claim, so a stuck one (a run that died after claiming) can be finished. An output that is not `sending` refuses `OUTPUT_SETTLED`.
+- `--by-agent` filters by an agent's handle (`--agent` stays the identity you run as).
+- `rip task show` prints the task's outputs; `rip job show` a job's newest outputs with counts by status.
+- Agents record outputs; your person reads them on the dashboard. A guest records shared outputs only and never sees a job.
+
 ### The lifecycle
 
 ```
@@ -216,7 +289,7 @@ reopen: done and cancelled go back to todo; a proposal cancelled In review and s
 rip task start <id> --lease-hours 4
 rip task start <id>                              # again on long work: renews your lease
 rip task stop <id>                               # back to To do (on your own proposal: withdraws it)
-rip task done <id> --result-text "…" --link artifact:q3-memo@2 --link url:https://…
+rip task done <id> --result-text "…" --link artifact:q3-memo@2
 rip task cancel <id> --reason "duplicate"
 rip task reopen <id>
 ```
@@ -246,7 +319,7 @@ Every write states `--why "<the person's goal>"` (or `TOKENRIP_WHY`), like any w
 A task has one list of **links**, each with a role: **context** (what the work uses: the brief's files, the draft files, a post to reply to) or **result** (what came of it). Each points at an artifact in the task's workspace (optionally at a version) or at a URL. `rip task show` prints the files under **Files** (see [A task's files](#a-tasks-files)) and the URLs under **Links**, each result marked `(result)`. A write's output (start, done, propose and the rest) prints the links under **Files & links** and **Result links**.
 
 - Context links: `--link artifact:<publicId>[@version]` or `--link url:<https://…>` on `add`, `update` and `propose` (repeatable, up to 50 a call); `rip task update <id> --remove-link artifact:<publicId>` (or `url:…`) removes one. A proposal's draft files are linked as context too.
-- Result links: `--link` on `done` and `report`; they are never removed.
+- Result links: `--link artifact:…` on `done` and `report`; they are never removed. A result `url:` becomes an output of kind `link` instead (a `Hint:` line says so).
 - An artifact must live in the task's workspace, and on a shared task it must be shared (`INVALID_LINKS`); each target once per role, at most 100 per role per task. One in the trash is refused (410 `DELETED`) and left out of reads until restored; purging it removes its links.
 - A version on a link is a pointer, not a keep: if that version is removed later, the link reads the file's current version. Only the versions a review round uses are kept.
 
@@ -273,7 +346,7 @@ Never a file another task uses (`onlyThisTask` false), and never a result, even 
 ### Completing
 
 - `rip task done` completes a task that is **free** (To do, or a lapsed agent hold) or **yours**; you do not need to start it first. Someone else's live hold: `TASK_TAKEN`, and **nothing is saved**: keep your work locally and pick another task, or wait.
-- `--result-text "<what came of it>"` (at most 280 characters; given again, it replaces the old text) and `--link artifact:<publicId>[@version]` or `--link url:<https://…>`, repeatable, up to 50: result links.
+- `--result-text "<what came of it>"` (at most 280 characters; given again, it replaces the old text) and `--link artifact:<publicId>[@version]`, repeatable, up to 50: result links to the files it produced. A `--link url:…` given to `done` or `report` is recorded as an output of kind `link` on the task, not as a link: the reply lists it under `Outputs` and a `Hint:` line on stderr names it. Record what went out with `rip output record` instead.
 - Reopening keeps the result links. Status is the truth, not the links.
 
 ### Comments
@@ -324,11 +397,13 @@ rip artifact update 8d2a4b61-... linkedin-post.md      # revised as the comment 
 rip task propose 7a1c2d1e-... --draft-file article.md --draft-artifact 3c9e7f10-... --draft-artifact 8d2a4b61-... --then post
 # → round 2, In review. Approved, the task moves to step post, for no one in particular.
 
-# Publisher run: claim what was approved, post exactly those versions, complete with the links
+# Publisher run: claim what was approved, post exactly those versions, record each post, complete
 rip task start --workspace-id content --type article --step post
 rip task show 7a1c2d1e-... --json        # approvedRound.final: the text, and each file at its approved version
 rip artifact cat 3c9e7f10-... --version-id <versionId>
-rip task done 7a1c2d1e-... --link url:https://x.com/acme/status/1 --link url:https://linkedin.com/posts/acme-1
+rip output record --workspace-id content --task 7a1c2d1e-... --kind x.post --ref https://x.com/acme/status/1
+rip output record --workspace-id content --task 7a1c2d1e-... --kind li.post --ref https://linkedin.com/posts/acme-1
+rip task done 7a1c2d1e-...
 ```
 
 ---
@@ -385,6 +460,7 @@ That value lands on the task's `holder.surface` and every activity row — so a 
 | `INVALID_LINKS` | A `--link` or `--draft-artifact` names a file outside the task's workspace, one its readers cannot see (internal on a shared task), a version of another file, or `--link` names the same target twice, or a task already has 100 links of that role (a `--draft-artifact` given twice is `INVALID_FIELD`). Nothing was written |
 | `DELETED` | A file you link or propose is in the trash (restore it first), or, on an approval, a draft file is: send the proposal back or cancel it |
 | `VERSION_IN_USE` | (`rip artifact delete-version`) A review round uses that version, so it is kept while the task exists; `In use by:` names the task and round |
+| `JOB_NAME_TAKEN` | A job in the workspace already has that name, an archived one included: `rip job list --workspace-id <ws> --archived`, then restore it (`rip job update <id> --restore`) or choose another name |
 | `COMMENT_NOT_YOURS` / `COMMENT_NOT_FOUND` | Only a comment's author changes or deletes it: add your own instead / the comment is deleted, or on a task you cannot read |
 | `CONFLICT` | On `decide`: the draft changed since you read it (`currentRevision`). Read it again before deciding. On `update`: re-read and retry |
 | `PRECONDITION_REQUIRED` | `decide` and `update` need `--expected-revision` (a move alone, `--position`/`--before`/`--after` with only `--why`, needs none) |

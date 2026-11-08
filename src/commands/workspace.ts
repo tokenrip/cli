@@ -110,7 +110,22 @@ export async function workspaceViewOpen(artifact: string, options: { expectedCon
   const { data } = await client.post('/v0/views/open', { artifactId: parseArtifactId(artifact), expectedContextGeneration: generation, ...(options.operationId !== undefined ? { operationId: options.operationId } : {}) });
   outputSuccess(data.data, formatWorkspaceViewReceipt);
 }
-/** Recent computed sessions (`GET /v0/workspaces/:id/sessions`), newest first; `--cursor` continues. */
-export async function workspaceSessions(workspace: string, options: { cursor?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/sessions`, { params: options.cursor ? { cursor: options.cursor } : {} }); outputSuccess(data.data, page => formatWorkspaceSessions(page, workspace)); }
+/** The sessions read's filters as the CLI takes them: `--by-agent <handle>` (`--agent` is the identity switch) and `--by people|agents`. */
+export interface WorkspaceSessionsOptions {
+  cursor?: string;
+  byAgent?: string;
+  by?: string;
+}
+
+/**
+ * Recent computed sessions (`GET /v0/workspaces/:id/sessions`), newest first; `--cursor` continues,
+ * with the same filters: `--by-agent` (the server's `agent`) and `--by`.
+ */
+export async function workspaceSessions(workspace: string, options: WorkspaceSessionsOptions = {}): Promise<void> {
+  const { client } = requireAuthClient();
+  const filters = { ...(options.byAgent ? { agent: options.byAgent } : {}), ...(options.by ? { by: options.by } : {}) };
+  const { data } = await client.get(`${workspacePath(workspace)}/sessions`, { params: { ...(options.cursor ? { cursor: options.cursor } : {}), ...filters } });
+  outputSuccess(data.data, page => formatWorkspaceSessions(page, workspace, { byAgent: options.byAgent, by: options.by }));
+}
 export async function workspaceChanges(workspace: string, options: { limit?: string; deliveryToken?: string }): Promise<void> { const { client } = requireAuthClient(); const params = new URLSearchParams(); if (options.limit) params.set('limit', options.limit); if (options.deliveryToken) params.set('deliveryToken', options.deliveryToken); const { data } = await client.get(`${workspacePath(workspace)}/changes${params.size ? `?${params}` : ''}`); outputSuccess(data.data, formatWorkspaceChanges); }
 export async function workspaceChangesAck(workspace: string, deliveryToken: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/changes/ack`, { deliveryToken }); outputSuccess(data.data); }

@@ -31,6 +31,11 @@ export interface DomainErrorDetails {
   /** `VERSION_IN_USE`: the task whose review round keeps the version, and the round; null when the caller reads no such task. */
   task?: string | null;
   round?: number | null;
+  /**
+   * `OUTPUT_EXISTS`: the output not failed that holds the key (its id, kind, status, target, ref, the
+   * agent that recorded it, and when); null when the caller cannot read it.
+   */
+  output?: OutputDetails | null;
   /** `TASK_NOT_IN_REVIEW`: the task's latest review round and how it ended; null: never proposed. */
   latestRound?: TaskRoundDetails | null;
   /**
@@ -92,15 +97,26 @@ export interface TaskPrincipalDetails {
   mine: boolean;
   isCaller: boolean;
 }
-/** The server's `TASK_ROUND_OUTCOMES` (apps/backend/src/db/models/task-vocabulary.ts). */
-export const TASK_ROUND_OUTCOMES = ['approved', 'sent_back', 'cancelled', 'withdrawn', 'replaced'] as const;
-export type TaskRoundOutcome = (typeof TASK_ROUND_OUTCOMES)[number];
+/** The server's `TASK_ROUND_VERDICTS` (apps/backend/src/db/models/task-vocabulary.ts). */
+export const TASK_ROUND_VERDICTS = ['approved', 'sent_back', 'cancelled', 'withdrawn', 'replaced'] as const;
+export type TaskRoundVerdict = (typeof TASK_ROUND_VERDICTS)[number];
 /** The server's `TASK_ROUNDS_MAX`: the most rounds a task holds. */
 const TASK_ROUNDS_MAX = 50;
-/** A task's latest round as the server's summary carries it (task rounds plan M5): its number and outcome (null: open). */
+/** A task's latest round as the server's summary carries it (task rounds plan M5): its number and verdict (null: open). */
 export interface TaskRoundDetails {
   number: number;
-  outcome: TaskRoundOutcome | null;
+  verdict: TaskRoundVerdict | null;
+}
+/** An `OUTPUT_EXISTS` holder (leverage plan M5), copied field by field. */
+export interface OutputDetails {
+  id: string;
+  kind: string;
+  status: string;
+  target?: string | null;
+  ref?: string | null;
+  agent?: TaskPrincipalDetails | null;
+  createdAt?: string;
+  sentAt?: string | null;
 }
 /** The server's task `holder` projection (workspace tasks plan D5), copied field by field. */
 export interface TaskHolderDetails {
@@ -168,7 +184,7 @@ const CSV_COLUMN_RULES: ReadonlySet<string> = new Set(['column_name', 'duplicate
 const CSV_REASONS: ReadonlySet<string> = new Set(['unbalanced_quote']);
 /** The server's `NOT_FOUND_RESOURCES` (apps/backend/src/execution/failure.ts). */
 const NOT_FOUND_RESOURCES: ReadonlySet<string> = new Set([
-  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection', 'comment',
+  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection', 'comment', 'job', 'output',
 ]);
 /** The server's `ROW_QUERY_AVAILABLE_MAX` and `TABLE_COLUMN_NAME_MAX` (apps/backend/src/db/models/table-schema.ts). */
 const AVAILABLE_MAX = 259;
@@ -266,6 +282,14 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   } else if (code === 'VERSION_IN_USE') {
     if (body.task === null || (typeof body.task === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.task))) details.task = body.task;
     if (body.round === null || (typeof body.round === 'number' && Number.isInteger(body.round) && body.round >= 1)) details.round = body.round;
+  } else if (code === 'OUTPUT_EXISTS') {
+    if (body.output === null) details.output = null;
+    else {
+      const output = outputDetails(body.output);
+      if (output) details.output = output;
+    }
+  } else if (code === 'OUTPUT_SETTLED') {
+    if (typeof body.status === 'string' && OUTPUT_STATUSES.has(body.status)) details.status = body.status;
   } else if (code === 'TASK_NOT_IN_REVIEW') {
     if (typeof body.status === 'string' && TASK_STATUSES.has(body.status)) details.status = body.status;
     if (body.latestRound === null) details.latestRound = null;
@@ -294,6 +318,27 @@ function workspaceLimitDetails(body: Record<string, unknown>): DomainErrorDetail
 }
 /** The server's `PLAN_KEYS` (apps/backend/src/db/models/plan-keys.ts); `tests/unit/plan-catalog-parity.test.ts` pins it. */
 export const PLAN_KEYS: ReadonlySet<string> = new Set(['free', 'pro', 'power', 'enterprise']);
+
+/** The server's `OUTPUT_STATUSES` (apps/backend/src/db/models/leverage-vocabulary.ts). */
+const OUTPUT_STATUSES: ReadonlySet<string> = new Set(['sending', 'sent', 'failed']);
+
+/** An `OUTPUT_EXISTS` holder, every field checked; a malformed id, kind or status drops it whole, another field alone. */
+function outputDetails(value: unknown): OutputDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const o = value as Record<string, unknown>;
+  if (!shortString(o.id) || !shortString(o.kind) || typeof o.status !== 'string' || !OUTPUT_STATUSES.has(o.status)) return undefined;
+  const output: OutputDetails = { id: o.id, kind: o.kind, status: o.status };
+  if (o.target === null || shortString(o.target)) output.target = o.target;
+  if (o.ref === null || (typeof o.ref === 'string' && o.ref.length <= 2048)) output.ref = o.ref;
+  if (o.agent === null) output.agent = null;
+  else {
+    const agent = taskPrincipalDetails(o.agent);
+    if (agent) output.agent = agent;
+  }
+  if (typeof o.createdAt === 'string' && ISO_DATE.test(o.createdAt)) output.createdAt = o.createdAt;
+  if (o.sentAt === null || (typeof o.sentAt === 'string' && ISO_DATE.test(o.sentAt))) output.sentAt = o.sentAt;
+  return output;
+}
 
 /** The server's `TASK_STATUSES` (apps/backend/src/db/models/task-vocabulary.ts). */
 const TASK_STATUSES: ReadonlySet<string> = new Set(['todo', 'doing', 'review', 'done', 'cancelled']);
@@ -325,8 +370,10 @@ function taskRoundDetails(value: unknown): TaskRoundDetails | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const r = value as Record<string, unknown>;
   if (typeof r.number !== 'number' || !Number.isSafeInteger(r.number) || r.number < 1 || r.number > TASK_ROUNDS_MAX) return undefined;
-  if (r.outcome !== null && !(TASK_ROUND_OUTCOMES as readonly unknown[]).includes(r.outcome)) return undefined;
-  return { number: r.number, outcome: r.outcome as TaskRoundOutcome | null };
+  // A server before the verdict rename sends only `outcome` (window round-outcome-field-window).
+  const verdict = r.verdict !== undefined ? r.verdict : r.outcome;
+  if (verdict !== null && !(TASK_ROUND_VERDICTS as readonly unknown[]).includes(verdict)) return undefined;
+  return { number: r.number, verdict: verdict as TaskRoundVerdict | null };
 }
 
 const NAME_MAX = 255;

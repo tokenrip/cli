@@ -181,6 +181,7 @@ rip artifact download <table-id> --format json        # tables export as csv (de
 rip artifact list [--since <iso>] [--type markdown] [--limit 5] [--folder <slug>] [--team <slug>]
 rip storage [--team <slug>]                           # storage used against the plan, and the largest files
 rip actions [--team <slug>]                           # this month's actions against the plan, and each workspace's count
+rip feedback "<text>"                                 # a note about Tokenrip to the Tokenrip team, who may reply by email (20 a day)
 ```
 
 ### Delete, fork, bulk
@@ -263,16 +264,19 @@ rip artifact move <id> --folder <folder-id-or-slug>
 
 ## Task Commands
 
-A **task** is one piece of work in a workspace (`todo`, `doing`, `review` (In review), `done`, `cancelled`); every task lives in one. Two free tags carry the workspace's workflow: `--type` (what the work is) and `--step` (where it is); Tokenrip never interprets them. **The claim loop:** start a task (by id, or the next one by tags), work, then propose it (it needs review), complete it, or stop it. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you; comment with questions, requested changes and answers, never status. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`; it may be the assignee, never the one who proposed): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
+A **task** is one piece of work in a workspace (`todo`, `doing`, `review` (In review), `done`, `cancelled`); every task lives in one. Two free tags carry the workspace's workflow: `--type` (what the work is) and `--step` (where it is); Tokenrip never interprets them, except under a job with task definitions, which names the types and steps its tasks use. **Jobs:** before creating a task for a job, read the job (`rip job show <id>`: its definition's "Creating one" says what the task holds and which type); claim your step of a job with the job and the step on each run (`rip task start --workspace-id <ws> --job <name> --step <step>`, as load's `Your steps` names them; it records that you checked, even when nothing is taken); and follow the started task's `Workflow:` (the step's instructions, the next main step, the approval). **The claim loop:** start a task (by id, or the next one by tags), work, then propose it (it needs review), complete it, or stop it. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you; comment with questions, requested changes and answers, never status. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`; it may be the assignee, never the one who proposed): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
 
 ```bash
 rip task start --workspace-id <ws> --type article --step draft   # claim the first matching To do task in queue order ("No task": nothing to do)
 rip task start --workspace-id <ws>                    # no tags: only a task for you
+rip task start --workspace-id <ws> --job founder-posts --step draft   # your step of a job; records your check; prints the task's Workflow
+rip job show <id>                                    # a job whole: purpose, rules, agents, each definition's steps and "Creating one", the schedule
 rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
 rip task propose <id> --draft-file a.md --draft-artifact <publicId> --then post   # text and files under review; then: the next step
 rip task show <id>                                   # who, the latest round (a send back's comment), Approved text and files, links, timeline
 rip task timeline <id>                               # every round, comment and step
-rip task done <id> --result-text "4 likes" --link url:https://…
+rip output record --workspace-id <ws> --task <id> --kind x.reply --ref https://… --why "<the goal>"   # what went out
+rip task done <id> --result-text "4 likes"
 rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
 rip task report <id> --result-text "12 likes"        # a later result on a Done task
 rip task list --workspace-id <ws> --reviewer me      # reviews addressed to you
@@ -283,6 +287,7 @@ rip task list --workspace-id <ws>                    # To do + Doing tasks you c
 rip task list --workspace-id <ws> --status todo --type article --step draft --mine
 rip task list --workspace-id <ws> --status done,cancelled --order finished
 rip task add "<title>" --workspace-id <ws> --assignee <who> --reviewer <who> --type <type> --step <step> --link artifact:<id>
+rip task add "<title>" --workspace-id <ws> --job founder-posts --type social-post --body "…"   # after rip job show: type and first step from its definition
 rip task add "<title>" --parent-id <id>        # under a task, in its workspace
 rip task update <id> --expected-revision <n> --title "…" --reviewer <who> --step <step>
 rip task update <id> --position top|bottom           # move it in the queue (or --before|--after <id>); no revision

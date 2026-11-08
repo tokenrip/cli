@@ -34,6 +34,7 @@ function withWhy(command: Command): Command {
 }
 
 const program = new Command();
+
 program
   .name('rip')
   .description('Tokenrip — the shared workspace your AI agents work from')
@@ -1767,6 +1768,8 @@ task
   .option('--status <list>', "Comma list of todo,doing,review,done,cancelled or 'all' (default todo,doing)")
   .option('--type <type>', 'Only tasks of this type (a free tag: what kind of work it is)')
   .option('--step <step>', 'Only tasks at this step (a free tag: where it is in your workflow)')
+  .option('--label <labels>', 'Only tasks with all of these labels: repeatable, or a comma list (client:acme,campaign.q4)', collectLink)
+  .option('--job <name>', 'Only tasks of this job (its name, from rip workspace load or rip job list)')
   .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
   .option('--unassigned', 'Only tasks for no one, held or not (not with --mine)')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
@@ -1815,6 +1818,10 @@ withWhy(task
   .option('--no-type', 'Clear the type')
   .option('--step <step>', 'Which step of your workflow it is at: a free tag (lowercase letters, digits, - and _)')
   .option('--no-step', 'Clear the step')
+  .option('--job <name>', 'The job it is part of: a live job\'s name in its workspace (rip job list)')
+  .option('--no-job', 'Clear the job')
+  .option('--add-label <label>', 'Add a label: your person\'s own word for grouping work (lowercase letters, digits, -, _, : and .; repeatable; at most 20 per task)', collectLink)
+  .option('--remove-label <label>', 'Remove a label (repeatable)', collectLink)
   .option('--link <type:id>', 'Add a file or page the work uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
   .option('--remove-link <type:id>', 'Remove one it uses, by target: artifact:<id> or url:<https://…> (repeatable; result links stay)', collectLink, [])
   .option('--position <top|bottom>', 'Move it to the front (top) or the back (bottom) of the queue')
@@ -1843,6 +1850,8 @@ withWhy(task
   .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle> (the assignee too; never its proposer)')
   .option('--type <type>', 'What kind of work it is: a free tag agents filter on (lowercase letters, digits, - and _, e.g. blog-post)')
   .option('--step <step>', 'Which step of your workflow it is at: a free tag (e.g. draft)')
+  .option('--label <label>', 'A label: your person\'s own word for grouping work (lowercase letters, digits, -, _, : and ., e.g. client:acme; repeatable; at most 20)', collectLink)
+  .option('--job <name>', 'The job it is part of: a live job\'s name in the workspace (rip job list)')
   .option('--body <markdown>', 'Details')
   .option('--due <iso>', 'Due date (informational)')
   .option('--payload <json>', 'Producer-defined JSON payload')
@@ -1852,7 +1861,7 @@ withWhy(task
   .addHelpText('after', `
 EXAMPLES:
   $ rip task add "Review pricing page copy" --workspace-id 4f2c1b90-... --assignee alek
-  $ rip task add "Draft the launch post" --workspace-id 4f2c1b90-... --type blog-post --step draft --assignee agent:9b1d0e2a-... --reviewer alek --link artifact:3c9e7f10-...
+  $ rip task add "Draft the launch post" --workspace-id 4f2c1b90-... --type blog-post --step draft --label client:acme --assignee agent:9b1d0e2a-... --reviewer alek --link artifact:3c9e7f10-...
   $ rip task add "Book the venue" --parent-id 7a1c2d1e-...     # a step of the launch task, in its workspace
 `)
   .action(wrapCommand(async (title, options) => {
@@ -1866,13 +1875,15 @@ withWhy(task
   .option('--workspace-id <id>', 'Start by tags: the workspace (id or slug) to take the first To do task in queue order from that matches --type and --step')
   .option('--type <type>', 'Start by tags: only a task of this type; with a tag, a task for no one or for your person is taken too')
   .option('--step <step>', 'Start by tags: only a task at this step')
+  .option('--job <name>', 'Start by tags: only a task of this job (it counts as a tag). With --step, Tokenrip records that you checked that step, even when no task is taken')
   .option('--lease-hours <n>', 'Lease length in hours (0.25–72, default 2)')
   .allowExcessArguments(false)
-  .description('Start a task: it becomes yours under a lease; starting your own again renews it. With --workspace-id instead of an id, claim the first To do task in queue order matching --type and --step: with no tag, only a task for this agent; with a tag, also one for no one or for your person with no agent named. Prints "No task" when none matches (or a match is busy for a moment: try again later)')
+  .description('Start a task: it becomes yours under a lease; starting your own again renews it. With --workspace-id instead of an id, claim the first To do task in queue order matching --type, --step and --job: with no tag, only a task for this agent; with a tag, also one for no one or for your person with no agent named. Prints "No task" when none matches (or a match is busy for a moment: try again later)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip task start 7a1c2d1e-...                                          # a task by its id
   $ rip task start --workspace-id content --type article --step draft   # the first To do article draft in queue order
+  $ rip task start --workspace-id content --job founder-posts --step draft   # your step of a job: also records your check
   $ rip task start --workspace-id content                                # the first To do task for this agent in queue order
 
 Renew during long work: start the task again before its lease runs out. Only the holder writes the
@@ -1896,7 +1907,7 @@ withWhy(task
 withWhy(task
   .command('done'))
   .argument('<id>', 'Task id')
-  .option('--link <type:id>', 'A result link to what it produced: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
+  .option('--link <type:id>', 'A result link to a file it produced: artifact:<id>[@version] (repeatable). A url:<https://…> is recorded as an output (kind link) on the task, not a link; record a post or anything else that went out with rip output record', collectLink, [])
   .option('--result-text <text>', 'What came of it, at most 280 characters (e.g. "4 likes")')
   .allowExcessArguments(false)
   .description('Complete a task: one that is free (To do) or yours. An approved proposal: carry out exactly its approved text first')
@@ -1942,6 +1953,7 @@ withWhy(task
   .option('--reviewer <who>', 'Who decides: a person or agent:<handle> (default your own person; never you)')
   .option('--body <markdown>', 'A new proposal: context for the reviewer')
   .option('--audience <audience>', 'A new proposal: internal | shared')
+  .option('--job <name>', 'A new proposal: the job it serves (a live job\'s name); a job with task definitions holds it to its types and steps and fills its step, then and verb')
   .option('--link <type:id>', 'A file or page the proposal uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
   .option('--draft-artifact <id[@version]>', 'A file the draft is made of, at a version number or id (else its current one); repeatable, in order, at most 10; each is linked as context', collectLink, [])
   .allowExcessArguments(false)
@@ -1951,6 +1963,7 @@ EXAMPLES:
   $ rip task propose --workspace-id 4f2c1b90-... --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
   $ rip task propose 7a1c2d1e-... --draft-file post.md --then publish --comment "Shorter, as asked"     # a task you are doing, sent back to you, or your own proposal
   $ rip task propose 7a1c2d1e-... --draft-artifact 3c9e7f10-... --draft-artifact 8d2a4b61-...@2 --then post    # the files under review, each at its version
+  $ rip task propose --workspace-id 4f2c1b90-... --title "Take on the launch" --draft-file take.txt --job x-replies --type tweet    # under a job with task definitions: its first step, then and verb filled
 
 In review: stop; on a later run, rip workspace load lists it under Waiting on you once it is decided
 (approved: carry it out; sent back: the comment says what to change, then propose again).
@@ -1969,15 +1982,17 @@ withWhy(task
   .option('--parent-id <id>', 'A new report: a task it belongs under; its workspace is the report\'s (omit --workspace-id)')
   .option('--title <title>', 'A new report: what you did')
   .option('--result-text <text>', 'What came of it, at most 280 characters; a later result replaces it')
-  .option('--link <type:id>', 'A result link to what it produced: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
+  .option('--link <type:id>', 'A result link to a file it produced: artifact:<id>[@version] (repeatable). A url:<https://…> is recorded as an output (kind link) on the task, not a link; record a post or anything else that went out with rip output record', collectLink, [])
   .option('--type <type>', 'A new report: what kind of work it was (a free tag)')
+  .option('--label <label>', 'A new report: a label, your person\'s own word for grouping work (repeatable; at most 20)', collectLink)
+  .option('--job <name>', 'A new report: the job it was part of (a live job\'s name)')
   .option('--body <markdown>', 'A new report: details')
   .option('--audience <audience>', 'A new report: internal | shared')
   .allowExcessArguments(false)
   .description('Report work you already did that needed no approval (born Done), or add a later result to a Done task')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip task report --workspace-id 4f2c1b90-... --title "Sent the weekly digest" --result-text "38% opened" --link url:https://...
+  $ rip task report --workspace-id 4f2c1b90-... --title "Sent the weekly digest" --result-text "38% opened" --link artifact:<digest-id>
   $ rip task report 7a1c2d1e-... --result-text "12 likes"
 `)
   .action(wrapCommand(async (id, options) => {
@@ -2023,6 +2038,156 @@ for (const name of ['list', 'add', 'propose', 'report']) {
   const command = task.commands.find((cmd) => cmd.name() === name);
   if (command) nameRenamedOptions(command, { '--kind': '--type' });
 }
+
+// ── job commands ─────────────────────────────────────────────────────
+const job = program
+  .command('job')
+  .description('Jobs: named standing work in a workspace (founder-posts, inbox-triage), with the brief its agents read and the agents who do it. Internal members only');
+
+withWhy(job
+  .command('create'))
+  .requiredOption('--workspace-id <id>', 'Workspace id or slug: the workspace the job belongs to')
+  .requiredOption('--name <name>', 'The job\'s name, unique in the workspace, archived jobs included (lowercase letters, digits, - and _)')
+  .option('--purpose <text>', 'One line on what the job is for, at most 280 characters (shown under its name wherever jobs are listed)')
+  .option('--description <markdown>', 'What the job is and how it is done: the standing brief its agents read')
+  .option('--definitions <json|@file>', 'Its task definitions, a JSON array (or @<file> holding one), at most 5: [{ name, types, instructions?, steps: [{ name, role?, everyMinutes?, instructions?, approvalVerb?, side? }] }]')
+  .option('--job-agent <handle[:role]>', 'An agent who does it: a handle from rip workspace load (or agent:<handle>); repeatable, at most 20, each with its role inline', collectLink)
+  .option('--role <role>', 'With one --job-agent: what it does in the job (a free tag, e.g. writer)')
+  .allowExcessArguments(false)
+  .description('Create a job. A job grants nothing: approvals stay per task')
+  .addHelpText('after', `
+A task definition says what a task of the job is (its types, each in one definition of the job), how to
+create one (instructions) and its steps in order: each with the role whose agents work it, how often in
+minutes they check it for work (5 to 43200), its instructions, an approval verb when work there ends in a
+proposal, and side: true for a step off the main path. A new task starts at the first main step. The
+purpose, description and definitions take at most 30000 bytes as JSON.
+
+EXAMPLES:
+  $ rip job create --workspace-id content --name founder-posts --job-agent 9b1d0e2a-... --role writer
+  $ rip job create --workspace-id content --name founder-posts --description "Three posts a week, in our voice" \\
+      --job-agent 9b1d0e2a-...:writer --job-agent 4c2e8f11-...:editor
+  $ rip job create --workspace-id content --name founder-posts --purpose "Thoughts become posts on X" \\
+      --definitions @founder-posts.json
+`)
+  .action(wrapCommand(async (options) => {
+    const { jobCreate } = await import('./commands/job.js');
+    await jobCreate(options);
+  }));
+
+withWhy(job
+  .command('update'))
+  .argument('<id>', 'Job id (from rip job list or rip workspace load)')
+  .requiredOption('--expected-revision <n>', 'The revision you read (rip job show); a stale one is refused CONFLICT')
+  .option('--name <name>', 'Rename it (unique in the workspace; tasks follow the job, not the name)')
+  .option('--purpose <text>', 'Replace the purpose, one line of at most 280 characters ("" clears it)')
+  .option('--no-purpose', 'Clear the purpose')
+  .option('--description <markdown>', 'Replace the description')
+  .option('--no-description', 'Clear the description')
+  .option('--definitions <json|@file>', 'Its task definitions, replacing the whole set: a JSON array (or @<file> holding one; [] for none). Read the current set with rip job show <id> --json')
+  .option('--job-agent <handle[:role]>', 'The job\'s agents, replacing the ones it has: repeatable, each with its role inline', collectLink)
+  .option('--role <role>', 'With one --job-agent: its role in the job')
+  .option('--no-agents', 'Remove every agent from the job')
+  .option('--archive', 'Archive it: it leaves rip workspace load and takes no new tasks; tasks keep its name')
+  .option('--restore', 'Restore an archived job')
+  .allowExcessArguments(false)
+  .description('Change a job at the revision you read: its name, purpose, description, agents or definitions (each set whole), or archive and restore it')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip job update 7a1c2d1e-... --expected-revision 2 --job-agent 9b1d0e2a-... --role writer
+  $ rip job update 7a1c2d1e-... --expected-revision 3 --archive
+  $ rip job update 7a1c2d1e-... --expected-revision 4 --definitions @founder-posts.json
+`)
+  .action(wrapCommand(async (id, options) => {
+    const { jobUpdate } = await import('./commands/job.js');
+    await jobUpdate(id, options);
+  }));
+
+job
+  .command('show')
+  .argument('<id>', 'Job id')
+  .allowExcessArguments(false)
+  .description('Show one job whole: its purpose, description, agents with their roles and when each was last seen, its task definitions (each as a lane of its steps, with their instructions), whether it is archived, and its revision')
+  .action(wrapCommand(async (id) => {
+    const { jobShow } = await import('./commands/job.js');
+    await jobShow(id);
+  }));
+
+job
+  .command('list')
+  .requiredOption('--workspace-id <id>', 'Workspace id or slug')
+  .option('--archived', 'List the archived jobs instead of the live ones')
+  .allowExcessArguments(false)
+  .description('List a workspace\'s live jobs, in the order they were created (--archived: the archived ones)')
+  .action(wrapCommand(async (options) => {
+    const { jobList } = await import('./commands/job.js');
+    await jobList(options);
+  }));
+
+// ── output commands ──────────────────────────────────────────────────
+const output = program
+  .command('output')
+  .description('Outputs: what an agent sent, posted or published outside Tokenrip, recorded with or without a task');
+
+withWhy(output
+  .command('record'))
+  .requiredOption('--workspace-id <id>', 'Workspace id or slug')
+  .requiredOption('--kind <kind>', 'What it was: a free tag that allows dots (x.post, email.reply, li.comment)')
+  .option('--target <target>', 'Who or what received it (x:@bob, bob@acme.com, a URL)')
+  .option('--ref <ref>', 'The outside reference: the post\'s URL, a message id')
+  .option('--text <text>', 'What was said')
+  .option('--file <artifact[@version]>', 'The file it was made from: an artifact id or page URL, @ a version number or id (else the current one)')
+  .option('--task <id>', 'The task it served: its audience, job and labels follow, and its approved round is the approval')
+  .option('--job <name>', 'The job it served (a live job\'s name; defaults to the task\'s)')
+  .option('--label <labels>', 'A label (repeatable, or a comma list; defaults to the task\'s)', collectLink)
+  .option('--status <status>', 'sent (the default), or sending to claim it before you send (with --key)')
+  .option('--key <key>', 'Your once-only key: while an output not failed holds it here, another record with it is refused OUTPUT_EXISTS')
+  .option('--audience <audience>', 'internal or shared, for an output with no task (one on a task takes the task\'s)')
+  .allowExcessArguments(false)
+  .description('Record something you sent, posted or published, in one call')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip output record --workspace-id content --kind x.post --ref https://x.com/acme/status/1 --task 7a1c2d1e-...
+  # Once only: claim, send, then settle
+  $ rip output record --workspace-id content --kind email.reply --key msg-123 --status sending
+  $ rip output update 01a1adf7-... --status sent --ref "<message-id>"
+`)
+  .action(wrapCommand(async (options) => {
+    const { outputRecord } = await import('./commands/output.js');
+    await outputRecord(options);
+  }));
+
+withWhy(output
+  .command('update'))
+  .argument('<id>', 'Output id (from rip output record or rip output list)')
+  .requiredOption('--status <status>', 'sent once it went out, or failed when you know it did not (its key is free again; if you cannot tell, leave it sending)')
+  .option('--ref <ref>', 'The outside reference once sent: the post\'s URL, a message id')
+  .option('--text <text>', 'What was said, if it changed')
+  .allowExcessArguments(false)
+  .description('Settle an output you claimed with --status sending: sent or failed')
+  .action(wrapCommand(async (id, options) => {
+    const { outputUpdate } = await import('./commands/output.js');
+    await outputUpdate(id, options);
+  }));
+
+output
+  .command('list')
+  .requiredOption('--workspace-id <id>', 'Workspace id or slug')
+  .option('--job <name>', 'Only this job\'s outputs')
+  .option('--by-agent <handle>', 'Only outputs this agent recorded: a handle from rip workspace load (--agent stays the identity switch)')
+  .option('--kind <kind>', 'Only outputs of this kind')
+  .option('--label <labels>', 'Only outputs with all of these labels: repeatable, or a comma list', collectLink)
+  .option('--task <id>', 'Only this task\'s outputs')
+  .option('--status <status>', 'Only sending, sent or failed outputs')
+  .option('--since <when>', 'Recorded since: an ISO timestamp or a number of days back')
+  .option('--until <when>', 'Recorded until: an ISO timestamp or a number of days back')
+  .option('--limit <n>', 'Page size, 1-100 (default 50)')
+  .option('--cursor <id>', 'nextCursor of the previous page')
+  .allowExcessArguments(false)
+  .description('List what went out from a workspace, newest first')
+  .action(wrapCommand(async (options) => {
+    const { outputList } = await import('./commands/output.js');
+    await outputList(options);
+  }));
 
 // ── team commands ────────────────────────────────────────────────────
 const team = program.command('team').description('Manage teams');
@@ -2315,7 +2480,17 @@ const workspaceView = workspace.command('view').description('Inspect or explicit
 // The view follows the caller's key; open needs only the artifact, whose workspace is the view's.
 workspaceView.command('context').argument('<workspace>', 'Workspace id or slug').allowExcessArguments(false).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws); }));
 workspaceView.command('open').argument('<artifact>', 'Artifact in a workspace: id, alias or URL').requiredOption('--expected-context-generation <n>', 'contextGeneration from your last `view context`').option('--operation-id <id>', 'Optional idempotency key: a retry with the same key returns the same receipt').allowExcessArguments(false).description("Ask the browser tab paired to this agent's key to open an artifact").action(wrapCommand(async (artifact, options) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); await workspaceViewOpen(artifact, options); }));
-workspace.command('sessions').argument('<workspace>', 'Workspace id or slug').option('--cursor <cursor>', 'Continue from a previous page').description('Recent sessions, newest first: who worked (you or someone else, their agent or the browser), from which harness, and steps: each goal with the changes made for it').action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
+workspace.command('sessions').argument('<workspace>', 'Workspace id or slug').option('--cursor <cursor>', 'Continue from a previous page (pass the same filters)')
+  .option('--by-agent <handle>', "Only this agent's sessions: a handle from rip workspace load (--agent stays the identity switch)")
+  .option('--by <who>', "Only people's sessions (people: in the browser) or only agents' (agents), within the latest 1,000 changes")
+  .allowExcessArguments(false)
+  .description('Recent sessions, newest first: who worked (you or someone else, their agent or the browser, with the agent\'s handle), from which harness, and steps: each goal with the changes made for it')
+  .addHelpText('after', `
+Examples:
+  $ rip workspace sessions content --by agents
+  $ rip workspace sessions content --by-agent 9b1d0e2a-...
+`)
+  .action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
 workspace.command('changes').argument('<workspace>', 'Workspace id or slug').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them: who made each, why, and the item by title and id').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
 workspace.command('ack').argument('<workspace>', 'Workspace id or slug').requiredOption('--delivery-token <token>').description('Acknowledge one delivered workspace change page').action(wrapCommand(async (ws, options) => { const { workspaceChangesAck } = await import('./commands/workspace.js'); await workspaceChangesAck(ws, options.deliveryToken); }));
 
@@ -2574,6 +2749,28 @@ NOTES:
   .action(wrapCommand(async (options) => {
     const { actions } = await import('./commands/actions.js');
     await actions(options);
+  }));
+
+// ── feedback ────────────────────────────────────────────────────────
+program
+  .command('feedback')
+  .argument('<text>', 'The note: what went wrong, what was confusing or missing, or an idea')
+  .allowExcessArguments(false)
+  .description('Send a note about Tokenrip to the Tokenrip team')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip feedback "rip table append --upsert refused a row I expected to update"
+  $ rip feedback "An idea: a CSV export of a table's rows" --json
+
+NOTES:
+  The note goes by email to the Tokenrip team, from the person behind this
+  account, and they may reply to that person's email. Write about Tokenrip
+  itself: never include the person's files, messages or workspace content.
+  Quote the whole note. Up to 5,000 characters; 20 notes a day per person.
+`)
+  .action(wrapCommand(async (text: string) => {
+    const { feedback } = await import('./commands/feedback.js');
+    await feedback(text);
   }));
 
 runMigrations();

@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.19
+version: 2.6.21
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.19 -->
+<!-- tokenrip-skill-version: 2.6.21 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -92,6 +92,7 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 5. Always parse and present `data.url` from JSON responses to the user.
 6. Use the `--json` flag (or `TOKENRIP_OUTPUT=json`) when you need machine-readable output.
 7. Run `rip <command> --help` for full flag syntax. This skill teaches *when* and *why* to use a command, not every flag.
+8. When Tokenrip itself gets in your way (an error you can't resolve, a missing capability, confusing docs), you may send `rip feedback` describing the problem. Never include the person's files, messages or workspace content, or any key or secret. Tell the person you sent it.
 
 ## First Steps
 
@@ -108,6 +109,7 @@ rip workspace load <workspace>                                # its slug or id: 
 - the workspace, your role, what you **Can** do, and the **Browser** link: give it to the person so their tab follows you;
 - **Storage** and **Actions** (internal members): this workspace's bytes, its payer's plan and usage, and the payer's actions this month. When a notice follows either, tell your person; don't delete anything on your own;
 - your **Instructions** here, whole: what your person wrote for you in this workspace, with their **On its own** task types (applied for you when you propose), or a line saying there are none yet;
+- **Your jobs** (internal members): each job you work, with its purpose, your role, **Your steps** (what to claim with `rip task start --job <name> --step <step>`, and how often) and its description; then **Other jobs** by name and purpose ([Tasks](#tasks));
 - **Waiting on you**: approved tasks to carry out, reviews addressed to you to decide, and tasks for you to do (a task sent back to you among them, `round n · sent back`), each with the next command; then your proposals In review and the workspace's **Agents** with the `agent:<handle>` that names each one;
 - **Pinned** documents: a small pin's body is printed inline; a large one says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run that command to read it;
 - **Recent sessions**: who worked (`You` for your own account, `~alias` for someone else; their agent or the browser), from which tool, and each step: a stated why followed by the changes made for it (each item with its versions, a `rip artifact diff` command per edit, and row counts);
@@ -238,14 +240,20 @@ Folders inside a workspace?
 
 ### Tasks
 
-A **task** is one piece of work in a workspace: To do, Doing, **In review**, Done or Cancelled. It keeps the ask (its brief, and the files and links it uses), every review round (what was proposed and what was decided), its comments and what came of it, so people and agents pass the work along on one record. A task is for a person or an agent (`--assignee`) and reviewed by a person or an agent (`--reviewer`: it may be the assignee, never the one who proposed); name an agent as `agent:<handle>` from load's Agents. Two free tags carry your workspace's own workflow: `--type` (what the work is: `article`) and `--step` (where it is: `draft`, `post`). Tokenrip never interprets them; your instructions say what each step means. See `references/tasks.md`.
+A **task** is one piece of work in a workspace: To do, Doing, **In review**, Done or Cancelled. It keeps the ask (its brief, and the files and links it uses), every review round (what was proposed and what was decided), its comments and what came of it, so people and agents pass the work along on one record. A task is for a person or an agent (`--assignee`) and reviewed by a person or an agent (`--reviewer`: it may be the assignee, never the one who proposed); name an agent as `agent:<handle>` from load's Agents. Two free tags carry your workspace's own workflow: `--type` (what the work is: `article`) and `--step` (where it is: `draft`, `post`). Tokenrip never interprets them, except under a job with task definitions, which names the types and steps its tasks use; otherwise your instructions say what each step means. See `references/tasks.md`.
 
 **The claim loop:** `rip task start` (by id, or by tags), work, then `propose` (it needs review), `done` (finished) or `stop` (put it down). Two rules go with it:
 
 - **Renew during long work:** start the task again before its lease runs out. Once it lapses another agent may take the task, and your propose is then refused `TASK_TAKEN`.
 - **Only the holder writes the task's draft files.** The hold covers the task, not its files.
 
-**Starting by tags** takes the first matching To do task in queue order in one call, and two agents never get the same one. With no tag it takes only a task for you as this agent; with a tag it also takes one for no one, or for your person with no agent named. For routine work, give the step your instructions name, with the type, and start by them even when you already see a matching task in a list. Never give a type alone: it would also take approved tasks waiting at the next step. "No task" means nothing matched, or a match was locked for a moment by another write: nothing was taken; try again on a later run.
+**Starting by tags** takes the first matching To do task in queue order in one call, and two agents never get the same one. With no tag it takes only a task for you as this agent; with a tag it also takes one for no one, or for your person with no agent named. For routine work, give the step your instructions or your job names, with the type or the job, and start by them even when you already see a matching task in a list. Never give a type alone: it would also take approved tasks waiting at the next step. "No task" means nothing matched, or a match was locked for a moment by another write: nothing was taken; try again on a later run.
+
+**Jobs** are a workspace's standing work (`founder-posts`). Load lists yours first, with your role and your steps (`post › draft (every 60 min)`). A job with task definitions spells out its tasks: each definition's types, how to create one, and its steps, each with a role, how often that role checks it, its instructions and whether it ends in an approval.
+
+- **Creating a task for a job?** Read the job first: `rip job show <id>`. Its definition's "Creating one" says what the title and brief hold, which type to choose and where it starts. Then `rip task add --job <name> --type <type>`: the type is filled when the job has one, and the step with the first main step; a word that isn't the job's is `INVALID_FIELD`, listing the valid ones.
+- **Working a step?** Claim with the job and your step on each run: `rip task start --workspace-id <ws> --job <name> --step <step>`. It records that you checked the step, even when it takes nothing, and the job shows the step on time or late.
+- **Follow the task's workflow.** A started task prints `Workflow:`: the step's instructions, the next main step, and whether the step ends in a proposal. There, `rip task propose` without `--then` moves an approval to the next main step, and without `--verb` uses the step's verb.
 
 **Queue order:** To do tasks wait in a queue; a new one joins the back. Lists of open tasks and load follow it, front first, and starting by tags takes from the front. Move one with `rip task update <id> --position top|bottom` or `--before|--after <id>`; a move needs only `--why`, no revision.
 
@@ -254,6 +262,7 @@ A **task** is one piece of work in a workspace: To do, Doing, **In review**, Don
 ```
 Routine work your instructions describe (writing drafts, posting what was approved)?
   → rip task start --workspace-id <ws> --type article --step draft    # the first To do article draft in the queue; "No task": nothing to do
+  → rip task start --workspace-id <ws> --job founder-posts --step draft   # your step of a job: also records that you checked it
   → rip task start --workspace-id <ws>                               # no tags: only a task for you
   → rip task start <id> [--lease-hours 4]                            # one task; again on long work to renew
 
@@ -266,7 +275,7 @@ About to act outside the workspace (post, send, publish, book), or the work need
 How did the review end? (rip task show <id>: Latest round; rip workspace load lists it under Waiting on you)
   approved  → carry out exactly the approved round's final text and files (rip task show <id> --json:
               approvedRound.final.text, and final.artifacts at their versions), once; then
-              rip task done <id> --result-text "4 likes" [--link url:https://…]
+              rip output record --workspace-id <ws> --task <id> --kind x.post --ref <url>; rip task done <id> --result-text "4 likes"
               Approved with a then: it is unassigned at that step, for whoever does it; it no longer waits on you.
   sent back → the round's comment says what to change: revise, then rip task propose <id> … again, with the same --then
   cancelled → it was cancelled and waits on no one: do not carry it out
@@ -287,7 +296,7 @@ Ordinary work?
   → rip task list --workspace-id <ws> [--mine | --unassigned] [--type <t>] [--step <s>] [--status todo|review]
   → rip task done <id> --link artifact:<publicId>[@version] --result-text "…"
   → rip task stop <id>  ·  rip task cancel <id> --reason "..."  ·  rip task reopen <id>
-  → rip task add "<title>" --workspace-id <ws> | --parent-id <id> [--assignee <who>] [--reviewer <who>] [--type <t>] [--step <s>] [--link artifact:<id>]
+  → rip task add "<title>" --workspace-id <ws> | --parent-id <id> [--assignee <who>] [--reviewer <who>] [--job <name>] [--type <t>] [--step <s>] [--link artifact:<id>]
 ```
 
 Never decide your own proposal or a review addressed to anyone else; a person decides theirs in the dashboard, and only your person writes your instructions there. `rip task stop <id>` on your own proposal withdraws it (back to To do). A task's story is `rip task timeline <id>`; the workspace's is `rip workspace changes <ws>`.
@@ -385,7 +394,10 @@ How much storage is used, and what holds it?
   → rip storage [--team <slug>]            # plan, used and limit, per workspace, largest artifacts with history bytes
 
 How many actions has the plan used this month, and where?
-  → rip actions [--team <slug>]            # plan, used and limit, the reset, per workspace
+  → rip actions [--team <slug>]            # plan, used and limit, the reset, per workspace and agent
+
+Tell the Tokenrip team about a problem with Tokenrip, or an idea (rule 8)?
+  → rip feedback "<what happened, or what is missing>"   # emailed to the team, who may reply to your person; up to 5,000 characters, 20 a day
 
 Free the space old versions hold?
   → rip artifact prune-versions <id-or-alias> [--keep <n>]   # keeps the current version and the newest --keep (default 0); permanent, so only when your person asks
@@ -438,7 +450,8 @@ rip workspace load 4f2c1b90-...
 rip task show 7a1c2d1e-... --json   # approvedRound.final.text: the exact text to use (the person may have edited it)
 
 # 5. Carry out only what was approved (approvedRound.final.text), then complete with what came of it
-rip task done 7a1c2d1e-... --result-text "Posted" --link url:https://x.com/acme/status/1
+rip output record --workspace-id 4f2c1b90-... --task 7a1c2d1e-... --kind x.reply --ref https://x.com/acme/status/1
+rip task done 7a1c2d1e-... --result-text "Posted"
 rip task report 7a1c2d1e-... --result-text "12 likes"      # a later result goes on the same task
 
 # 6. Report work that needed no review (nothing posted, sent or published outside the workspace). Stopping half done? Put it back to To do, its body saying how far it got
@@ -490,6 +503,9 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `ACTIONS_LIMIT_REACHED` | This workspace's owner has used this month's actions; nothing was changed. Everything can still be read. Don't repeat the change before the allowance resets on the 1st, UTC. Tell your person; they can still make changes in the browser (`rip actions` shows your account's count, `--team <slug>` a team's) |
 | `WORKSPACE_BUSY` | A load or changes read ran out of attempts (often another call by your key at the same moment). Nothing was changed: wait a moment and run it again |
 | `MAINTENANCE` | Tokenrip is paused for maintenance until the time in the message. Nothing ran. The CLI waits short pauses out itself; when it gives up, run the same command again after that time |
+| `FEEDBACK_UNAVAILABLE` | `rip feedback` can't send right now; nothing was sent. Try again later, or tell the person they can reply to any email from Tokenrip |
+| `RATE_LIMITED` (`rip feedback`, the message says notes a day) | The person has sent the day's notes; nothing was sent. Don't resend: try again tomorrow. Any other `RATE_LIMITED`: the general row |
+| `NO_OPERATOR` / `OPERATOR_AMBIGUOUS` (`rip feedback`) | No single verified person to send the note from; nothing was sent. Don't sign in again for it: tell the person they can use Send feedback in the dashboard's account menu |
 | `RATE_LIMITED` | A limit was reached and nothing was changed. The CLI waits a short limit out itself (one stderr line per wait; never an upload or a deploy). When it gives up, wait for `Retry after:` when it is shown, then run the same command again; slow a loop down |
 | `SERVER_BUSY` | 503: Tokenrip is busy and nothing was changed. The CLI waits this out itself (never an upload or a deploy). When it gives up, wait a few seconds and run the same command again; slow a loop down |
 | `WORKSPACE_FORBIDDEN` | No access to that workspace or audience |
