@@ -433,12 +433,13 @@ export function parseDraftArtifacts(raw: string[] | undefined): { artifact: stri
 }
 
 /**
- * `--edit-artifact <publicId>@<version>` (repeatable): a draft artifact you edited, at the later
- * version you saw (a number or a version id), as the API's `edits.artifacts` entry.
+ * `--edit-artifact <publicId>@<version>` (repeatable): a draft artifact at its current version
+ * (a number or a version id), as the API's `edits.artifacts` entry. Omit it and the approval
+ * carries out each draft file as it is now.
  */
 export function parseEditArtifacts(raw: string[] | undefined): { artifact: string; version: number | string }[] {
   return parseDraftArtifacts(raw).map((entry, index) => {
-    if (entry.version === undefined) throw invalid(`--edit-artifact needs the version you saw: <id>@<version>, got "${raw![index]}".`);
+    if (entry.version === undefined) throw invalid(`--edit-artifact needs the current version: <id>@<version>, got "${raw![index]}".`);
     return { artifact: entry.artifact, version: entry.version };
   });
 }
@@ -527,7 +528,7 @@ export interface TaskDecideOptions extends TaskWriteOptions {
   then?: string | false;
   /** Approve only: a file whose text is carried out instead of the draft (sent as `edits.text`). */
   editedDraftFile?: string;
-  /** Approve only: `<publicId>@<version>`, repeatable: a draft artifact at the later version you saw (sent as `edits.artifacts`). */
+  /** Approve only: `<publicId>@<version>`, repeatable: a draft artifact at its current version (sent as `edits.artifacts`). Omit it to approve each draft file as it is now. */
   editArtifact?: string[];
 }
 

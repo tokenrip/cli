@@ -7,7 +7,7 @@ import { formatJob, formatJobList } from '../formatters.js';
 import { parseRevision } from './task.js';
 
 /**
- * `rip job create|update|show|list` over `/v0/jobs` (leverage plan M3): a job is named standing work
+ * `rip job create|update|delete|show|list` over `/v0/jobs` (leverage plan M3): a job is named standing work
  * in a workspace, with a description its agents read and the agents who do it, each with an
  * optional role. Internal members only.
  *
@@ -147,6 +147,14 @@ export async function jobUpdate(id: string, options: JobUpdateOptions): Promise<
   const { client } = requireAuthClient();
   const { data } = await client.patch(jobPath(id), { ...body, ...attribution(options) });
   outputSuccess(data.data, formatJob);
+}
+
+/** `rip job delete <id>`: the job is removed. Its tasks stay and no longer belong to it. */
+export async function jobDelete(id: string, options: { expectedRevision: string; why?: string }): Promise<void> {
+  const body = { expectedRevision: parseRevision(options.expectedRevision, 'rip job show <id>'), ...attribution(options) };
+  const { client } = requireAuthClient();
+  const { data } = await client.delete(jobPath(id), { data: body });
+  outputSuccess(data.data, (receipt) => `Job deleted. ${receipt.tasks} tasks no longer belong to it.`);
 }
 
 export async function jobShow(id: string): Promise<void> {

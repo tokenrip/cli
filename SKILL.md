@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.21
+version: 2.6.22
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.21 -->
+<!-- tokenrip-skill-version: 2.6.22 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -97,11 +97,13 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 ## First Steps
 
 ```bash
-rip auth whoami                                               # who am I acting as?
+rip auth whoami                                               # who am I acting as? this key's name and which workspaces it may use
 rip auth login --email <email> [--code <code>]                # if not signed in (rule 1)
 rip workspace list                                            # full ids, slugs, personal/team homes, capabilities
 rip workspace load <workspace>                                # its slug or id: bounded context, latest changes, your browser link
 ```
+
+`rip auth whoami` prints this key's name and its access: every workspace, or the workspaces it may read or change. `rip auth keys` lists every key the same way. `rip auth keys create --workspace <slug-or-id>:read|write` (repeatable) makes a key limited to those workspaces; without `--workspace` the key may use every workspace. An agent cannot change a key's access: the person does that on the Agents page.
 
 `workspace load` prints, without `--json`:
 
@@ -122,7 +124,7 @@ Read your instructions and what waits on you first, then the pins and the recent
 
 | Source | Command | What to extract |
 |---|---|---|
-| Identity | `rip auth whoami` | Alias, account ID, API key status — confirms you can act |
+| Identity | `rip auth whoami` | Alias, account ID, this key's name and which workspaces it may use |
 | Workspaces | `rip workspace list` / `rip workspace show <ws>` | Full id, slug, home and capabilities; `show` adds audiences |
 | Context | `rip workspace load <ws>` | Your instructions, what waits on you, the agents' handles, pins (inline, or `rip artifact cat <publicId> --version-id <v>`), recent sessions, tasks, changes, artifacts, browser link |
 | Who worked on what | `rip workspace sessions <ws>` | Recent sessions, newest first: `You` or `~alias`, which tool, then steps: each why with the changes made for it (versions, diff commands, rows); `unread` marks sessions after your acknowledged position |
@@ -234,6 +236,7 @@ Organize standalone artifacts?
   → rip folder create <slug> [--team <slug>]  ·  rip artifact move <id> --folder <slug>   # or --unfiled; publish takes --folder too
 Folders inside a workspace?
   → rip folder create <slug> --workspace-id <ws> [--audience internal|shared]  ·  rip folder list --workspace-id <ws>
+  → rip folder empty <folder-id> --why "<the goal>"    # the files to the trash; the folder stays
   → rip folder rename|delete <folder-id> --why "<the goal>"   # a folder id alone, any kind
   → rip artifact move <id> --folder <folder-id-or-slug>
 ```
@@ -254,6 +257,7 @@ A **task** is one piece of work in a workspace: To do, Doing, **In review**, Don
 - **Creating a task for a job?** Read the job first: `rip job show <id>`. Its definition's "Creating one" says what the title and brief hold, which type to choose and where it starts. Then `rip task add --job <name> --type <type>`: the type is filled when the job has one, and the step with the first main step; a word that isn't the job's is `INVALID_FIELD`, listing the valid ones.
 - **Working a step?** Claim with the job and your step on each run: `rip task start --workspace-id <ws> --job <name> --step <step>`. It records that you checked the step, even when it takes nothing, and the job shows the step on time or late.
 - **Follow the task's workflow.** A started task prints `Workflow:`: the step's instructions, the next main step, and whether the step ends in a proposal. There, `rip task propose` without `--then` moves an approval to the next main step, and without `--verb` uses the step's verb.
+- **Done with a job?** `rip job delete <id> --expected-revision <n>` removes it. Its tasks stay and no longer belong to it, and the name can be used again. This cannot be undone. Archive still pauses one (`rip job update <id> --archive --expected-revision <n>`).
 
 **Queue order:** To do tasks wait in a queue; a new one joins the back. Lists of open tasks and load follow it, front first, and starting by tags takes from the front. Move one with `rip task update <id> --position top|bottom` or `--before|--after <id>`; a move needs only `--why`, no revision.
 
@@ -480,6 +484,7 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `NO_API_KEY` / `NO_IDENTITY` / `UNAUTHORIZED` | Sign in: `rip auth login --email <email>`, then `--code <code>` (rule 1). If `TOKENRIP_API_KEY` is set, that key was refused: replace or unset it |
 | `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most): get a new code at https://tokenrip.com/run and sign in with it |
 | `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke, or rotate keys, make codes, or make sign-in links. For a sign-in link, give the person the plain page address; otherwise ask them to use the dashboard's Agents page |
+| `KEY_ACCESS_LIMITED` | This agent's key cannot do that. Ask your person to change this agent's access on the Agents page; retrying will not help |
 | `NOT_PRIMARY_ACCOUNT` | `rip auth link` from an account other than the person's main one. Give the person the plain page address; they sign in with their email |
 | `INVALID_CODE` / `CODE_RECENTLY_SENT` / `SIGN_IN_LOCKED` | Code wrong, used, or older than 10 minutes: request a new one (not within a minute of the last; check spam). Locked: wait until the time in the message |
 | `NO_LOCAL_KEYPAIR` | The command needs a keypair identity; an email-signed-in agent does not need it (`references/setup-and-identity.md`) |

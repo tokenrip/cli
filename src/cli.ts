@@ -742,6 +742,9 @@ EXAMPLES:
     await authLink({ to: options.to });
   }));
 
+/** Repeatable `--workspace <ref:level>` on `rip auth keys create`. */
+const collectKeyWorkspace = (value: string, previous: string[] = []): string[] => previous.concat(value);
+
 const keys = auth.command('keys').description('List, create, and revoke the keys on this account');
 
 keys
@@ -762,14 +765,17 @@ keys
   .command('create')
   .description('Create a key for a host that takes a pasted key (a vault or settings field)')
   .option('--name <name>', 'What the key is for, e.g. "Hermes" (default: this harness, e.g. "cli")')
+  .option('--workspace <ref:level>', 'A workspace this key may use: its slug or id, then :read or :write (repeatable). Omit it and the key may use every workspace.', collectKeyWorkspace)
   .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth keys create --name "Hermes"
-  $ rip auth keys create
+  $ rip auth keys create --name "Reader" --workspace decisions:read --workspace findings:write
 
   The key is shown once. Paste it into the host's key vault or settings,
-  not into a chat. It has full access to the account; revoke it any time.
+  not into a chat. Without --workspace it may use every workspace you can.
+  Repeat --workspace to limit it to those, read only or read and write.
+  Revoke it any time. An agent cannot change a key's access afterwards.
 `)
   .action(wrapCommand(async (options) => {
     const { authKeysCreate } = await import('./commands/auth-keys.js');
@@ -838,10 +844,12 @@ EXAMPLES:
 
 auth
   .command('whoami')
-  .description('Show current agent identity')
+  .description('Show current agent identity and this key\'s access')
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth whoami
+
+  Prints this key's name and which workspaces it may use.
 `)
   .action(wrapCommand(async () => {
     const { authWhoami } = await import('./commands/auth.js');
@@ -2010,7 +2018,7 @@ const taskDecideCommand = withWhy(task
   .option('--then <step>', 'With --approve: move the task to this step instead of the proposal\'s then')
   .option('--no-then', 'With --approve: apply no then (the proposer carries it out)')
   .option('--edited-draft-file <path>', 'With --approve: read the text to carry out instead of the draft from a file, verbatim')
-  .option('--edit-artifact <id@version>', 'With --approve: a draft artifact at the later version you saw and approve (repeatable)', collectLink, [])
+  .option('--edit-artifact <id@version>', 'With --approve: a draft artifact at its current version (repeatable). Omit it to approve each draft file as it is now', collectLink, [])
   .allowExcessArguments(false)
   .description('Decide a review addressed to you: approve (optionally with edits or another then) or send it back with a comment. To say no, cancel the task: rip task cancel <id> [--reason]')
   .addHelpText('after', `
@@ -2100,6 +2108,26 @@ EXAMPLES:
   .action(wrapCommand(async (id, options) => {
     const { jobUpdate } = await import('./commands/job.js');
     await jobUpdate(id, options);
+  }));
+
+withWhy(job
+  .command('delete'))
+  .argument('<id>', 'Job id (from rip job list or rip workspace load)')
+  .requiredOption('--expected-revision <n>', 'The revision you read (rip job show); a stale one is refused CONFLICT and detaches nothing')
+  .allowExcessArguments(false)
+  .description('Delete a job. Its tasks stay and no longer belong to it; the name can be used again. This cannot be undone. Archive still pauses one')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip job delete 7a1c2d1e-... --expected-revision 2
+
+NOTE:
+  The job is removed. Its tasks stay, and no longer belong to it. The name can
+  be used for a new job. This cannot be undone. To pause a job and bring it
+  back, archive it (rip job update <id> --archive) instead.
+`)
+  .action(wrapCommand(async (id, options) => {
+    const { jobDelete } = await import('./commands/job.js');
+    await jobDelete(id, options);
   }));
 
 job
@@ -2564,6 +2592,30 @@ ${FOLDER_SCOPE_NOTE}`)
   .action(wrapCommand(async (folderRef, options) => {
     const { folderDelete } = await import('./commands/folder.js');
     await folderDelete(folderRef, options);
+  }));
+
+withWhy(folder
+  .command('empty'))
+  .allowExcessArguments(false)
+  .argument('<folder>', 'Workspace folder id, or its slug with --workspace-id')
+  .option('--workspace-id <workspace-id>', 'Workspace id or slug: the workspace a folder slug is in (a folder id needs none)')
+  .option('--expected-workspace-revision <n>', 'Optional: refuse if the workspace folder changed since this revision')
+  .description('Move the files in a workspace folder to the trash and leave the folder (restorable for 30 days)')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip folder empty <workspace-folder-id> --why "Clear out the old drafts"
+
+NOTE:
+  The files move to the trash; the folder stays. A restored file comes back
+  into that folder. The reply is trashed (how many moved), failed (each file
+  whose delete failed, with its id and error) and kept (live files you can
+  see and could not delete). It is not one transaction; running it again
+  continues. Delete folder still moves the folder and the files still in it.
+  Needs --why, and the same authority as deleting the folder.
+`)
+  .action(wrapCommand(async (folderRef, options) => {
+    const { folderEmpty } = await import('./commands/folder.js');
+    await folderEmpty(folderRef, options);
   }));
 
 withWhy(folder

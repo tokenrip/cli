@@ -8,8 +8,15 @@ export interface DomainErrorDetails {
   currentVersionId?: string;
   currentRevision?: number;
   currentWorkspaceRevision?: number;
-  /** `INVALID_SKILL`: which skill rule refused (closed set, mirrors the server). */
+  /**
+   * `INVALID_SKILL`: which skill rule refused (closed set, mirrors the server).
+   * `CONFLICT`: `not_current` when a named draft version is not the file's current one.
+   */
   reason?: string;
+  /** `CONFLICT` `not_current`: the draft file's public id. */
+  artifact?: string;
+  /** `CONFLICT` `not_current`: that file's current version. A malformed one is dropped whole. */
+  current?: { id: string; number: number };
   /** `DELETED` / `WORKSPACE_DELETED`: the item in the trash (or, via a folder, what put it there). */
   type?: string;
   id?: string;
@@ -79,6 +86,13 @@ export interface DomainErrorDetails {
   retryAfterSeconds?: number;
   /** `AMBIGUOUS_REFERENCE` on a workspace slug: each workspace it names, to be named by its id. */
   candidates?: WorkspaceCandidateDetails[];
+  /**
+   * `KEY_ACCESS_LIMITED`: `workspaceId` when the refusal names one (the door omits it). `level` is
+   * the grant, or null when that workspace is outside the key (or the door named none). `operation`
+   * is what was refused.
+   */
+  level?: 'read' | 'write' | null;
+  operation?: string;
 }
 /** The server's `CapacityLimit` (apps/backend/src/api/ratelimit/capacity-limits.ts). */
 export type CapacityLimit = 'requests' | 'concurrent' | 'streams';
@@ -232,6 +246,8 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       const revision = body[field];
       if (typeof revision === 'number' && Number.isSafeInteger(revision) && revision > 0) details[field] = revision;
     }
+    const moved = notCurrentDetails(body);
+    if (moved) Object.assign(details, moved);
   } else if (code === 'PRECONDITION_REQUIRED' && typeof body.field === 'string'
     && ['expectedVersionId', 'expectedRevision', 'expectedRevisions', 'expectedWorkspaceRevision'].includes(body.field)) details.field = body.field;
   else if (code === 'INVALID_SCOPE' && body.field === 'workspaceId') details.field = body.field;
@@ -297,8 +313,24 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       const latestRound = taskRoundDetails(body.latestRound);
       if (latestRound) details.latestRound = latestRound;
     }
-  }
+  } else if (code === 'KEY_ACCESS_LIMITED') Object.assign(details, keyAccessLimitedDetails(body));
   return Object.keys(details).length ? details : undefined;
+}
+
+/** The server's operation name on `KEY_ACCESS_LIMITED` (apps/backend/src/execution/failure.ts). */
+const KEY_ACCESS_OPERATION = /^[a-z][a-zA-Z0-9_.]{0,80}$/;
+
+/**
+ * `KEY_ACCESS_LIMITED`'s details, field by field, as the server keeps them. A bad `level`,
+ * `operation` or `workspaceId` drops the whole detail. The door omits `workspaceId`.
+ */
+function keyAccessLimitedDetails(body: Record<string, unknown>): DomainErrorDetails {
+  const { workspaceId, level, operation } = body;
+  if (level !== 'read' && level !== 'write' && level !== null) return {};
+  if (typeof operation !== 'string' || !KEY_ACCESS_OPERATION.test(operation)) return {};
+  if (workspaceId === undefined) return { level, operation };
+  if (typeof workspaceId !== 'string' || !ANY_UUID.test(workspaceId)) return {};
+  return { workspaceId, level, operation };
 }
 
 /** The server's `PlanLabel` (apps/backend/src/api/service/billing-plans.ts); `tests/unit/plan-catalog-parity.test.ts` pins it. */
@@ -406,6 +438,21 @@ const CANDIDATES_MAX = 20;
 /** A workspace or team slug: lowercase letters, digits and hyphens, at most 64. */
 const SLUG = /^[a-z0-9-]{1,64}$/;
 const ANY_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Approve's refusal of a named version that is not the file's current one (`not_current`): the reason,
+ * the artifact's public id and that version, all required. A malformed current adds nothing, so a
+ * secret beside a half-read file cannot cross. A stale task revision stays `currentRevision` alone.
+ */
+function notCurrentDetails(body: Record<string, unknown>): Pick<DomainErrorDetails, 'reason' | 'artifact' | 'current'> | undefined {
+  if (body.reason !== 'not_current' || typeof body.artifact !== 'string' || !ANY_UUID.test(body.artifact)) return undefined;
+  const current = body.current;
+  if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+  const version = current as Record<string, unknown>;
+  if (typeof version.id !== 'string' || !ANY_UUID.test(version.id)) return undefined;
+  if (typeof version.number !== 'number' || !Number.isSafeInteger(version.number) || version.number <= 0) return undefined;
+  return { reason: 'not_current', artifact: body.artifact, current: { id: version.id, number: version.number } };
+}
 
 /** An ambiguity's workspace candidates, each field checked; a malformed candidate is dropped whole. */
 function workspaceCandidateDetails(value: unknown): WorkspaceCandidateDetails[] {

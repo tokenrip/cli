@@ -58,6 +58,7 @@ export function outputError(err: CliError): never {
       if (details.httpStatus !== undefined) console.error(`HTTP status: ${details.httpStatus}`);
     } else if (details && !Array.isArray(details)) {
       if (details.currentVersionId) console.error(`Current version: ${details.currentVersionId}`);
+      if (err.code === 'CONFLICT' && details.current) console.error(`Current version: v${details.current.number}`);
       if (details.currentRevision) console.error(`Current revision: ${details.currentRevision}`);
       if (details.currentWorkspaceRevision) console.error(`Current workspace revision: ${details.currentWorkspaceRevision}`);
       if (err.code === 'CONFLICT') console.error('Read the current resource and reconcile your changes before another write.');
@@ -145,6 +146,7 @@ export const ERROR_HINTS: Record<string, string> = {
   NO_LOCAL_KEYPAIR: 'Email sign-in needs no keypair. To use this account elsewhere, sign in there or connect it with `rip auth code`.',
   RUN_KEY_EXPIRED: 'Get a new code from your key sign-in page and sign in again.',
   RUN_KEY_FORBIDDEN: 'Run keys cannot manage keys; ask the person to use the Agents page.',
+  KEY_ACCESS_LIMITED: "Ask your person to change this agent's access on the Agents page; retrying will not help.",
   NO_OPERATOR: 'This account is not linked to a verified person. Sign in by email instead (`rip auth login --email <your email>`), or link this agent with `rip operator-link`.',
   INVALID_AGENT_ID: 'Agent IDs start with rip1. Example: rip1x9a2f...',
   INVALID_OUTPUT_FORMAT: 'Valid values are "json" and "human".',

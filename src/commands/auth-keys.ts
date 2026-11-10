@@ -47,10 +47,34 @@ export async function authKeysList(): Promise<void> {
   outputSuccess(data.data, formatKeyList);
 }
 
-/** `rip auth keys create [--name <n>]` — a key for a host that takes a pasted key (a vault, settings). */
-export async function authKeysCreate(options: { name?: string }): Promise<void> {
+const KEY_ACCESS_LEVELS = new Set(['read', 'write']);
+
+/**
+ * Repeatable `--workspace <slug-or-id>:read|write` as the create body's `access`. No flag omits
+ * `access` (every workspace). A bad level is a usage error before any request.
+ */
+function keyCreateAccess(flags: readonly string[] | undefined): { access?: { mode: 'limited'; workspaces: Array<{ workspace: string; level: 'read' | 'write' }> } } {
+  if (!flags || flags.length === 0) return {};
+  const workspaces = flags.map((flag) => {
+    const split = flag.lastIndexOf(':');
+    const workspace = split > 0 ? flag.slice(0, split) : '';
+    const level = split > 0 ? flag.slice(split + 1) : '';
+    if (!workspace || !KEY_ACCESS_LEVELS.has(level)) {
+      throw new CliError('INVALID_ARGUMENT', `--workspace must be <slug-or-id>:read or <slug-or-id>:write, got "${flag}".`);
+    }
+    return { workspace, level: level as 'read' | 'write' };
+  });
+  return { access: { mode: 'limited', workspaces } };
+}
+
+/** `rip auth keys create [--name <n>] [--workspace <ref>:read|write]` — a key for a host that takes a pasted key (a vault, settings). */
+export async function authKeysCreate(options: { name?: string; workspace?: string[] }): Promise<void> {
+  const access = keyCreateAccess(options.workspace);
   const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/auth/keys', options.name === undefined ? {} : { name: options.name });
+  const body: Record<string, unknown> = {};
+  if (options.name !== undefined) body.name = options.name;
+  Object.assign(body, access);
+  const { data } = await client.post('/v0/auth/keys', body);
   outputSuccess(data.data, formatKeyCreated);
 }
 

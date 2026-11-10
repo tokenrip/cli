@@ -114,6 +114,18 @@ export async function folderShareContents(
   outputSuccess(data.data);
 }
 
+/** `rip folder empty <folder>`: the live files in a workspace folder to the trash. The folder stays. */
+export async function folderEmpty(
+  folder: string,
+  options: { workspaceId?: string; expectedWorkspaceRevision?: string; why?: string },
+): Promise<void> {
+  const { client } = requireAuthClient();
+  const { data } = await client.post(`${folderPath(folder)}/empty`, {
+    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
+  });
+  outputSuccess(data.data);
+}
+
 /**
  * `rip artifact move`: file the artifact into `--folder` (an id, or a slug: in its workspace, else
  * in `--team`, else your personal folders) or unfile it (`--unfiled`, `folder: null`). The server

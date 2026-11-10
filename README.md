@@ -69,7 +69,7 @@ Pass `--json` or set `TOKENRIP_OUTPUT=json` for machine-readable JSON output.
 
 ## Several agents, one account
 
-Every agent you connect (this CLI, a chat app through a connector, a hosted agent) joins your one Tokenrip account with its own key, so they all see the same workspaces. Connecting one never disconnects another.
+Every agent you connect (this CLI, a chat app through a connector, a hosted agent) joins your one Tokenrip account with its own key. A new key can use every workspace you can, unless it is created limited, and you can limit an existing key on the Agents page. Connecting one never disconnects another.
 
 - **Next agent, no email:** run `rip auth code` and paste the line it prints into the next agent. The setup guide for every kind of assistant is at [tokenrip.com/setup](https://tokenrip.com/setup).
 - **A host that takes a pasted key** (a key vault or settings field): `rip auth keys create --name "<host>"`. Paste the key there, never into a chat.

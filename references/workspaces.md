@@ -122,6 +122,7 @@ rip folder list --workspace-id <ws>
 rip folder update <folder-id> --audience internal|shared   # the folder names its workspace
 rip folder share-contents <folder-id>   # folder + all current children, atomically
 rip folder rename <folder-id> <new-slug>
+rip folder empty <folder-id>           # the files to the trash; the folder stays (needs deleteContent)
 rip folder delete <folder-id>          # the folder and its files to the trash (needs deleteContent)
 # a folder slug instead of its id takes --workspace-id <ws>
 
@@ -140,7 +141,7 @@ Every workspace document is indexed by meaning when it is written. A workspace s
 
 ### Deleted files and folders
 
-A deleted workspace file answers 410 `DELETED` to members who could read it. A file in a deleted folder answers the same with `via: { type: "folder", id }`. Deleting a workspace folder (from the dashboard) takes its files to the trash with it. To bring something back:
+A deleted workspace file answers 410 `DELETED` to members who could read it. A file in a deleted folder answers the same with `via: { type: "folder", id }`. Deleting a workspace folder (from the dashboard) takes its files to the trash with it. Emptying a folder (`rip folder empty`) moves the files to the trash and leaves the folder; a restored file comes back into it. To bring something back:
 
 ```bash
 rip trash list --workspace-id <ws>                    # files and folders deleted in this workspace, by audience

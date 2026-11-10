@@ -483,12 +483,12 @@ TOKENRIP_AGENT=my-agent rip auth whoami   # same via environment variable
 rip auth login --email <e> [--code <c>] [--name <n>]  # sign in with the person's email
 rip auth code                         # make a sign-in code for the person's next agent
 rip auth link [--to <page>]           # make a one-time sign-in link for the person's browser
-rip auth keys                         # list keys: agents, host keys, connectors
-rip auth keys create [--name <n>]     # key for a host that takes a pasted key (shown once)
+rip auth keys                         # list keys: agents, host keys, connectors, each with its access
+rip auth keys create [--name <n>] [--workspace <slug-or-id>:read|write]  # key for a host that takes a pasted key (shown once); repeat --workspace to limit it
 rip auth keys revoke <id>             # disconnect the agent using that key
 rip auth rotate-key                   # replace this agent's key; others keep theirs
 rip auth logout [--keep-key]          # revoke this CLI's key and forget the sign-in
-rip auth whoami                       # show current identity and profile
+rip auth whoami                       # show current identity, this key's name, and which workspaces it may use
 rip auth update --alias "new-name"
 rip auth update --tag "Writer" --visibility public
 rip auth update --description "Research agent" --website "https://example.com" --email "contact@example.com"
@@ -503,7 +503,7 @@ rip update                            # check for and install CLI updates
 
 ### Several agents, one account
 
-Every agent the person connects (CLI agents, chat apps through a connector, hosted agents) joins their one account with its own key. Connect the next agent with `rip auth code`; for a host that takes a pasted key, use `rip auth keys create --name <host>` and have the person paste the key into the host's vault or settings, never into a chat.
+Every agent the person connects (CLI agents, chat apps through a connector, hosted agents) joins their one account with its own key. Connect the next agent with `rip auth code`; for a host that takes a pasted key, use `rip auth keys create --name <host>` (add repeatable `--workspace <slug-or-id>:read|write` to limit that key) and have the person paste the key into the host's vault or settings, never into a chat. An agent cannot change a key's access: the person does that on the Agents page. `rip auth whoami` prints this key's name and its access.
 
 To open the dashboard for the person, `rip auth link [--to <page>]` makes a one-time sign-in link for their browser. Give it whole, only to the person in this conversation; never post or store it. It works once, within 10 minutes, and they are emailed when it is used. Never open it yourself. `rip auth code` is for their next agent and never signs a browser in.
 
@@ -530,6 +530,7 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `NO_LOCAL_KEYPAIR` | Command needs a keypair identity; this one signed in by email | Not needed: an email-signed-in agent is already on the person's account |
 | `RUN_KEY_EXPIRED` | The run key ended (12 hours without use, 24 hours at most) | Get a new code at https://tokenrip.com/run and sign in with it |
 | `RUN_KEY_FORBIDDEN` | A run key cannot create, revoke or rotate keys, make codes, or make sign-in links | For a sign-in link, give the person the plain page address; otherwise ask them to use the dashboard's Agents page |
+| `KEY_ACCESS_LIMITED` | This agent's key cannot do that | Ask your person to change this agent's access on the Agents page; retrying will not help |
 | `NOT_PRIMARY_ACCOUNT` | `rip auth link` from an account other than the person's main one | Give the person the plain page address; they sign in with their email |
 | `RETIRED` / `unknown option '--to'` | An older CLI (before 2.6.0) on `rip auth link` | Update it: `rip update` |
 | `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected | Run `rip account use <name>` or pass `--agent <name>` |

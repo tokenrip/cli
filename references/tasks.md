@@ -184,11 +184,11 @@ rip task cancel <id> --reason "Not this week"                       # to say no:
 ```
 
 - An agent decides only a review whose reviewer is exactly its key. A person's review, an unaddressed one (any other person decides those), another agent's, and your own proposal are `REVIEW_NOT_YOURS`, with `Reviewer:` saying whose it is; nothing is written. A person decides theirs in the dashboard, from their own sign-in.
-- A review has two answers: exactly one of `--approve` and `--send-back`. `--comment` may go with either (posted in the same write) and is required with `--send-back`: it says what to change. `--approve` takes `--then <step>` (overrides the proposal's) or `--no-then` (clears it), `--edited-draft-file` (the text then carried out; kept only when it differs) and `--edit-artifact <publicId>@<version>` (a later version of a draft file, the one you saw and approve).
+- A review has two answers: exactly one of `--approve` and `--send-back`. `--comment` may go with either (posted in the same write) and is required with `--send-back`: it says what to change. `--approve` takes `--then <step>` (overrides the proposal's) or `--no-then` (clears it), `--edited-draft-file` (the text then carried out; kept only when it differs) and `--edit-artifact <publicId>@<version>` (the current version of a draft file). Omitting `--edit-artifact` approves each draft file as it is now. A named version that is not current is `CONFLICT` with `details.reason` `not_current` and `details.current` (`Current version: vN`), and no `currentRevision`.
 - `--send-back` makes the task To do with its assignment and step unchanged, so it goes back to whoever had it.
 - To say no, cancel the task: `rip task cancel <id> --reason "…" --expected-revision <n>`. The reviewer may cancel a task In review; the round closes `cancelled`. `--expected-revision` (optional) is the revision you read: a draft replaced, decided or started since is `CONFLICT` and nothing is cancelled. `--decline` and `--reason` on decide are refused with a hint naming `rip task cancel`.
 - An approval is refused `DELETED` while a draft file is in the trash or after it was purged, and `INVALID_LINKS` when a shared task's draft file is no longer shared: send it back or cancel it instead.
-- `--expected-revision` is the revision you read. A draft replaced since is `CONFLICT` with `currentRevision`: read it again. A task already decided is `TASK_NOT_IN_REVIEW`, with `Latest round:` saying how it ended.
+- `--expected-revision` is the revision you read. A task revision that moved since is `CONFLICT` with `currentRevision`: read it again. That is not a file that moved: a named version that is not the file's current one is `CONFLICT` with `details.current` and no `currentRevision`. A task already decided is `TASK_NOT_IN_REVIEW`, with `Latest round:` saying how it ended.
 - Deciding a whole batch at once is dashboard-only; decide each child.
 
 ### Instructions and what waits on you
@@ -235,11 +235,12 @@ rip job create --workspace-id <ws> --name founder-posts --purpose "Thoughts beco
 rip job update <id> --expected-revision <n> --definitions @founder-posts.json      # the whole set, replaced; read it first with rip job show <id> --json
 rip job update <id> --expected-revision <n> --job-agent <handle> --role publisher   # replaces the job's agents
 rip job update <id> --expected-revision <n> --archive                               # or --restore
+rip job delete <id> --expected-revision <n>                                         # the job is removed; its tasks stay
 rip job list --workspace-id <ws> [--archived]
 ```
 
 - Handles come from `rip workspace load` (`Agents`, each `agent:<handle>`). A job's agents are `--job-agent`; `--agent` stays the identity you run as.
-- A name is unique in the workspace, archived jobs included (`JOB_NAME_TAKEN`). Archiving takes a job out of load and refuses new tasks for it; its tasks keep its name.
+- A name is unique in the workspace, archived jobs included (`JOB_NAME_TAKEN`). Archiving pauses a job: it leaves load and refuses new tasks, and its tasks keep its name. Deleting removes the job. Its tasks stay and no longer belong to it, the name can be used again, and it cannot be undone. Archive still pauses one.
 - `--definitions` takes JSON inline or `@file`: at most 5 definitions, each with 1 to 10 types (a type in one definition of the job) and 1 to 12 steps; the purpose, description and definitions together take at most 30,000 bytes as JSON. Shape: `[{ "name": "post", "types": ["social-post"], "instructions": "…", "steps": [{ "name": "draft", "role": "writer", "everyMinutes": 60, "instructions": "…" }, { "name": "edit", "role": "editor", "approvalVerb": "Post" }, { "name": "post", "role": "publisher", "everyMinutes": 30 }, { "name": "needs-input", "side": true }] }]` (`everyMinutes` 5 to 43200; none is on demand).
 - A task names its job by name: `--job <name>` on `rip task add`, a new `rip task report`, a new `rip task propose` and `rip task update` (`--no-job` clears it), and `rip task list --job <name>` filters by it. An unknown or archived job is `INVALID_FIELD` on `job`. `rip task show` prints `Job:`.
 - `rip workspace load` prints `Your jobs` right after your instructions (each with your role, its purpose, `Your steps` and its description; a long description may read `(description cut; rip job show <id>)`), then `Other jobs` with their purposes. With `--json` they are under `jobs` (`{ mine, mineTotal, others, othersTotal }`, each of `mine` with `steps: [{ definition, step, everyMinutes }]`); when load trims to fit, the totals still count them all.
@@ -368,7 +369,7 @@ A comment is markdown on a task (at most 8,000 characters): a question, a reques
 - a **comment**, with edited and deleted markers;
 - a **step** from the activity log: created, started, stopped, lease lapsed, completed, cancelled, reopened, result added, links changed, title, brief, tags or roles changed; each with who, when, from which harness, and the why.
 
-`rip task show <id> --round <n>` prints each draft file with its version, whether the file changed since, and the command that diffs it against the same file in the previous round at the same step: `rip artifact diff --version-id <v> --base <baseVersionId>`.
+`rip task show <id> --round <n>` prints each draft file at the version the round recorded (the proposal's while it is open, and the approver's edit once the round is closed), whether the live file has moved on, and the command that diffs it against the same file in the previous round at the same step: `rip artifact diff --version-id <v> --base <baseVersionId>`. An open review follows the file as it is now: an approval with no `--edit-artifact` records the current version when it is later than the proposal, and after approval that recorded version stays.
 
 Task events are also **workspace activity**: `task.created`, `task.updated`, `task.audience_changed`, `task.links_changed`, `task.proposed`, `task.approved`, `task.sent_back`, `task.withdrawn`, `task.started`, `task.stopped`, `task.lease_expired`, `task.completed`, `task.reported`, `task.result_added`, `task.cancelled`, `task.reopened` and the comment verbs arrive through `rip workspace changes <workspace>` (MCP `workspace_changes`) alongside the workspace's other changes. Older rows may still say `task.skipped` (an old skip, which cancelled the task), `task.claimed`, `task.released` or `task.dismissed`. No event carries a draft, a comment or a result's text. The account/team feed below never carries task events.
 
@@ -462,7 +463,7 @@ That value lands on the task's `holder.surface` and every activity row — so a 
 | `VERSION_IN_USE` | (`rip artifact delete-version`) A review round uses that version, so it is kept while the task exists; `In use by:` names the task and round |
 | `JOB_NAME_TAKEN` | A job in the workspace already has that name, an archived one included: `rip job list --workspace-id <ws> --archived`, then restore it (`rip job update <id> --restore`) or choose another name |
 | `COMMENT_NOT_YOURS` / `COMMENT_NOT_FOUND` | Only a comment's author changes or deletes it: add your own instead / the comment is deleted, or on a task you cannot read |
-| `CONFLICT` | On `decide`: the draft changed since you read it (`currentRevision`). Read it again before deciding. On `update`: re-read and retry |
+| `CONFLICT` | On `decide`: the task revision moved (`currentRevision`: read the task again), or a named `--edit-artifact` version is not the file's current one (`details.current`, printed `Current version: vN`; name that version; no `currentRevision`). On `update`: re-read and retry |
 | `PRECONDITION_REQUIRED` | `decide` and `update` need `--expected-revision` (a move alone, `--position`/`--before`/`--after` with only `--why`, needs none) |
 | `TASK_NOT_STARTED` | `stop` on a task that is not Doing (or your lease already lapsed). `rip task show <id>` |
 | `TASK_CLOSED` | The task is cancelled (or, for `start`, done). Reopen it first if the work is still wanted |

@@ -98,6 +98,7 @@ export async function authWhoami(): Promise<void> {
       email: data.data.email,
       is_public: data.data.is_public,
       registered_at: data.data.registered_at,
+      key: data.data.key,
     }, formatWhoami);
   } catch (error) {
     if (error instanceof CliError) throw error;

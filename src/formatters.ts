@@ -425,8 +425,45 @@ export const formatVersionMetadata: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/**
+ * A key's access as the list, create and whoami send it. Read-only names first, then
+ * read-and-write, each in the server's order. An empty limited list names no workspace.
+ */
+function keyAccessLine(access: unknown): string {
+  if (!access || typeof access !== 'object') return '';
+  const view = access as { mode?: unknown; workspaces?: unknown };
+  if (view.mode === 'all') return 'All workspaces';
+  if (view.mode !== 'limited') return '';
+  const read: string[] = [];
+  const write: string[] = [];
+  for (const entry of Array.isArray(view.workspaces) ? view.workspaces : []) {
+    if (!entry || typeof entry !== 'object') continue;
+    const workspace = entry as { name?: unknown; level?: unknown };
+    if (typeof workspace.name !== 'string' || workspace.name.length === 0) continue;
+    if (workspace.level === 'read') read.push(workspace.name);
+    else if (workspace.level === 'write') write.push(workspace.name);
+  }
+  if (read.length === 0 && write.length === 0) return 'Limited to no workspaces';
+  const parts: string[] = [];
+  if (read.length > 0) parts.push(`Read only: ${read.join(', ')}`);
+  if (write.length > 0) parts.push(`Read and write: ${write.join(', ')}`);
+  return parts.join(' · ');
+}
+
+/** `Key: <name> · <access>` when whoami carried the calling key. */
+function whoamiKeyLine(key: unknown): string | undefined {
+  if (!key || typeof key !== 'object') return undefined;
+  const { name, access } = key as { name?: unknown; access?: unknown };
+  const shown = typeof name === 'string' ? name : '';
+  const accessText = keyAccessLine(access);
+  if (!shown && !accessText) return undefined;
+  return `  Key:         ${accessText ? `${shown} · ${accessText}` : shown}`;
+}
+
 export const formatWhoami: Formatter = (data) => {
   const lines = [String(data.agent_id)];
+  const keyLine = whoamiKeyLine(data.key);
+  if (keyLine) lines.push(keyLine);
   if (data.alias) lines.push(`  Alias:       ${data.alias}`);
   if (data.tag) lines.push(`  Tag:         ${data.tag}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
@@ -504,6 +541,7 @@ export const formatKeyList: Formatter = (data) => {
     connector: { client_id: string; label: string } | null;
     /** Live browser sessions this key's sign-in links created. */
     browser_sessions?: number;
+    access?: unknown;
   }>;
   if (keys.length === 0) return 'No keys.';
   const lines: string[] = [];
@@ -512,20 +550,26 @@ export const formatKeyList: Formatter = (data) => {
     lines.push(`  id:        ${k.id}`);
     lines.push(`  connected: ${k.created_at}`);
     lines.push(`  last used: ${k.last_used_at ?? 'never'}`);
+    const access = keyAccessLine(k.access);
+    if (access) lines.push(`  Access:    ${access}`);
     if ((k.browser_sessions ?? 0) > 0) lines.push(`  browsers:  ${k.browser_sessions} signed in`);
   }
   return lines.join('\n');
 };
 
 /** `rip auth keys create` — the key, shown once. */
-export const formatKeyCreated: Formatter = (data) =>
-  [
+export const formatKeyCreated: Formatter = (data) => {
+  const lines = [
     `Created key "${data.name}" (id ${data.id}). It is shown only once:`,
     '',
     `  ${data.api_key}`,
     '',
     "Paste this into your host's key vault or settings, not into a chat.",
-  ].join('\n');
+  ];
+  const access = keyAccessLine(data.access);
+  if (access) lines.push(`Access: ${access}`);
+  return lines.join('\n');
+};
 
 /** `rip auth keys revoke` */
 export const formatKeyRevoked: Formatter = (data) => {

@@ -53,7 +53,7 @@ It prints one line for the person to paste into the next agent, for example:
 Connect to my Tokenrip: https://tokenrip.com/setup — email ana@example.com, code 123456 (valid 10 minutes)
 ```
 
-That agent signs in with `rip auth login --email <email> --code <code>` (or, for a chat app connecting through the browser, enters the code on the sign-in page). It lands on the same account and sees the same workspaces. Making a new code replaces the previous one this agent made.
+That agent signs in with `rip auth login --email <email> --code <code>` (or, for a chat app connecting through the browser, enters the code on the sign-in page). It lands on the same account. A new key can use every workspace the person can, unless it is created limited. The person can limit an existing key on the Agents page. Making a new code replaces the previous one this agent made.
 
 ## Sign the person's browser in
 
@@ -73,13 +73,13 @@ Only an agent on the person's main account can make a link. Refused with `NOT_PR
 Each connected agent, each key made for a host, and each chat app connector holds its own key on the account.
 
 ```bash
-rip auth keys                            # list: name, id, connected, last used, connector, browsers signed in; (this agent) marks yours
+rip auth keys                            # list: name, id, connected, last used, access, connector, browsers signed in; (this agent) marks yours
 rip auth keys revoke <id>                # disconnect the agent using that key
 rip auth rotate-key                      # replace this agent's key; others keep theirs; refused under TOKENRIP_API_KEY
 rip auth logout [--keep-key]             # revoke this CLI's key and forget the sign-in; refused under TOKENRIP_API_KEY
 ```
 
-The person sees the same list on the dashboard's Agents page and can remove any agent there.
+Each key prints `Access:`: `All workspaces`, or the workspaces it may use (`Read only: a, b · Read and write: c`). A key limited to none says `Limited to no workspaces`. The person sees the same list on the dashboard's Agents page, can remove any agent there, and is the only one who can change a key's access.
 
 ## Notifications
 
@@ -115,9 +115,10 @@ Some hosts (personal agents with a key vault, settings screens) cannot run `rip 
 
 ```bash
 rip auth keys create --name "Hermes"     # without --name the key is named after this harness
+rip auth keys create --name "Reader" --workspace decisions:read --workspace findings:write
 ```
 
-The key is shown once. Tell the person to paste it into the host's key vault or settings, never into a chat. It has full access to the account; revoke it with `rip auth keys revoke <id>`.
+The key is shown once. Tell the person to paste it into the host's key vault or settings, never into a chat. Without `--workspace` the key may use every workspace. Repeat `--workspace <slug-or-id>:read` or `:write` to limit it to those workspaces, read only or read and write. An agent cannot change a key's access afterwards: the person does that on the Agents page. Revoke it with `rip auth keys revoke <id>`.
 
 ## Multiple accounts
 
