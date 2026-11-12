@@ -51,7 +51,6 @@ export interface TaskAddOptions {
   body?: string;
   due?: string;
   payload?: string;
-  audience?: 'internal' | 'shared';
   /** Files and pages the work uses: `artifact:<id>[@version]` or `url:<address>`, repeatable. */
   link?: string[];
   why?: string;
@@ -64,7 +63,6 @@ export interface TaskUpdateOptions {
   body?: string;
   assignee?: string;
   reviewer?: string;
-  audience?: 'internal' | 'shared';
   /** A tag to set, or `false` (`--no-type`, `--no-step`) to clear it. */
   type?: string | false;
   step?: string | false;
@@ -189,7 +187,6 @@ export async function taskTimeline(id: string): Promise<void> {
 export async function taskAdd(title: string, options: TaskAddOptions): Promise<void> {
   const body: Record<string, unknown> = { title, ...home(options, 'A new task') };
   const { client } = requireAuthClient();
-  if (options.audience) body.audience = options.audience;
   if (options.why !== undefined) body.why = options.why;
   // Account ids, aliases and agent:<handle> pass through; the server resolves them.
   if (options.assignee) body.assignee = options.assignee;
@@ -248,7 +245,6 @@ export async function taskUpdate(id: string, options: TaskUpdateOptions): Promis
   if (options.body !== undefined) body.body = options.body;
   if (options.assignee !== undefined) body.assignee = options.assignee;
   if (options.reviewer !== undefined) body.reviewer = options.reviewer;
-  if (options.audience !== undefined) body.audience = options.audience;
   if (options.type !== undefined) body.type = options.type === false ? null : options.type;
   if (options.step !== undefined) body.step = options.step === false ? null : options.step;
   if (options.job !== undefined) body.job = options.job === false ? null : options.job;
@@ -402,7 +398,6 @@ export interface TaskProposeOptions extends TaskWriteOptions {
   parentId?: string;
   title?: string;
   body?: string;
-  audience?: 'internal' | 'shared';
   /** The exact text the action uses: inline, or read from a file. */
   draft?: string;
   draftFile?: string;
@@ -451,7 +446,7 @@ export function parseEditArtifacts(raw: string[] | undefined): { artifact: strin
  * doing (carry out `approvedRound.final.text` now), or with `then`, at that step for whoever takes it.
  */
 export async function taskPropose(id: string | undefined, options: TaskProposeOptions): Promise<void> {
-  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body', job: '--job' }, 'proposal');
+  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', body: '--body', job: '--job' }, 'proposal');
   const draft = textFrom(options.draft, options.draftFile, 'draft');
   const links = parseLinkFlags(options.link);
   const draftArtifacts = parseDraftArtifacts(options.draftArtifact);
@@ -460,7 +455,6 @@ export async function taskPropose(id: string | undefined, options: TaskProposeOp
     Object.assign(body, home(options, 'A new proposal'));
     body.title = options.title;
     if (options.body !== undefined) body.body = options.body;
-    if (options.audience !== undefined) body.audience = options.audience;
     if (options.job !== undefined) body.job = options.job;
   }
   if (draft !== undefined) body.draft = draft;
@@ -482,7 +476,6 @@ export interface TaskReportOptions extends TaskWriteOptions {
   parentId?: string;
   title?: string;
   body?: string;
-  audience?: 'internal' | 'shared';
   /** A new report: what kind of work it was. */
   type?: string;
   /** A new report: its labels (`--label`, repeatable). */
@@ -496,14 +489,13 @@ export interface TaskReportOptions extends TaskWriteOptions {
 
 /** Report work already done that needed no approval: a new task born Done, or a later result on a Done task. */
 export async function taskReport(id: string | undefined, options: TaskReportOptions): Promise<void> {
-  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', audience: '--audience', body: '--body', type: '--type', label: '--label', job: '--job' }, 'report');
+  newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', body: '--body', type: '--type', label: '--label', job: '--job' }, 'report');
   const links = parseLinkFlags(options.link);
   const body: Record<string, unknown> = {};
   if (id === undefined) {
     Object.assign(body, home(options, 'A new report'));
     body.title = options.title;
     if (options.body !== undefined) body.body = options.body;
-    if (options.audience !== undefined) body.audience = options.audience;
     if (options.type !== undefined) body.type = options.type;
     const labels = labelFlags(options.label);
     if (labels.length) body.labels = labels;

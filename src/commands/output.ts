@@ -23,7 +23,6 @@ export interface OutputRecordOptions {
   label?: string[];
   status?: string;
   key?: string;
-  audience?: string;
   why?: string;
 }
 
@@ -76,7 +75,7 @@ const outputPath = (id?: string) => (id ? `/v0/outputs/${encodeURIComponent(id)}
 
 export async function outputRecord(options: OutputRecordOptions): Promise<void> {
   const body: Record<string, unknown> = { workspaceId: options.workspaceId, kind: options.kind };
-  for (const field of ['target', 'ref', 'text', 'task', 'job', 'status', 'key', 'audience'] as const) {
+  for (const field of ['target', 'ref', 'text', 'task', 'job', 'status', 'key'] as const) {
     if (options[field] !== undefined) body[field] = options[field];
   }
   if (options.file !== undefined) body.file = fileFlag(options.file);

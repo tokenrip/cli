@@ -15,7 +15,6 @@ export async function patch(
     title?: string;
     description?: string;
     visibility?: string;
-    audience?: 'internal' | 'shared';
     history?: string;
     expectedWorkspaceRevision?: string;
     why?: string;
@@ -27,12 +26,11 @@ export async function patch(
     options.title === undefined &&
     options.description === undefined &&
     options.visibility === undefined &&
-    options.audience === undefined &&
     options.history === undefined
   ) {
     throw new CliError(
       'INVALID_ARGS',
-      'Provide at least one of --title, --description, --metadata, --alias, --visibility, --audience, or --history.',
+      'Provide at least one of --title, --description, --metadata, --alias, --visibility, or --history.',
     );
   }
 
@@ -52,7 +50,6 @@ export async function patch(
   if (options.visibility !== undefined) {
     body.visibility = options.visibility;
   }
-  if (options.audience !== undefined) body.audience = options.audience;
   if (options.expectedWorkspaceRevision !== undefined) {
     body.expectedWorkspaceRevision = parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   }

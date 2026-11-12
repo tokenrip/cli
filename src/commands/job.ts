@@ -9,7 +9,7 @@ import { parseRevision } from './task.js';
 /**
  * `rip job create|update|delete|show|list` over `/v0/jobs` (leverage plan M3): a job is named standing work
  * in a workspace, with a description its agents read and the agents who do it, each with an
- * optional role. Internal members only.
+ * optional role. Every member reads them.
  *
  * A job's agents are `--job-agent` (repeatable): `--agent` stays the CLI's global identity flag.
  *

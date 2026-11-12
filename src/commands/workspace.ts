@@ -8,7 +8,7 @@ import { parseArtifactId } from '../parse-artifact-id.js';
 export interface WorkspaceSummary {
   id: string; slug: string; name: string; description: string | null;
   ownerAccountId: string | null; teamId: string | null;
-  role: string; membership: string; audiences: Array<'internal' | 'shared'>;
+  role: string; guest: boolean;
   mutationSequence: number; accessGeneration: number;
 }
 
@@ -37,28 +37,16 @@ export async function workspaceUpdate(workspace: string, options: { name?: strin
 }
 export async function workspaceDelete(workspace: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.delete(workspacePath(workspace), deleteBody(options)); outputSuccess(data.data, formatTrashed); }
 
-/**
- * Both values pass the CLI: the server refuses `internal` with INTERNAL_NEEDS_TEAM and the path
- * (internal access comes from owning the workspace or being in its team). The flag goes with the
- * API field, at the end of the deprecation window.
- */
-const WORKSPACE_MEMBERSHIPS = ['internal', 'external'] as const;
-/** `--membership`: checked before any request. Omitted, nothing is sent: every stored member is a guest. */
-function parseMembership(value: string | undefined): string | undefined {
-  if (value === undefined || (WORKSPACE_MEMBERSHIPS as readonly string[]).includes(value)) return value;
-  throw new CliError('INVALID_ARGUMENT', `--membership must be ${WORKSPACE_MEMBERSHIPS.join(' or ')}`);
-}
-/** Add or invite by email, alias or account id. `note` goes in the invite email. */
-export async function workspaceMemberAdd(workspace: string, member: string, options: { role?: string; membership?: string; note?: string } & WhyOption): Promise<void> { const membership = parseMembership(options.membership); const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { member, role: options.role, membership, note: options.note, why: options.why }); outputSuccess(data.data); }
+/** Add or invite by email, alias or account id, as an editor (the default) or a viewer. `note` goes in the invite email. */
+export async function workspaceMemberAdd(workspace: string, member: string, options: { role?: string; note?: string } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { member, role: options.role, note: options.note, why: options.why }); outputSuccess(data.data); }
 /** A member row id stands alone; an account id, alias or email names a member in `--workspace-id`. */
 interface MemberTarget { workspaceId?: string }
 const memberPath = (member: string) => `/v0/workspace-members/${encodeURIComponent(member)}`;
-/** Change the role (a member stays a guest); `--membership external` changes nothing. */
-export async function workspaceMemberSetRole(member: string, options: { role?: string; membership?: string } & MemberTarget & WhyOption = {}): Promise<void> {
-  const membership = parseMembership(options.membership);
-  if (options.role === undefined && membership === undefined) throw new CliError('INVALID_ARGUMENT', 'Pass --role, --membership, or both');
+/** Change the role: editor or viewer. */
+export async function workspaceMemberSetRole(member: string, options: { role?: string } & MemberTarget & WhyOption = {}): Promise<void> {
+  if (options.role === undefined) throw new CliError('INVALID_ARGUMENT', 'Pass --role viewer or --role editor');
   const { client } = requireAuthClient();
-  const { data } = await client.patch(memberPath(member), { workspaceId: options.workspaceId, role: options.role, membership, why: options.why });
+  const { data } = await client.patch(memberPath(member), { workspaceId: options.workspaceId, role: options.role, why: options.why });
   outputSuccess(data.data);
 }
 export async function workspaceMemberRemove(member: string, options: MemberTarget & WhyOption = {}): Promise<void> {
@@ -70,13 +58,13 @@ export async function workspaceMemberRemove(member: string, options: MemberTarge
 export async function workspaceMemberList(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/members`); outputSuccess(data.data); }
 
 /** Standalone artifacts (one or more, ids, aliases or URLs) or one personal folder (`--folder`, id or slug) move in. */
-export async function workspaceAdopt(workspace: string, artifacts: string[], options: { folder?: string; audience?: 'internal' | 'shared'; destinationFolderId?: string } & WhyOption): Promise<void> {
+export async function workspaceAdopt(workspace: string, artifacts: string[], options: { folder?: string; destinationFolderId?: string } & WhyOption): Promise<void> {
   if ((artifacts.length === 0) === (options.folder === undefined)) throw new CliError('INVALID_ARGUMENT', 'Name the artifacts to move in, or --folder, one of them');
   if (options.folder !== undefined && options.destinationFolderId !== undefined) throw new CliError('INVALID_ARGUMENT', '--destination-folder-id goes with artifacts; a folder moves in as it is');
   const { client } = requireAuthClient();
   const { data } = await client.post(`${workspacePath(workspace)}/adopt`, {
     ...(options.folder !== undefined ? { folder: options.folder } : { artifactIds: artifacts.map(parseArtifactId) }),
-    audience: options.audience, destinationFolderId: options.destinationFolderId, why: options.why,
+    destinationFolderId: options.destinationFolderId, why: options.why,
   });
   outputSuccess(data.data);
 }

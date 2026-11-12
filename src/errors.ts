@@ -35,12 +35,12 @@ export interface DomainErrorDetails {
   reviewer?: TaskPrincipalDetails | null;
   /** `TASK_NOT_IN_REVIEW`: where the task is now. */
   status?: string;
-  /** `VERSION_IN_USE`: the task whose review round keeps the version, and the round; null when the caller reads no such task. */
+  /** `VERSION_IN_USE`: the task whose review round keeps the version, and the round. */
   task?: string | null;
   round?: number | null;
   /**
    * `OUTPUT_EXISTS`: the output not failed that holds the key (its id, kind, status, target, ref, the
-   * agent that recorded it, and when); null when the caller cannot read it.
+   * agent that recorded it, and when); null only when another write took the key at the same moment.
    */
   output?: OutputDetails | null;
   /** `TASK_NOT_IN_REVIEW`: the task's latest review round and how it ended; null: never proposed. */
@@ -56,7 +56,7 @@ export interface DomainErrorDetails {
   used?: number;
   /**
    * `STORAGE_LIMIT_REACHED`: the payer's bytes used, its plan's limit, what the write would have
-   * added, and the plan. All four or none (a workspace's external member gets none).
+   * added, and the plan. All four or none (a workspace's guest gets none).
    */
   usedBytes?: number;
   limitBytes?: number;
@@ -198,7 +198,7 @@ const CSV_COLUMN_RULES: ReadonlySet<string> = new Set(['column_name', 'duplicate
 const CSV_REASONS: ReadonlySet<string> = new Set(['unbalanced_quote']);
 /** The server's `NOT_FOUND_RESOURCES` (apps/backend/src/execution/failure.ts). */
 const NOT_FOUND_RESOURCES: ReadonlySet<string> = new Set([
-  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection', 'comment', 'job', 'output',
+  'artifact', 'folder', 'workspace', 'task', 'version', 'row', 'bundle', 'team', 'account', 'connection', 'message', 'job', 'output',
 ]);
 /** The server's `ROW_QUERY_AVAILABLE_MAX` and `TABLE_COLUMN_NAME_MAX` (apps/backend/src/db/models/table-schema.ts). */
 const AVAILABLE_MAX = 259;

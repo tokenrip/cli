@@ -26,9 +26,8 @@ export function addHomeFields(body: Record<string, unknown>, options: { team?: s
   }
 }
 
-function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; audience?: string; why?: string }): void {
+function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; why?: string }): void {
   if (options.workspaceId) body.workspaceId = options.workspaceId;
-  if (options.audience) body.audience = options.audience;
   if (options.why !== undefined) body.why = options.why;
 }
 
@@ -40,7 +39,7 @@ function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceI
  * when the backend response doesn't echo it.
  */
 function artifactCreatedPayload(
-  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; rawUrl?: string | null; publicUrl?: string; workspaceId?: string; audience?: string; workspaceRevision?: number },
+  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; rawUrl?: string | null; publicUrl?: string; workspaceId?: string; workspaceRevision?: number },
   url: string,
   aliasFallback: string | undefined,
 ): Record<string, unknown> {
@@ -55,7 +54,7 @@ function artifactCreatedPayload(
     type: data.type,
     currentVersionId: data.currentVersionId,
     publicUrl: data.publicUrl ?? null,
-    ...(data.workspaceId ? { workspaceId: data.workspaceId, audience: data.audience, workspaceRevision: data.workspaceRevision } : {}),
+    ...(data.workspaceId ? { workspaceId: data.workspaceId, workspaceRevision: data.workspaceRevision } : {}),
   };
 }
 
@@ -80,7 +79,6 @@ export async function publish(
     visibility?: string;
     strict?: boolean;
     workspaceId?: string;
-    audience?: 'internal' | 'shared';
     why?: string;
   },
 ): Promise<void> {

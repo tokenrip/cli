@@ -24,7 +24,7 @@ export {
 } from './identities.js';
 export { accountIdToPublicKey, agentIdToPublicKey } from './crypto.js';
 export { search } from './commands/search.js';
-export { folderCreate, folderList, folderShow, folderDelete, folderRename, folderUpdate, folderShareContents, artifactMove } from './commands/folder.js';
+export { folderCreate, folderList, folderShow, folderDelete, folderRename, folderUpdate, artifactMove } from './commands/folder.js';
 export { loadTeams, saveTeams, resolveTeam, resolveTeams, setAlias, removeAlias, syncTeamsFromResponse } from './teams.js';
 export type { LocalTeam, Teams, ServerTeamEntry, TeamRole } from './teams.js';
 export { skillList, skillGet, skillPublish, skillShare, skillDelete, skillInstall, skillIdFromLink } from './commands/skill.js';

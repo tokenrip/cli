@@ -38,14 +38,10 @@ export function parseDuration(s: string): number {
 }
 
 /**
- * Validate supplied create scope before dry runs, filesystem reads or routing. A `--folder` may be a
- * workspace folder, which names its workspace (AR-6), so with one the server decides whether the
- * workspace-only fields apply; beside `--workspace-id` it names a folder in that workspace.
+ * Validate supplied create scope before dry runs, filesystem reads or routing: standalone sharing
+ * fields beside `--workspace-id` are refused.
  */
-export function assertWorkspaceCreationScope(input: { workspaceId?: string; audience?: string; visibility?: string; team?: string; folder?: string; publicAsset?: boolean }): void {
-  if (!input.workspaceId && input.folder === undefined && input.audience !== undefined) {
-    throw new CliError('INVALID_SCOPE', 'Workspace-only fields require --workspace-id, or a --folder in a workspace. Supply the workspace identity or omit those fields.', { field: 'workspaceId' });
-  }
+export function assertWorkspaceCreationScope(input: { workspaceId?: string; visibility?: string; team?: string; folder?: string; publicAsset?: boolean }): void {
   if (input.workspaceId) {
     const fields = (['visibility', 'team'] as const).filter(field => input[field] !== undefined);
     if (fields.length) throw new CliError('WORKSPACE_AUTHORITY', 'Omit standalone sharing fields for workspace content. To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link', { fields });

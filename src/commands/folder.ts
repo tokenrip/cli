@@ -32,12 +32,11 @@ function optionalWhy(why: string | undefined): { why?: string } {
 const folderPath = (folder: string) => `/v0/folders/${encodeURIComponent(folder)}`;
 
 /** `rip folder create`: a personal folder, a team's (`--team`) or a workspace's (`--workspace-id`). */
-export async function folderCreate(slug: string, options: FolderScope & { audience?: 'internal' | 'shared'; why?: string }): Promise<void> {
+export async function folderCreate(slug: string, options: FolderScope & { why?: string }): Promise<void> {
   assertWorkspaceCreationScope(options);
   const { client } = requireAuthClient();
   const { data } = await client.post('/v0/folders', {
     slug, ...scopeOf(options),
-    ...(options.audience !== undefined ? { audience: options.audience } : {}),
     ...optionalWhy(options.why),
   });
   outputSuccess(data.data);
@@ -81,36 +80,20 @@ export async function folderRename(
   outputSuccess(data.data);
 }
 
-/**
- * `rip folder update <folder> --audience | --history`: a workspace folder's audience, or any folder's
- * history setting (`inherit` clears it); one per call, as the server takes them.
- */
+/** `rip folder update <folder> --history`: any folder's history setting (`inherit` clears it). */
 export async function folderUpdate(
   folder: string,
-  options: FolderScope & { audience?: 'internal' | 'shared'; history?: string; expectedWorkspaceRevision?: string; why?: string },
+  options: FolderScope & { history?: string; expectedWorkspaceRevision?: string; why?: string },
 ): Promise<void> {
   const body = {
     ...historyField(options.history),
-    ...(options.audience !== undefined ? { audience: options.audience } : {}),
     ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
   };
-  if (options.audience === undefined && options.history === undefined) {
-    throw new CliError('INVALID_ARGS', 'Provide --audience or --history.');
+  if (options.history === undefined) {
+    throw new CliError('INVALID_ARGS', 'Provide --history.');
   }
   const { client } = requireAuthClient();
   const { data } = await client.patch(folderPath(folder), body);
-  outputSuccess(data.data);
-}
-
-/** `rip folder share-contents <folder>`: a workspace folder and every artifact in it become shared. */
-export async function folderShareContents(
-  folder: string,
-  options: { workspaceId?: string; expectedWorkspaceRevision?: string; why?: string },
-): Promise<void> {
-  const { client } = requireAuthClient();
-  const { data } = await client.post(`${folderPath(folder)}/share-contents`, {
-    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
-  });
   outputSuccess(data.data);
 }
 
