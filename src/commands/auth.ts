@@ -7,6 +7,7 @@ import {
   saveIdentities,
   removeIdentity,
   clearCurrentAccount,
+  signInKey,
 } from '../identities.js';
 import { loadConfig, getApiUrl } from '../config.js';
 import { retireKey, RUN_KEY_PREFIX } from './auth-login.js';
@@ -30,8 +31,9 @@ export async function authRotateKey(): Promise<void> {
   const apiKey = data.data.api_key;
 
   const store = loadIdentities();
-  if (store[identity.accountId]) {
-    store[identity.accountId].apiKey = apiKey;
+  const key = signInKey(identity);
+  if (store[key]) {
+    store[key].apiKey = apiKey;
     saveIdentities(store);
   }
 
@@ -69,14 +71,15 @@ export async function authLogout(options: { keepKey?: boolean } = {}): Promise<v
   }
 
   const keypair = Boolean(identity.secretKey);
+  const stored = signInKey(identity);
   if (keypair) {
     const store = loadIdentities();
-    store[identity.accountId] = { ...store[identity.accountId], apiKey: '' };
+    store[stored] = { ...store[stored], apiKey: '' };
     saveIdentities(store);
   } else {
-    removeIdentity(identity.accountId, { allowLast: true });
+    removeIdentity(stored, { allowLast: true });
   }
-  clearCurrentAccount(identity.accountId);
+  clearCurrentAccount(stored);
 
   outputSuccess(
     { accountId: identity.accountId, revoked, removed: !keypair, ...(keyId ? { keyId } : {}) },

@@ -22,12 +22,16 @@ export interface StubEntry {
 }
 
 /**
- * Who installs. `accountId` is the local identity the stubs pin with `--agent` (null when
- * `TOKENRIP_API_KEY` drives auth); `apiUrl` is recorded in the marker.
+ * Who installs. `accountId` is the local identity that owns the stubs (recorded in the marker) and
+ * that they pin with `--agent` (null when `TOKENRIP_API_KEY` drives auth); `apiUrl` is recorded in
+ * the marker. `pin: false` writes stubs with no `--agent` while the marker still records the
+ * account: on a shared computer where the account has several sign-ins, each agent reading the
+ * stub runs as itself.
  */
 export interface StubInstaller {
   accountId: string | null;
   apiUrl: string;
+  pin?: boolean;
 }
 
 /** The marker's content. */
@@ -97,9 +101,11 @@ function yamlString(value: string): string {
  * The stub `SKILL.md`: the catalog's name and description (Unicode format characters such as
  * bidi overrides stripped, as in the MCP server instructions), then how to load the real skill.
  * Every command addresses the skill by id, so a name shared by two operators' personal skills
- * is never ambiguous, and pins `--agent` when a local identity installed it.
+ * is never ambiguous, and pins `--agent` when given an account id (see `StubInstaller.pin`).
+ * `unpinned` (several sign-ins of the account here) adds one line telling an agent that runs as
+ * `rip --agent <its name>` to do so here too.
  */
-export function renderStub(entry: StubEntry, accountId: string | null = null): string {
+export function renderStub(entry: StubEntry, accountId: string | null = null, unpinned = false): string {
   const team = teamOf(entry);
   const rip = `rip${accountId ? ` --agent ${accountId}` : ''}`;
   const get = `${rip} skill get ${entry.id}`;
@@ -122,6 +128,7 @@ export function renderStub(entry: StubEntry, accountId: string | null = null): s
     `2. The output ends with the skill's file list. Read a file when the instructions point to it: \`${get} --file <path>\`.`,
     `3. If the skill's scripts must run from disk, write every file to a new folder outside any skills folder (for example under the system temp folder), so the copy never shows up as a second skill: \`${get} --dir <temp-folder>/${entry.name}\`.`,
     '',
+    ...(unpinned ? ['If you run Tokenrip as `rip --agent <your name> …`, use that here too.', ''] : []),
     `If \`rip\` answers \`SKILL_NOT_FOUND\`, the skill was deleted or is no longer in reach of this agent. \`${rip} skill install\` refreshes these stubs.`,
     '',
   ].join('\n');
@@ -271,7 +278,7 @@ export function syncStubs(entries: StubEntry[], dir: string, installer: StubInst
         skip('other_agent');
         continue;
       }
-      const stub = renderStub(entry, installer.accountId);
+      const stub = installer.pin === false ? renderStub(entry, null, true) : renderStub(entry, installer.accountId);
       const marker = renderMarker(entry, installer);
       const skillFile = path.join(folder, ENTRY_FILE);
       const markerFile = path.join(folder, SKILL_STUB_MARKER);

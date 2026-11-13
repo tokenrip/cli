@@ -41,7 +41,7 @@ An unknown subcommand is refused with the group's real commands: `rip table list
 | Option | Meaning |
 |---|---|
 | `--json` | JSON output instead of human-readable. Works before or after the command. |
-| `--agent <name>` | Use a specific local identity (alias or `rip1…` ID) for this command |
+| `--agent <name>` | Use a specific local sign-in for this command: its name (case-insensitive), account ID (`rip1…`) or alias. See [Account commands](#account-commands) for how a command picks one without it |
 | `-V, --version` | Print the CLI version |
 | `-h, --help` | Help for any command |
 
@@ -996,7 +996,7 @@ rip skill install                    # ~/.claude/skills inside Claude Code (CLAU
 rip skill install --target agents    # ~/.agents/skills
 ```
 
-Writes a stub folder for every skill in reach into the host's user-level skills folder, so filesystem hosts trigger skills natively. A stub's `SKILL.md` frontmatter is the skill's `name` and `description` (the folder is named after the skill); its body says to run `rip skill get <skill-id>` (with `--agent <accountId>` when a local identity installed it; none under `TOKENRIP_API_KEY`), follow what it prints, read files with `--file`, and write copies for scripts with `--dir` into a temp folder outside any skills folder. Each stub carries a `.tokenrip-skill.json` marker (`{ skillId, name, team, accountId, apiUrl }`). Re-running writes new stubs, refreshes changed ones and removes marked folders whose skill is no longer in reach, deleting only the files the CLI wrote (a folder holding other files is `kept`); files are written atomically. A folder without the marker, or a symbolic link, is never touched (`unmanaged`); a stub recorded for another account is never refreshed or removed (`other_agent`), while one with no recorded account is adopted. Personal skills claim a name before team skills, so a team skill named like a personal one (or a second operator's personal skill of that name) is skipped `name_taken`. Output: `target`, `dir`, `accountId`, `written`, `refreshed`, `unchanged`, `removed`, `kept`, `skipped` (`{ name, team, reason }`), `failed` (`{ name, team, error }`; one stub's failure does not stop the others). Install into one target per host: Cursor and Copilot read both folders, so stubs in both may appear twice. Option: `--target claude|agents`.
+Writes a stub folder for every skill in reach into the host's user-level skills folder, so filesystem hosts trigger skills natively. A stub's `SKILL.md` frontmatter is the skill's `name` and `description` (the folder is named after the skill); its body says to run `rip skill get <skill-id>`, follow what it prints, read files with `--file`, and write copies for scripts with `--dir` into a temp folder outside any skills folder. The command pins `--agent <accountId>` only when the installing sign-in's account has exactly one sign-in on this computer. With several (agents sharing one computer and one skills folder), the stub carries no `--agent`, so each agent that reads it runs as itself, and it adds the line "If you run Tokenrip as `rip --agent <your name> …`, use that here too." Under `TOKENRIP_API_KEY` there is no `--agent` either. Stubs belong to the account, so any of its sign-ins here refreshes them; after a second sign-in joins an account, run `rip --agent <your name> skill install --target claude|agents` for each folder that has them (`~/.claude/skills`, `~/.agents/skills`; one install refreshes one folder) to rewrite its pinned stubs (an old stub that pins `--agent <accountId>` refuses `AMBIGUOUS_IDENTITY` until then). Each stub carries a `.tokenrip-skill.json` marker (`{ skillId, name, team, accountId, apiUrl }`). Re-running writes new stubs, refreshes changed ones and removes marked folders whose skill is no longer in reach, deleting only the files the CLI wrote (a folder holding other files is `kept`); files are written atomically. A folder without the marker, or a symbolic link, is never touched (`unmanaged`); a stub recorded for another account is never refreshed or removed (`other_agent`), while one with no recorded account is adopted. Personal skills claim a name before team skills, so a team skill named like a personal one (or a second operator's personal skill of that name) is skipped `name_taken`. Output: `target`, `dir`, `accountId`, `pinned` (false when the stubs carry no `--agent` because the account has several sign-ins here), `signInName` (the installing sign-in's name, else its alias, else null; the human output's re-run line uses it as `--agent` when the stubs are unpinned), `written`, `refreshed`, `unchanged`, `removed`, `kept`, `skipped` (`{ name, team, reason }`), `failed` (`{ name, team, error }`; one stub's failure does not stop the others). Install into one target per host: Cursor and Copilot read both folders, so stubs in both may appear twice. Option: `--target claude|agents`.
 
 ## Bundle commands
 
@@ -1092,14 +1092,31 @@ Refresh the local team cache from the server — run it after another agent adds
 
 ### `rip auth login`
 
-Sign in with the person's email. Without `--code`, Tokenrip emails a six-digit code (10 minutes, single use; a new one can be requested after a minute). With `--code` (emailed, or made by a connected agent or the dashboard), the CLI gets a key of its own on the person's account, saves it as a keypair-less identity in `identities.json`, and makes it the current account. No other agent's key is touched. Signing in again on an account this machine holds revokes the key it replaces (best-effort; `previous_key` in the output says `revoked`, `already_invalid`, or `not_revoked`, and a key that was found but not revoked is named in `previous_key_id` so you can run `rip auth keys revoke <id>`). A run code (from the key sign-in page, https://tokenrip.com/run) returns a run key instead (`outcome: run`): it acts as the agent's saved key, ends after 12 hours without use and 24 hours at most, cannot manage keys, and revokes no key; it makes no key, so it takes no `--name` (`INVALID_FIELD`, and the code still works without it); the output names the agent and carries `ends_by`, `idle_timeout_seconds` and `renew_url`. If `TOKENRIP_API_KEY` is set, or `TOKENRIP_AGENT` names another identity, later commands keep using that instead of this sign-in: the output carries `overridden_by` (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) and the human output warns; unset the variable to use the sign-in.
+Sign in with the person's email. Without `--code`, Tokenrip emails a six-digit code (10 minutes, single use; a new one can be requested after a minute). With `--code` (emailed, or made by a connected agent or the dashboard), the CLI gets a key of its own on the person's account, saves it as a keypair-less sign-in in `identities.json`, and makes it the current sign-in. Sign-ins on this computer have names (one saved before names stays unnamed until a sign-in renames it), so several agents can each keep their own on one account (CLI 2.6.26 or later). Which sign-in it saves, decided once the server says which account the code belongs to:
+
+- `--name <n>`: sign-in `n`, replacing an earlier sign-in of that name on the same account (that is how an agent reconnects under its own name, so pick a name `rip account list` does not show unless it is yours), else added beside the account's others. An unnamed sign-in of the account (saved before names) whose key the server calls `n` (lowercased with dashes, any case), unless `n` is a default name (`cli`, `claude-code`, `codex`, `agent` or this process's surface, `TOKENRIP_SURFACE`), is your own from before names: replaced, old key revoked. Any other unnamed sign-in, including one whose key no longer works, is kept beside yours.
+- No `--name`, and the account has exactly one sign-in here: that one is replaced, keeping its name (or none), as before names.
+- No `--name` otherwise: a new sign-in named after the key's server name, made lowercase with dashes (`Claude Code` → `claude-code`), with `-2`, `-3`… added when that name is taken here. The output lists the account's other sign-ins and says to pass `--name` next time.
+
+A key is revoked only when the sign-in it belonged to is replaced: a sign-in named `n` on the same account, or the unnamed one whose key is named `n` as above. No other sign-in is replaced or revoked (best-effort; `previous_key` in the output says `revoked`, `already_invalid`, or `not_revoked`, and a key that was found but not revoked is named in `previous_key_id` so you can run `rip auth keys revoke <id>`). A name that clashes here is refused with `NAME_TAKEN` after the code is used: another account's sign-in name, a sign-in of that name that appeared while this sign-in ran, or a sign-in's alias, store key or account id: nothing is saved, and the key just received is revoked (when that fails, the message names its id for `rip auth keys revoke <id>`). When a sign-in is added beside an unnamed one of the same account (saved before names) that is not this agent's (above), the unnamed one is first named after its own key's server name; if that read fails (a revoked key, the network, a server error) it stays unnamed and shows as "(no name)". `--name` is refused (`INVALID_ARGS`) when it holds whitespace or is shaped like an account id. The current sign-in (`currentAccount` in `config.json`) is set to the new one, but with several sign-ins on an account it is not used: each agent passes `--agent <its name>` (see [Account commands](#account-commands)). Output adds `signed_in_as` (the saved name) and `siblings` (the account's other sign-ins here, "(no name)" for an unnamed one). A run code (from the key sign-in page, https://tokenrip.com/run) returns a run key instead (`outcome: run`): it acts as the agent's saved key, ends after 12 hours without use and 24 hours at most, cannot manage keys, and revokes no key; it makes no key, so it takes no `--name` (`INVALID_FIELD`, and the code still works without it); the output names the agent and carries `ends_by`, `idle_timeout_seconds` and `renew_url`. If `TOKENRIP_API_KEY` is set, or `TOKENRIP_AGENT` names another identity, later commands keep using that instead of this sign-in: the output carries `overridden_by` (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) and the human output warns; unset the variable to use the sign-in.
 
 ```bash
 rip auth login --email ana@example.com                  # emails a code
 rip auth login --email ana@example.com --code 123456    # signs in
+rip auth login --email ana@example.com --code 123456 --name napoleon   # one agent of several on this computer
 ```
 
-Required: `--email`. Options: `--code`, `--name` (the key's name; without it the server names the key after this harness: `claude-code` under Claude Code, `codex` under Codex, else `cli`). Errors: `INVALID_CODE` (wrong, used, or expired), `CODE_RECENTLY_SENT`, `SIGN_IN_LOCKED` (five wrong codes; the message states the unlock time in UTC), `INVALID_EMAIL`, `INVALID_NAME`.
+Required: `--email`. Options: `--code`, `--name` (the sign-in's name here and the key's name on the person's Agents page; without it the server names the key after this harness: `claude-code` under Claude Code, `codex` under Codex, else `cli`, and the sign-in takes that name unless the account's only sign-in here is being replaced, which keeps its own). Errors: `INVALID_CODE` (wrong, used, or expired), `CODE_RECENTLY_SENT`, `SIGN_IN_LOCKED` (five wrong codes; the message states the unlock time in UTC), `INVALID_EMAIL`, `INVALID_NAME`, `INVALID_ARGS` (a `--name` with whitespace or shaped like an account id), `NAME_TAKEN`.
+
+### `rip auth add <name>`
+
+```bash
+rip --agent napoleon auth add xer    # xer gets its own sign-in, made from napoleon's
+```
+
+For another agent on this computer. Run it with an existing sign-in, `rip --agent <an existing sign-in> auth add <name>` (or plain `rip` when one sign-in would be selected anyway). It creates a key named `<name>` on that sign-in's account (`POST /v0/auth/keys`) and saves it here as sign-in `<name>`, without making it current. The person is emailed that an agent connected, and the key shows on their Agents page. The key is never printed: the agent called `<name>` runs every command as `rip --agent <name> …` and saves that line in its own instructions. Either agent may run it: the new agent with another agent's sign-in, or an agent setting up the next one. An unnamed sign-in of the account (saved before names) is first named after its key's server name, so it stays selectable; when that read fails it is named `agent` (with `-2`… when taken), unlike `auth login`, which leaves it unnamed. The name must be free here on any account, hold no whitespace and not look like an account id.
+
+Refusals: `NAME_TAKEN` (a sign-in here has that name, or took it meanwhile; in the latter case the key just made is revoked, its id named if that fails), `INVALID_ARGS` (the name's shape), `ENV_KEY_ADD` (no request made) while `TOKENRIP_API_KEY` is set, `KEY_ACCESS_LIMITED` (a key limited to some workspaces makes no keys: the person adds the agent from the Agents page, or a full-access agent runs it), `RUN_KEY_FORBIDDEN`, `RATE_LIMITED` (the hourly cap on new keys). JSON: `name`, `account_id`, `email` (when the account read succeeds), `key_id`, `added_by` (the sign-in it was made from), `run_as` (`rip --agent <name>`).
 
 ### `rip auth code`
 
@@ -1128,7 +1145,7 @@ Every key on the account: connected agents, keys made for hosts, connector grant
 
 ### `rip auth logout`
 
-End this CLI's sign-in: revoke its key, then forget it on this machine. Acts on the current identity (`--agent` picks another); other agents and connectors keep their keys. `--keep-key` forgets the sign-in but leaves the key valid. If the revoke fails the sign-in is still forgotten and the output says so, with `rip auth keys revoke <id>` to finish it. A keypair identity keeps its secret key and only loses its API key (`rip account recover-key` issues a new one). Refused with `ENV_KEY_LOGOUT` (no request made) while `TOKENRIP_API_KEY` is set.
+End this CLI's sign-in: revoke its key, then forget it on this machine. Acts on the selected sign-in (`--agent` picks another; with several sign-ins on the account it needs `--agent <your name>`); other agents and connectors keep their keys. `--keep-key` forgets the sign-in but leaves the key valid. If the revoke fails the sign-in is still forgotten and the output says so, with `rip auth keys revoke <id>` to finish it. A keypair identity keeps its secret key and only loses its API key (`rip account recover-key` issues a new one). Refused with `ENV_KEY_LOGOUT` (no request made) while `TOKENRIP_API_KEY` is set.
 
 ### `rip auth rotate-key`
 
@@ -1194,19 +1211,28 @@ This agent's own mailbox for its notices. Exactly one of an address, `--code` or
 
 ## Account commands
 
-Manage multiple identities on this machine.
+Manage the sign-ins on this computer.
 
 ```bash
 rip account create --alias my-agent      # keypair identity: a separate account (advanced)
 rip account recover-key                  # keypair identity lost its key: get a new one
-rip account list                         # * marks the current one
-rip account use my-agent                 # switch (alias or rip1… ID)
-rip account remove my-agent              # remove locally; the server record is kept
+rip account list                         # name, alias, account; * marks the one a plain command uses
+rip account use napoleon                 # switch (a name, alias or rip1… ID)
+rip account remove napoleon              # remove locally; the server record is kept
 rip account export my-agent --to rip1x9a2k7m3...   # encrypted for the recipient (Ed25519→X25519 + AES-256-GCM)
 rip account import blob.txt              # or - for stdin
 ```
 
-Override the active identity for one command with `rip --agent <name> …` or `TOKENRIP_AGENT=<name>`.
+Each sign-in has a name, unique on this computer, so several agents can each keep one on the same account. `rip account list` prints each sign-in's name ("(no name)" for one saved before names, by a keypair `account create` or an `import`), alias and account ID (`name`, `accountId`, `alias`, `current` in JSON). `current` marks the sign-in a plain command would use, and none is marked when a plain command would refuse. `use`, `remove` and `export` take a name, an alias or an account ID.
+
+Which sign-in a command uses:
+
+1. `rip --agent <name> …`, then `TOKENRIP_AGENT=<name>`: a name (case-insensitive), else an account ID, else an alias. A value that matches several sign-ins (an account ID with several sign-ins here) is refused with `AMBIGUOUS_IDENTITY`.
+2. The current sign-in (`rip account use`, or the last sign-in), **unless its account has more than one sign-in here**.
+3. The only sign-in.
+4. Otherwise `AMBIGUOUS_IDENTITY`, listing the names: "Several agents use this account on this computer: napoleon, xer. Run commands as `rip --agent <your name> …`."
+
+`TOKENRIP_API_KEY` wins over all of this. On a computer other agents share, each agent runs every command as `rip --agent <its name> …` and keeps that line in its own instructions; `rip account use` does not help there, since the current sign-in is skipped once its account has several. A person with two accounts, one sign-in each, still switches with `rip account use`.
 
 `account create` makes a keypair identity: its own account, not the person's. Most agents sign in with `rip auth login` instead. `recover-key` signs a recovery request with the local keypair and replaces only the identity's `default` key. `recover-key`, `export`, `import`, and `rip operator-link` sign with the local keypair, so an identity that signed in by email refuses them with `NO_LOCAL_KEYPAIR`.
 
@@ -1249,7 +1275,7 @@ Check for a newer CLI and install it via npm, then print how to refresh the skil
 
 ## Several agents, one account
 
-Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key. A new key can use every workspace the person can, unless it is created limited, and the person can limit an existing key on the Agents page. Connecting one never disconnects another. Connect the next agent with `rip auth code`; sign the person's browser in with `rip auth link`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_list`, `key_list`, …). Creating keys, sign-in codes and sign-in links, and connection calls have no MCP tool: an MCP agent gives the person the Agents page (`whoami`'s `agentsUrl`). Over MCP, `team_add_member` adds by email and `notification_mailbox` sets the mailbox, whose code the person enters on the Agents page.
+Every agent the person connects (this CLI, chat apps through an MCP connector, hosted agents) joins their one account with its own key. A new key can use every workspace the person can, unless it is created limited, and the person can limit an existing key on the Agents page. Connecting one never disconnects another, except that `rip auth login` on a computer replaces that computer's own earlier sign-in for the account: with `--name n`, the one named `n`; without `--name`, the account's only one there (an agent reconnecting as itself). On a computer several agents share, each signs in with `--name` and a name no other sign-in there uses. Connect the next agent with `rip auth code`; sign the person's browser in with `rip auth link`; list and remove agents with `rip auth keys` or the dashboard's Agents page. The setup guide for every kind of assistant is at `https://tokenrip.com/setup`. MCP tool names mirror the CLI groups (`workspace_load`, `artifact_publish`, `task_start`, `connection_list`, `key_list`, …). Creating keys, sign-in codes and sign-in links, and connection calls have no MCP tool: an MCP agent gives the person the Agents page (`whoami`'s `agentsUrl`). Over MCP, `team_add_member` adds by email and `notification_mailbox` sets the mailbox, whose code the person enters on the Agents page.
 
 ## Library usage
 
@@ -1288,15 +1314,17 @@ console.log(data.data.id); // artifact UUID
 | `publicKeyToAccountId(hex)` / `accountIdToPublicKey(id)` | Convert between a public key and a `rip1…` account ID (`agentIdToPublicKey` is a deprecated alias) |
 | `sign(data, secretKeyHex)` / `signPayload(payload, secretKeyHex)` | Ed25519 signature; sign a JSON payload → `base64url.signature` |
 | `loadIdentity()` / `saveIdentity(identity)` | Legacy single-identity file (v2 migration only) |
-| `loadIdentities()` / `saveIdentities(store)` | The identity store (`identities.json`) |
-| `addIdentity(identity)` / `removeIdentity(target)` | Add or remove a stored identity |
-| `resolveCurrentIdentity()` | Active identity (override → env → config → implicit) |
-| `resolveAccountId(store, target)` / `resolveAgentId(store, target)` | Resolve an alias or ID to a stored account ID |
+| `loadIdentities()` / `saveIdentities(store)` | The sign-in store (`identities.json`), keyed by sign-in name, an unnamed sign-in by its account ID |
+| `addIdentity(identity)` / `removeIdentity(target)` | Save a sign-in (re-reading the file first; replaces a same-name sign-in of the same account, refuses another account's name with `NAME_TAKEN`) or remove one (by store key, name, account ID or alias) |
+| `resolveCurrentIdentity()` | The sign-in a command uses (`--agent` override → `TOKENRIP_AGENT` → current, unless its account has several sign-ins here → the only one; else `AMBIGUOUS_IDENTITY`) |
+| `resolveSignIn(store, target)` | The store key of the one sign-in a name (case-insensitive), account ID or alias names; null when none; `AMBIGUOUS_IDENTITY` when several match |
+| `signInsForAccount(store, accountId)` | Every sign-in this computer holds for one account |
+| `resolveAccountId(store, target)` / `resolveAgentId(store, target)` | Deprecated aliases of `resolveSignIn`: they return the store key (a sign-in's name, or the account ID for an unnamed one), not always an account ID |
 | `setAgentOverride(value)` | Per-process identity override |
 | `search(query, options)` | The `rip search` command |
 | `folderCreate`, `folderList`, `folderShow`, `folderDelete`, `folderRename`, `folderUpdate`, `artifactMove` | The folder commands |
 | `skillList`, `skillGet`, `skillPublish`, `skillShare`, `skillDelete`, `skillInstall`, `skillIdFromLink` | The skill commands; `skillIdFromLink` parses a skill id or link |
-| `syncStubs(entries, dir)`, `renderStub(entry)`, `defaultSkillTarget(env)`, `skillTargetDir(target, homeDir)`, `SKILL_STUB_MARKER` | The stub writer behind `rip skill install` |
+| `syncStubs(entries, dir, installer)`, `renderStub(entry, accountId?, unpinned?)`, `defaultSkillTarget(env)`, `skillTargetDir(target, homeDir)`, `SKILL_STUB_MARKER` | The stub writer behind `rip skill install`. `StubInstaller` is `{ accountId, apiUrl, pin? }`: `pin: false` writes stubs with no `--agent` (the marker still records the account). `renderStub` pins `--agent <accountId>` when given one; `unpinned: true` adds the line telling an agent that runs as `rip --agent <its name>` to do so here too |
 | `walkFiles(dir)` | The directory walk behind `rip deploy` and `rip skill publish` |
 | `loadTeams`, `saveTeams`, `resolveTeam`, `resolveTeams`, `setAlias`, `removeAlias`, `syncTeamsFromResponse` | The local team cache and aliases |
 
@@ -1309,13 +1337,15 @@ Config lives at `~/.config/tokenrip/config.json` (v3):
 ```json
 {
   "configVersion": 3,
-  "currentAccount": "rip1x9a2k7m3...",
+  "currentAccount": "napoleon",
   "apiUrl": "https://api.tokenrip.com",
   "preferences": {}
 }
 ```
 
-Identities are stored at `~/.config/tokenrip/identities.json` (mode 0600), keyed by account ID; each entry holds the keypair and API key. `config.json` is mode 0600 too, in a 0700 directory.
+`currentAccount` names the current sign-in by its store key: its name, or the account ID of an unnamed one (a config written before names holds an account ID).
+
+Sign-ins are stored at `~/.config/tokenrip/identities.json` (mode 0600), keyed by name, an unnamed sign-in (a keypair identity, an import, or one saved before names) by its account ID; each entry holds the account ID, the keypair (empty for an email sign-in), the API key, and an optional `alias` and `name`. A sign-in (`auth login`, `auth add`) re-reads the file just before its one write, and every write replaces the file whole through a renamed temporary file, so agents signing in at once keep each other's entries (there is no file lock). `config.json` is mode 0600 too, in a 0700 directory. Any agent that can read the folder can read every sign-in's key: agents sharing one computer are kept apart by `--agent`, not by the file.
 
 Environment variables take precedence over the config file:
 
@@ -1323,7 +1353,7 @@ Environment variables take precedence over the config file:
 |----------|-----------|
 | `TOKENRIP_API_KEY` | API key (for every identity) |
 | `TOKENRIP_API_URL` | `apiUrl` |
-| `TOKENRIP_AGENT` | Active account (alias or account ID) |
+| `TOKENRIP_AGENT` | The sign-in to use (a name, account ID or alias), as `--agent` |
 | `TOKENRIP_OUTPUT` | Output format (`human` or `json`) |
 | `TOKENRIP_CONFIG_DIR` | Config directory |
 | `TOKENRIP_SURFACE` | Harness name recorded on task holds and activity (default `claude-code`, `codex` or `cli`) |
@@ -1347,8 +1377,10 @@ Client-side codes:
 |------|---------|
 | `NO_API_KEY` | No API key configured |
 | `NO_IDENTITY` | No account found locally |
-| `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected |
-| `IDENTITY_NOT_FOUND` | `--agent` name doesn't match any local account |
+| `AMBIGUOUS_IDENTITY` | No sign-in selected and the CLI will not guess: several agents use this account on this computer (the message lists their names), or `--agent` matched several, or several accounts and none current. Run every command as `rip --agent <your name> …`. An old skill stub that pins `--agent <account id>`: run `rip --agent <your name> skill install --target claude|agents` for each folder that has them (`~/.claude/skills`, `~/.agents/skills`; one install refreshes one folder) |
+| `IDENTITY_NOT_FOUND` | `--agent` / `TOKENRIP_AGENT` matches no sign-in here (`rip account list`) |
+| `NAME_TAKEN` | `rip auth login --name` or `rip auth add`: another sign-in on this computer uses that name. Nothing was saved; a key already received or made was revoked (or its id is named). Pick another name |
+| `ENV_KEY_ADD` | `rip auth add` while `TOKENRIP_API_KEY` is set: there is no stored sign-in to add beside. Unset it; for a host's key vault, `rip auth keys create --name <name>` |
 | `LAST_IDENTITY` | Cannot remove the only remaining account |
 | `FILE_NOT_FOUND` | Input file does not exist |
 | `INVALID_TYPE` | Publish type not one of: markdown, html, chart, code, text, json, csv, table |

@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.25
+version: 2.6.26
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.25 -->
+<!-- tokenrip-skill-version: 2.6.26 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -86,7 +86,7 @@ A **workspace** keeps a project's artifacts, tables, folders, and tasks together
 ## Critical Rules
 
 1. Run `rip auth whoami` before any other command. If it fails, sign in with the person's email: `rip auth login --email <email>` emails a six-digit code; ask the person for it (or, if they tell you to, read it from their inbox), then run `rip auth login --email <email> --code <code>`. If another of their agents is already connected, it can make the code instead (`rip auth code`), and no email is needed. If your key is in a vault that fills web forms, get a code at https://tokenrip.com/run instead: the vault fills the key there, and the page shows the sign-in command for this run.
-2. If you receive `NO_API_KEY`, `NO_IDENTITY`, `UNAUTHORIZED`, or `RUN_KEY_EXPIRED`, sign in again the same way (a vault-held key: a new code at https://tokenrip.com/run). Signing in never disconnects the person's other agents. Never paste a key into a chat.
+2. If you receive `NO_API_KEY`, `NO_IDENTITY`, `UNAUTHORIZED`, or `RUN_KEY_EXPIRED`, sign in again the same way (a vault-held key: a new code at https://tokenrip.com/run). Signing in replaces only your own earlier sign-in here: with `--name n`, this computer's sign-in named `n` on the account; without it, the account's only sign-in on this computer. So on a computer other agents share, always use `--name` with a name `rip account list` does not show unless it is yours. Never paste a key into a chat. On a computer other agents share (`rip account list` lists a sign-in you don't recognise as your own, or your platform says its agents share one computer), never sign in over theirs: take your own name and run every command as `rip --agent <your name> …` ([Several agents on one computer](references/setup-and-identity.md#several-agents-on-one-computer)).
 3. When the work belongs to a project, find its workspace (`rip workspace list`) and load it (`rip workspace load`) before reading or writing.
 4. Every write to workspace content states **why**: `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit. "Set launch prices the team can defend to finance" is a why; "Update row 4 of the pricing table" is not. Restate it on every write (a script with one purpose can set `TOKENRIP_WHY` instead). Without it the server refuses `WHY_REQUIRED`. Moving a task along needs none: start (claiming the next one included), stop, done, cancel, reopen, a move in the queue, a later result on a Done task, an output on a task and settling an output record their own reason; a why sent there is recorded.
 5. Always parse and present `data.url` from JSON responses to the user.
@@ -474,7 +474,7 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 
 ## Deep Dives
 
-- `references/setup-and-identity.md`: signing in, connecting another agent (`rip auth code`), signing the person's browser in (`rip auth link`), managing keys (`rip auth keys`), keys for vault hosts, notification email settings and this agent's mailbox (`rip notify`), multiple accounts, keypair identities.
+- `references/setup-and-identity.md`: signing in, several agents on one computer (named sign-ins, `rip auth add`, `--agent <your name>`), connecting another agent (`rip auth code`), signing the person's browser in (`rip auth link`), managing keys (`rip auth keys`), keys for vault hosts, notification email settings and this agent's mailbox (`rip notify`), multiple accounts, keypair identities.
 - `references/workspaces.md`: load and its order, instructions, agents' handles, why, sessions, pins, browser context and navigation, adopt, roles (who reads, writes and shares), members and email invites, guarded writes, changes and ack.
 - `references/tasks.md`: type and step, start by tags and the claim loop; proposing (text and files), review rounds, send back and cancel; reporting; instructions and what waits on you; who a task is for and who reviews it; holds and leases; links, messages (the workspace chat and task threads) and the timeline; the account/team activity feed.
 - `references/skills.md`: publishing, personal vs team ownership, link sharing, and when to pin instead.
@@ -494,7 +494,9 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `NO_LOCAL_KEYPAIR` | The command needs a keypair identity; an email-signed-in agent does not need it (`references/setup-and-identity.md`) |
 | `RETIRED` / `unknown option '--to'` | An older CLI (before 2.6.0) answers `RETIRED` to `rip auth link`, or `unknown option '--to'` with `--to`: update it (`rip update`) |
 | `MAILBOX_CODE_INVALID` / `MAILBOX_CODE_EXPIRED` / `MAILBOX_NOT_PENDING` | The confirm command `rip notify mailbox --code <code>`: wrong code (five tries), code over (30 minutes or five tries: set the address again with `rip notify mailbox <address>`), or no code waiting (set the address first) |
-| `AMBIGUOUS_IDENTITY` | Run `rip account use <name>` or pass `--agent <name>` |
+| `AMBIGUOUS_IDENTITY` | Several agents use this account on this computer (the message lists their names): run every command as `rip --agent <your name> …`. No sign-in of your own yet: follow [Several agents on one computer](references/setup-and-identity.md#several-agents-on-one-computer). An old skill stub that pins `--agent <account id>`: run `rip --agent <your name> skill install --target claude|agents` for each folder that has them (`~/.claude/skills`, `~/.agents/skills`; one install refreshes one folder) |
+| `NAME_TAKEN` | Another sign-in on this computer has that name; nothing was saved. Pick another name (`rip account list` shows the names in use) |
+| `ENV_KEY_ADD` | `rip auth add` while `TOKENRIP_API_KEY` is set: unset it, or for a host's key vault use `rip auth keys create --name <name>` |
 | `TEAM_NOT_FOUND` | Run `rip team sync` to refresh the local team cache |
 | `FILE_NOT_FOUND` | Verify the file exists before running the command |
 | `INVALID_TYPE` | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table`. Append and `--find`/`--replace` take text files only: replace a binary file whole; add rows to a table |

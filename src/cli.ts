@@ -52,7 +52,7 @@ program
   .description('Tokenrip — the shared workspace your AI agents work from')
   .version(CLI_VERSION)
   .option('--json', 'Use JSON output instead of human-readable')
-  .option('--agent <name>', 'Use a specific agent identity for this command')
+  .option('--agent <name>', 'Run this command as one sign-in here: its name, account id or alias')
   .hook('preAction', async (thisCommand) => {
     if (program.opts().json) setForceJson(true);
     const opts = thisCommand.optsWithGlobals();
@@ -688,19 +688,21 @@ auth
   .description("Sign in with the person's email and a six-digit code")
   .requiredOption('--email <email>', "The person's email address")
   .option('--code <code>', 'The six-digit code (emailed, or from a connected agent or the dashboard)')
-  .option('--name <name>', 'Name for this agent\'s key (default: this harness, e.g. "claude-code" or "cli")')
+  .option('--name <name>', 'This agent\'s sign-in name, and its key\'s name (no spaces; default: the key\'s server name, e.g. "claude-code" or "cli", unless the account\'s only sign-in here is being replaced, which keeps its name)')
   .allowExcessArguments(false)
   .addHelpText('after', `
 EXAMPLES:
   $ rip auth login --email ana@example.com                # emails a six-digit code
   $ rip auth login --email ana@example.com --code 123456  # signs in with it
-  $ rip auth login --email ana@example.com --code 123456 --name "laptop"
+  $ rip auth login --email ana@example.com --code 123456 --name xer
 
   Step 1 emails a code (it lasts 10 minutes; check spam if it does not arrive).
   Step 2 takes that code, or one a connected agent made with \`rip auth code\`,
-  and gives this agent its own key on the person's account. The key is saved
-  and this account becomes the current one. No other agent is disconnected.
-  Signing in again replaces (and revokes) only this machine's previous key.
+  and gives this agent its own key on the person's account, saved on this
+  computer under the sign-in's name, which becomes the current one. No other
+  agent is disconnected: signing in again revokes only the old key of the same
+  name on the same account. On a computer several agents share, sign in with
+  --name and run every command as \`rip --agent <your name> …\`.
 
   A code from the key sign-in page gives a run key instead: it acts as the
   agent's saved key for this run, ends after 12 hours without use (24 hours
@@ -710,6 +712,30 @@ EXAMPLES:
   .action(wrapCommand(async (options) => {
     const { authLogin } = await import('./commands/auth-login.js');
     await authLogin(options);
+  }));
+
+auth
+  .command('add')
+  .argument('<name>', 'The new sign-in\'s name (the agent that will use it), e.g. "xer" (no spaces)')
+  .description('Add a sign-in on this account for another agent on this computer: creates a key from a connected sign-in and saves it under <name>')
+  .allowExcessArguments(false)
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip --agent napoleon auth add xer    # xer gets its own sign-in, made from napoleon's
+
+  Creates a key on this account for another agent on this computer and saves
+  it under <name>, without making it current. Run it with an existing
+  sign-in: \`rip --agent <an existing sign-in> auth add <name>\`. The agent
+  called <name> then runs every command as \`rip --agent <name> …\`. The
+  person is emailed that an agent connected. The key is never printed.
+
+  Refused (NAME_TAKEN) when a sign-in here already has that name, and
+  (ENV_KEY_ADD) while TOKENRIP_API_KEY is set. A run key or a key limited to
+  some workspaces cannot make keys.
+`)
+  .action(wrapCommand(async (name: string) => {
+    const { authAdd } = await import('./commands/auth-add.js');
+    await authAdd(name);
   }));
 
 auth
@@ -1024,7 +1050,7 @@ agent
 
 agent
   .command('list')
-  .description('List local agent identities')
+  .description('List the sign-ins on this computer, by name')
   .action(wrapCommand(async () => {
     const { accountList } = await import('./commands/account.js');
     const { formatAccountList } = await import('./formatters.js');
@@ -1033,7 +1059,7 @@ agent
 
 agent
   .command('use <name>')
-  .description('Switch the current agent identity')
+  .description('Make a sign-in current (by name, account id or alias); with several sign-ins on one account, each agent passes --agent instead')
   .action(wrapCommand(async (name: string) => {
     const { accountUse } = await import('./commands/account.js');
     accountUse(name);
@@ -1041,7 +1067,7 @@ agent
 
 agent
   .command('remove <name>')
-  .description('Remove an agent identity from this machine')
+  .description('Remove a sign-in from this computer (by name, account id or alias)')
   .action(wrapCommand(async (name: string) => {
     const { accountRemove } = await import('./commands/account.js');
     accountRemove(name);
@@ -1717,10 +1743,12 @@ skill
   .description('Write a stub for every skill in reach into your skills folder, so the host triggers them natively')
   .addHelpText('after', `
 Each stub is a folder with the skill's name and description and a body that runs
-rip skill get <skill-id> as this agent. Re-running refreshes changed stubs and
-removes stubs whose skill is gone, deleting only files it wrote. Only folders the
-CLI wrote for this agent (marked with .tokenrip-skill.json) are touched; a local
-skill or another agent's stub with the same name is left alone and reported.
+rip skill get <skill-id>. Stubs belong to the account: any of its sign-ins on this
+computer refreshes them. With one sign-in here they pin --agent; with several,
+each agent runs them as itself. Re-running refreshes changed stubs and removes
+stubs whose skill is gone, deleting only files it wrote. Only folders the CLI
+wrote for this account (marked with .tokenrip-skill.json) are touched; a local
+skill or another account's stub with the same name is left alone and reported.
 
 Run it again after skills are published, renamed or deleted. Install into one
 target per host: Cursor and Copilot read both folders.

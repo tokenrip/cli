@@ -4,8 +4,11 @@ import {
   addIdentity,
   removeIdentity,
   clearCurrentAccount,
-  resolveAccountId,
+  defaultSignInKey,
+  resolveSignIn,
   resolveCurrentIdentity,
+  signInKey,
+  signInsForAccount,
   requireLocalKeypair,
   saveIdentities,
   type StoredIdentity,
@@ -81,43 +84,54 @@ export async function accountCreate(options: { alias?: string; activate?: boolea
   });
 }
 
-export function accountList(): Array<{ accountId: string; alias?: string; current: boolean }> {
+export function accountList(): Array<{ name?: string; accountId: string; alias?: string; current: boolean }> {
   const store = loadIdentities();
-  const config = loadConfig();
-  return Object.values(store).map((id) => ({
+  const current = defaultSignInKey(store);
+  return Object.entries(store).map(([key, id]) => ({
+    name: id.name,
     accountId: id.accountId,
     alias: id.alias,
-    current: id.accountId === (config.currentAccount || config.currentAgent),
+    current: key === current,
   }));
+}
+
+/** The store key `target` (a name, account id or alias) names, or `IDENTITY_NOT_FOUND`. */
+function requireSignIn(store: Record<string, StoredIdentity>, target: string, listHint = true): string {
+  const key = resolveSignIn(store, target);
+  if (!key) {
+    throw new CliError(
+      'IDENTITY_NOT_FOUND',
+      listHint
+        ? `No local identity matching "${target}". Run \`rip account list\` to see available accounts.`
+        : `No local identity matching "${target}".`,
+    );
+  }
+  return key;
 }
 
 export function accountUse(target: string): void {
   const store = loadIdentities();
-  const accountId = resolveAccountId(store, target);
-  if (!accountId) {
-    throw new CliError(
-      'IDENTITY_NOT_FOUND',
-      `No local identity matching "${target}". Run \`rip account list\` to see available accounts.`,
-    );
-  }
+  const key = requireSignIn(store, target);
   const config = loadConfig();
-  config.currentAccount = accountId;
+  config.currentAccount = key;
   saveConfig(config);
-  const identity = store[accountId];
+  const identity = store[key];
+  const label = identity.name || identity.alias || identity.accountId;
+  // With several sign-ins on the account the pointer is not used: each agent names itself.
+  const siblings = signInsForAccount(store, identity.accountId).length > 1;
   outputSuccess({
-    accountId,
+    accountId: identity.accountId,
     alias: identity.alias ?? null,
-    message: `Switched to ${identity.alias || accountId}`,
+    ...(identity.name ? { name: identity.name } : {}),
+    message: siblings
+      ? `Switched to ${label}. Several agents use this account on this computer, so commands still need \`rip --agent <your name> …\`.`
+      : `Switched to ${label}`,
   });
 }
 
 export async function accountExport(target: string, options: { to: string }): Promise<void> {
   const store = loadIdentities();
-  const agentId = resolveAccountId(store, target);
-  if (!agentId) {
-    throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
-  }
-  const identity = store[agentId];
+  const identity = store[requireSignIn(store, target, false)];
   requireLocalKeypair(identity, 'Sign in on the other machine instead: rip auth login --email <your email>, or connect it with rip auth code.');
   const blob = encryptIdentityForAgent(identity, options.to, identity.secretKey);
   outputSuccess({
@@ -153,14 +167,15 @@ export async function accountImport(file: string): Promise<void> {
 
 export function accountRemove(target: string): void {
   const store = loadIdentities();
-  const agentId = resolveAccountId(store, target);
-  if (!agentId) {
-    throw new CliError('IDENTITY_NOT_FOUND', `No local identity matching "${target}".`);
-  }
-  removeIdentity(agentId);
-  clearCurrentAccount(agentId);
+  // An exact store key first: an unnamed sign-in (keyed by its account id) beside named ones of the
+  // same account is otherwise unreachable, since the account id matches them all.
+  const key = Object.hasOwn(store, target) ? target : requireSignIn(store, target, false);
+  const identity = store[key];
+  removeIdentity(key);
+  clearCurrentAccount(key);
   outputSuccess({
-    agentId,
+    agentId: identity.accountId,
+    ...(identity.name ? { name: identity.name } : {}),
     message: `Removed ${target} from local identities (agent still exists on server)`,
   });
 }
@@ -184,8 +199,9 @@ export async function accountRecoverKey(): Promise<void> {
   const apiKey = data.data.api_key;
 
   const store = loadIdentities();
-  if (store[identity.accountId]) {
-    store[identity.accountId].apiKey = apiKey;
+  const key = signInKey(identity);
+  if (store[key]) {
+    store[key].apiKey = apiKey;
     saveIdentities(store);
   }
 

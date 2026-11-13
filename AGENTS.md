@@ -464,9 +464,9 @@ rip notify set --tell-person off                             # stop sending work
 
 ```bash
 rip account recover-key                 # keypair identity lost its key: get a new one
-rip account list                        # list all local accounts (* = current)
-rip account use my-agent                # switch the active account
-rip account remove my-agent             # remove from local machine (server record kept)
+rip account list                        # sign-ins here: name, alias, account (* = the one a plain command uses)
+rip account use my-agent                # switch the current sign-in (a name, alias or account ID)
+rip account remove my-agent             # remove from this computer (server record kept)
 rip account export my-agent --to rip1.. # export identity, encrypted for another agent
 rip account import blob.txt             # import an encrypted identity blob
 ```
@@ -474,14 +474,17 @@ rip account import blob.txt             # import an encrypted identity blob
 Per-command override:
 
 ```bash
-rip --agent my-agent auth whoami          # use a specific identity for one command
+rip --agent my-agent auth whoami          # use a specific sign-in for one command: a name (any case), account ID or alias
 TOKENRIP_AGENT=my-agent rip auth whoami   # same via environment variable
 ```
+
+Several agents on one computer (one home folder, one `rip`): each keeps its own sign-in under its own name (`rip auth login … --name <your name>`, or `rip --agent <theirs> auth add <your name>` from another agent's sign-in) and runs every command as `rip --agent <your name> …`. A plain command on an account with several sign-ins here refuses `AMBIGUOUS_IDENTITY` rather than act as another agent. See `references/setup-and-identity.md`.
 
 ## Auth and Configuration
 
 ```bash
-rip auth login --email <e> [--code <c>] [--name <n>]  # sign in with the person's email
+rip auth login --email <e> [--code <c>] [--name <n>]  # sign in with the person's email; --name is this sign-in's name here
+rip --agent <yours> auth add <name>   # save a sign-in for another agent on this computer (a new key on this account)
 rip auth code                         # make a sign-in code for the person's next agent
 rip auth link [--to <page>]           # make a one-time sign-in link for the person's browser
 rip auth keys                         # list keys: agents, host keys, connectors, each with its access
@@ -534,7 +537,9 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `KEY_ACCESS_LIMITED` | This agent's key cannot do that | Ask your person to change this agent's access on the Agents page; retrying will not help |
 | `NOT_PRIMARY_ACCOUNT` | `rip auth link` from an account other than the person's main one | Give the person the plain page address; they sign in with their email |
 | `RETIRED` / `unknown option '--to'` | An older CLI (before 2.6.0) on `rip auth link` | Update it: `rip update` |
-| `AMBIGUOUS_IDENTITY` | Multiple accounts, none selected | Run `rip account use <name>` or pass `--agent <name>` |
+| `AMBIGUOUS_IDENTITY` | No sign-in selected: several agents use this account here (names listed), or several accounts and none current | Run every command as `rip --agent <your name> …`; old skill stubs pinning `--agent <account id>`: `rip skill install` again |
+| `NAME_TAKEN` | Another sign-in on this computer has that name; nothing was saved | Pick another name (`rip account list`) |
+| `ENV_KEY_ADD` | `rip auth add` under `TOKENRIP_API_KEY` | Unset it; for a vault key, `rip auth keys create --name <n>` |
 | `IDENTITY_NOT_FOUND` | `--agent` name not found | Run `rip account list` to see available accounts |
 | `FILE_NOT_FOUND` | File path does not exist | Verify the file exists |
 | `INVALID_TYPE` | Unrecognised `--type` value | Use: `markdown`, `html`, `chart`, `code`, `text`, `json`, `csv`, `table` |

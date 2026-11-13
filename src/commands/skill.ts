@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { AxiosInstance } from 'axios';
 import { optionalAuthClient, requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
-import { resolveCurrentIdentity } from '../identities.js';
+import { loadIdentities, resolveCurrentIdentity, signInsForAccount } from '../identities.js';
 import { outputSuccess } from '../output.js';
 import { loadTeams, resolveTeam } from '../teams.js';
 import { SKIP_DIRS, walkFiles } from '../zip.js';
@@ -401,7 +401,8 @@ export async function skillDelete(ref: string, options: { team?: string }): Prom
  * `rip skill install [--target claude|agents]` — write a stub folder for every skill in reach into
  * the host's user-level skills folder, so the host triggers each skill natively; refresh changed
  * stubs and remove stubs whose skill is gone. Only folders carrying the stub marker, recorded for
- * this identity (or for none), are touched; each stub reads its skill by id as this identity.
+ * this identity's account (or for none), are touched; each stub reads its skill by id as this
+ * identity, or, when the account has several sign-ins here, as whichever agent reads it.
  * The default target is Claude Code's folder when the CLI runs inside it (`CLAUDECODE`).
  */
 export async function skillInstall(options: { target?: string }, deps: { homeDir: string } = { homeDir: os.homedir() }): Promise<void> {
@@ -411,8 +412,16 @@ export async function skillInstall(options: { target?: string }, deps: { homeDir
   }
   const { client, apiUrl } = requireAuthClient();
   // The stubs pin the local identity with --agent; an API key in the environment has no local identity.
-  const accountId = process.env.TOKENRIP_API_KEY ? null : resolveCurrentIdentity().accountId;
+  // An account with several sign-ins on this computer is not pinned: `--agent <accountId>` would
+  // match them all, so each agent reading the stub runs as itself.
+  const identity = process.env.TOKENRIP_API_KEY ? null : resolveCurrentIdentity();
+  const accountId = identity?.accountId ?? null;
+  const pinned = accountId === null || signInsForAccount(loadIdentities(), accountId).length <= 1;
+  // The installer's own sign-in name, for the re-run line when the stubs are not pinned.
+  // What selects this sign-in alone: its name, else (an unnamed one, whose key is its account id) its alias.
+  const signInName = identity?.name ?? identity?.alias ?? null;
   const entries = await fetchCatalog(client);
   const dir = skillTargetDir(target, deps.homeDir);
-  outputSuccess({ target, dir, accountId, ...syncStubs(entries, dir, { accountId, apiUrl }) }, formatSkillInstall);
+  const result = syncStubs(entries, dir, { accountId, apiUrl, pin: pinned });
+  outputSuccess({ target, dir, accountId, pinned, signInName, ...result }, formatSkillInstall);
 }

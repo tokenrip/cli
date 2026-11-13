@@ -33,6 +33,15 @@ export function accountIdToPublicKey(accountId: string): string {
   return Buffer.from(bech32.fromWords(words)).toString('hex');
 }
 
+/** Whether `value` is an account id (`rip1…`, a valid bech32 string with Tokenrip's prefix), any case. */
+export function looksLikeAccountId(value: string): boolean {
+  try {
+    return bech32.decode(value, BECH32_LIMIT).prefix === AGENT_HRP;
+  } catch {
+    return false;
+  }
+}
+
 /** @deprecated use accountIdToPublicKey */
 export const agentIdToPublicKey = accountIdToPublicKey;
 

@@ -1,6 +1,6 @@
 # Setup and Identity
 
-Covers signing in, connecting the person's next agent, signing their browser in, managing keys, keys for hosts that take a pasted key, multiple accounts, keypair identities, configuration, and public profiles. Return to [SKILL.md](../SKILL.md) for decision trees and workflows.
+Covers signing in, several agents on one computer, connecting the person's next agent, signing their browser in, managing keys, keys for hosts that take a pasted key, multiple accounts, keypair identities, configuration, and public profiles. Return to [SKILL.md](../SKILL.md) for decision trees and workflows.
 
 The setup guide for every kind of assistant (terminal agents, chat apps, hosted agents) is at `https://tokenrip.com/setup`.
 
@@ -15,8 +15,8 @@ rip auth whoami
 ```
 
 - Ask the person for the code. If they tell you to, read it from their inbox. It lasts 10 minutes and works once. If it does not arrive, suggest the spam folder; a new code can be requested after a minute.
-- The key is saved in `~/.config/tokenrip/identities.json` and this account becomes the current one. Without `--name` the server names the new key after this harness (`claude-code` under Claude Code, `codex` under Codex, otherwise `cli`); pass `--name <name>` to choose. A run key keeps its agent's name and takes no `--name` (refused `INVALID_FIELD`; the code still works without it; see [Run keys](#run-keys)).
-- Signing in never disconnects the person's other agents. Signing in again on the same machine replaces this machine's key and revokes the old one, best-effort. A run-key sign-in revokes no key, and a run key held before is never revoked: it ends on its own.
+- The key is saved in `~/.config/tokenrip/identities.json` as a sign-in with a name, and it becomes the current one. Without `--name` the server names the new key after this harness (`claude-code` under Claude Code, `codex` under Codex, otherwise `cli`) and the sign-in takes that name (`-2`, `-3`… when it is taken here), unless the account's only sign-in here is being replaced, which keeps its own name; pass `--name <name>` (no spaces) to choose. Other agents share this computer? Read [Several agents on one computer](#several-agents-on-one-computer) first. A run key keeps its agent's name and takes no `--name` (refused `INVALID_FIELD`; the code still works without it; see [Run keys](#run-keys)).
+- What a sign-in replaces. With `--name n` it replaces a sign-in named `n` on the same account and revokes its key (best-effort): that is how an agent reconnects under its own name, so pick a name `rip account list` does not show, unless it is yours. An unnamed sign-in whose key the server calls `n` (unless `n` is a default name: `cli`, `claude-code`, `codex`, `agent` or this process's surface) is your own from before names: replaced, old key revoked; any other unnamed sign-in, one whose key no longer works included, is kept beside yours. Without `--name`, an account's only sign-in here is replaced. Nothing else is replaced or revoked. A name another account's sign-in here uses, or one that clashes with a sign-in's alias or account id, is refused (`NAME_TAKEN`): nothing is saved and the key just received is revoked. The output's `signed_in_as` is your sign-in's name and `siblings` the account's other sign-ins here. A run-key sign-in revokes no key, and a run key held before is never revoked: it ends on its own.
 - Wrong codes count against the email: after five, sign-in for that email locks for a while (`SIGN_IN_LOCKED`, with the time to retry).
 - If a command fails `UNAUTHORIZED`, `NO_API_KEY`, or `NO_IDENTITY`, sign in again. If `TOKENRIP_API_KEY` is set, that key is the one refused: replace or unset it (signing in does not change it). A run key that ended fails `RUN_KEY_EXPIRED` instead: get a new code at https://tokenrip.com/run. A run key whose saved key was revoked fails `UNAUTHORIZED`: the agent needs a new key from the person (sign in by email).
 - If `rip auth login` reports `overridden_by`, the named variable (`TOKENRIP_API_KEY` or `TOKENRIP_AGENT`) will keep later commands off the new sign-in until it is unset.
@@ -120,15 +120,35 @@ rip auth keys create --name "Reader" --workspace decisions:read --workspace find
 
 The key is shown once. Tell the person to paste it into the host's key vault or settings, never into a chat. Without `--workspace` the key may use every workspace. Repeat `--workspace <slug-or-id>:read` or `:write` to limit it to those workspaces, read only or read and write. An agent cannot change a key's access afterwards: the person does that on the Agents page. Revoke it with `rip auth keys revoke <id>`.
 
+## Several agents on one computer
+
+Some platforms run many agents on one shared computer (Grok Bot's bots, for example): one home folder, one installed `rip`. Each agent keeps its own sign-in there, under its own name, in the one CLI (CLI 2.6.26 or later). Never sign in over another agent's sign-in.
+
+**Is this computer shared?** Before you sign in, run `rip account list`. If it lists a sign-in you don't recognise as your own, other agents share this computer. The same holds when your platform says its agents share one computer or one CLI.
+
+1. Pick a short name for yourself, with no spaces, that `rip account list` doesn't show: your own name, not a copied example. The exception is your own sign-in from before: signing in again under your own name replaces it.
+2. If one of the listed sign-ins is on the person's account (`rip --agent <theirs> auth whoami` shows its email) and the person asked you to connect, make yours from it: `rip --agent <theirs> auth add <your name>`. Otherwise sign in by email with your name: `rip auth login --email <email> --code <code> --name <your name>`.
+3. Run every Tokenrip command as `rip --agent <your name> …`, and save that line in your own standing instructions: nothing else tells the agents apart.
+
+Old skill stubs that pin `--agent <account id>` refuse `AMBIGUOUS_IDENTITY` once a second sign-in is on the account here: run `rip --agent <your name> skill install --target claude` (or `--target agents`) for each folder that has them (see [skills.md](skills.md)). A sign-in you could not recognise as your own (one from before names) stays beside yours with its key live: the person can revoke it on the Agents page.
+
+`rip auth add <name>` creates a key named `<name>` on the account and saves it here, without making it current; the person is emailed that an agent connected, and the key shows on their Agents page. It is refused with `NAME_TAKEN` when the name is in use here, `ENV_KEY_ADD` under `TOKENRIP_API_KEY`, and `KEY_ACCESS_LIMITED` from a key limited to some workspaces (such a key makes no keys: sign in by email instead, or the person adds the agent from the Agents page).
+
+A plain `rip` command on an account with several sign-ins here refuses with `AMBIGUOUS_IDENTITY` and lists the names, rather than act as another agent: pass `--agent <your name>`. Any agent on the computer can read the one `identities.json`, so the sign-ins are kept apart by `--agent`, not by the file.
+
 ## Multiple accounts
 
+Each sign-in on this computer has a name; `rip account list` shows it ("(no name)" for one saved before names), its alias and its account.
+
 ```bash
-rip account list                         # list all (* = current)
-rip account use <name>                   # switch active account
-rip account remove <name>                # remove from this machine (server record kept)
-rip --agent <name> <command>             # one-off identity override
+rip account list                         # name, alias, account (* = the one a plain command uses)
+rip account use <name>                   # switch the current sign-in (a name, alias or account ID)
+rip account remove <name>                # remove from this computer (server record kept)
+rip --agent <name> <command>             # one-off: a name (any case), account ID or alias
 TOKENRIP_AGENT=<name> rip auth whoami    # same via env var
 ```
+
+A command without `--agent` uses the current sign-in, unless its account has several sign-ins here; else the only sign-in; else it refuses `AMBIGUOUS_IDENTITY`. With two accounts and one sign-in each, `rip account use` switches between them.
 
 ## Keypair identities (advanced)
 
@@ -161,7 +181,7 @@ Environment variables override the config file:
 |---|---|
 | `TOKENRIP_API_KEY` | API key (for every identity) |
 | `TOKENRIP_API_URL` | API base URL (default `https://api.tokenrip.com`) |
-| `TOKENRIP_AGENT` | Active account (alias or account ID) |
+| `TOKENRIP_AGENT` | The sign-in to use (a name, account ID or alias), as `--agent` |
 | `TOKENRIP_OUTPUT` | Output format (`human` or `json`) |
 | `TOKENRIP_CONFIG_DIR` | Config directory (default `~/.config/tokenrip`) |
 

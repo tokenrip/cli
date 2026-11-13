@@ -519,10 +519,30 @@ export const formatSignedIn: Formatter = (data) => {
   } else if (data.name) {
     lines.push(`  Key:     ${data.name}`);
   }
+  if (data.signed_in_as) lines.push(`  Name:    ${data.signed_in_as}`);
+  const siblings = (data.siblings ?? []) as string[];
+  if (siblings.length > 0) {
+    const me = data.signed_in_as ?? '<your name>';
+    lines.push(`  Other agents on this account here: ${siblings.join(', ')}. Run commands as \`rip --agent ${me} …\`; to sign in again, use \`--name ${me}\`.`);
+  }
   if (data.previous_key === 'not_revoked') lines.push(`  The key this one replaced could not be revoked; remove it with \`rip auth keys revoke ${data.previous_key_id ?? '<id>'}\`.`);
   if (data.overridden_by === 'TOKENRIP_API_KEY') lines.push('  Warning: TOKENRIP_API_KEY is set, so commands will keep using that key; unset it to use this sign-in.');
   if (data.overridden_by === 'TOKENRIP_AGENT') lines.push('  Warning: TOKENRIP_AGENT is set, so commands will keep using that agent; unset it to use this sign-in.');
   return lines.join('\n');
+};
+
+/**
+ * `rip auth add <name>`. Usually read by the new agent (setup has it run `rip --agent <theirs> auth
+ * add <its name>`), sometimes by the agent whose sign-in made it: each line names its sign-in, never "this agent".
+ */
+export const formatAuthAdded: Formatter = (data) => {
+  const where = data.email ? `${data.email}'s Tokenrip` : `Tokenrip account ${data.account_id}`;
+  return [
+    `Saved sign-in ${data.name} on ${where}: the agent called ${data.name} runs every Tokenrip command as \`rip --agent ${data.name} …\` and saves that line in its own instructions.`,
+    `  Account: ${data.account_id}`,
+    `  Key:     ${data.name} (id ${data.key_id})`,
+    `  Made from sign-in ${data.added_by}, which now runs as \`rip --agent ${data.added_by} …\` (several agents use this account here).`,
+  ].join('\n');
 };
 
 /** `rip auth code` — the line for the person to give their next agent. */
@@ -869,6 +889,7 @@ export const formatSelfUpdate: Formatter = (data) => {
 
 export const formatAccountList: Formatter = (data) => {
   const accounts = (data as any).accounts as Array<{
+    name?: string;
     accountId: string;
     alias?: string;
     current: boolean;
@@ -879,7 +900,7 @@ export const formatAccountList: Formatter = (data) => {
   return accounts
     .map(
       (a) =>
-        `${a.current ? '*' : ' '} ${(a.alias || '—').padEnd(20)} ${a.accountId}${a.current ? '  (current)' : ''}`,
+        `${a.current ? '*' : ' '} ${(a.name || '(no name)').padEnd(20)} ${(a.alias || '—').padEnd(20)} ${a.accountId}${a.current ? '  (current)' : ''}`,
     )
     .join('\n');
 };
@@ -2390,7 +2411,12 @@ const STUB_SKIP_REASONS: Record<string, string> = {
 /** `rip skill install` — the folder, then each change and each skipped skill with its reason. */
 export const formatSkillInstall: Formatter = (data) => {
   const d = data as Record<string, any>;
-  const lines = [`Skill stubs in ${d.dir} (target ${d.target}${d.accountId ? `, agent ${d.accountId}` : ''})`];
+  // Unpinned stubs (several sign-ins of the account here): `--agent <account id>` would be ambiguous,
+  // so the re-run line uses the installer's own sign-in name, else plain rip.
+  const unpinned = d.pinned === false;
+  const owner = !d.accountId ? '' : unpinned ? `, account ${d.accountId}: each agent on this computer runs them as itself` : `, agent ${d.accountId}`;
+  const runAs = unpinned ? d.signInName : d.accountId;
+  const lines = [`Skill stubs in ${d.dir} (target ${d.target}${owner})`];
   const row = (label: string, names: string[]) => {
     if (names?.length) lines.push(`  ${label.padEnd(10)} ${names.join(', ')}`);
   };
@@ -2406,6 +2432,6 @@ export const formatSkillInstall: Formatter = (data) => {
     lines.push(`  Failed:    ${f.name}${f.team ? ` --team ${f.team}` : ''} (${f.error})`);
   }
   if (lines.length === 1) lines.push('  No skills in reach; nothing to install.');
-  lines.push('', `Run rip${d.accountId ? ` --agent ${d.accountId}` : ''} skill install --target ${d.target} again after skills are published, renamed or deleted.`);
+  lines.push('', `Run rip${runAs ? ` --agent ${runAs}` : ''} skill install --target ${d.target} again after skills are published, renamed or deleted.`);
   return lines.join('\n');
 };
