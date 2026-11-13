@@ -25,7 +25,7 @@ export async function artifactDiff(
   }
   const { client } = optionalAuthClient();
   const params: Record<string, string> = options.versionId
-    ? { versionId: options.versionId }
+    ? { id: options.versionId }
     : { artifactId: parseArtifactId(input!) };
   if (options.fromVersionId) params.fromVersionId = options.fromVersionId;
   if (options.base) params.baseVersionId = options.base;

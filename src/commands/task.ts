@@ -34,7 +34,7 @@ export interface TaskListOptions {
 export interface TaskAddOptions {
   /** The workspace, or `parentId` alone (the parent's workspace). */
   workspaceId?: string;
-  /** A person (account id or alias) or `agent:<handle>`, a handle from `rip workspace load`. */
+  /** `me`, a person (account id or alias), or an agent: `agent:me`, `agent:<name>` (your own), `agent:<key id>` or `agent:<handle>`. */
   assignee?: string;
   /** Who decides its proposal, named as the assignee is; it may be the assignee, never the proposer. */
   reviewer?: string;
@@ -188,7 +188,7 @@ export async function taskAdd(title: string, options: TaskAddOptions): Promise<v
   const body: Record<string, unknown> = { title, ...home(options, 'A new task') };
   const { client } = requireAuthClient();
   if (options.why !== undefined) body.why = options.why;
-  // Account ids, aliases and agent:<handle> pass through; the server resolves them.
+  // `me`, account ids, aliases and every `agent:` form pass through; the server resolves them.
   if (options.assignee) body.assignee = options.assignee;
   if (options.reviewer) body.reviewer = options.reviewer;
   if (options.type) body.type = options.type;
@@ -320,7 +320,7 @@ export type TaskLinkBody = { artifact: string; version?: number | string } | { u
 const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * `--link artifact:<publicId>[@<version>]` or `--link url:<https://…>` (repeatable), as the API's
+ * `--link artifact:<id>[@<version>]` or `--link url:<https://…>` (repeatable), as the API's
  * `{ artifact, version? }` or `{ url }`. A version is a number or a version id. With
  * `withVersion: false` (`--remove-link`) a version is refused: a link is removed by its target.
  */
@@ -345,7 +345,7 @@ export function parseLinkFlags(raw: string[] | undefined, flag = '--link', withV
   });
 }
 
-/** Complete with what the work produced: links (`--link`) and what came of it (`--result-text`, at most 280 characters). */
+/** Complete with what the work produced: links (`--link`) and what came of it (`--result-text`, at most 64,000 characters). */
 export async function taskDone(id: string, options: { link?: string[]; resultText?: string } & TaskWriteOptions): Promise<void> {
   const links = parseLinkFlags(options.link);
   const { client } = requireAuthClient();
@@ -413,14 +413,14 @@ export interface TaskProposeOptions extends TaskWriteOptions {
   reviewer?: string;
   /** A new proposal: the job it serves, by name (a job with task definitions fills its step, then and verb). */
   job?: string;
-  /** `artifact:<publicId>[@version]` or `url:<https://…>`, repeatable. */
+  /** `artifact:<id>[@version]` or `url:<https://…>`, repeatable. */
   link?: string[];
-  /** `<publicId>[@version]`, repeatable: the files the draft is made of, in order (at most 10). */
+  /** `<id>[@version]`, repeatable: the files the draft is made of, in order (at most 10). */
   draftArtifact?: string[];
 }
 
 /**
- * `--draft-artifact <publicId>[@version]` (repeatable): an artifact as `--link artifact:…` names it,
+ * `--draft-artifact <id>[@version]` (repeatable): an artifact as `--link artifact:…` names it,
  * at a version number or id (else its current one), as the API's `draftArtifacts` entry.
  */
 export function parseDraftArtifacts(raw: string[] | undefined): { artifact: string; version?: number | string }[] {
@@ -428,7 +428,7 @@ export function parseDraftArtifacts(raw: string[] | undefined): { artifact: stri
 }
 
 /**
- * `--edit-artifact <publicId>@<version>` (repeatable): a draft artifact at its current version
+ * `--edit-artifact <id>@<version>` (repeatable): a draft artifact at its current version
  * (a number or a version id), as the API's `edits.artifacts` entry. Omit it and the approval
  * carries out each draft file as it is now.
  */
@@ -482,7 +482,7 @@ export interface TaskReportOptions extends TaskWriteOptions {
   label?: string[];
   /** A new report: the job it was part of, by name. */
   job?: string;
-  /** What came of it, at most 280 characters; a later result replaces the text. */
+  /** What came of it, at most 64,000 characters; a later result replaces the text. */
   resultText?: string;
   link?: string[];
 }
@@ -520,7 +520,7 @@ export interface TaskDecideOptions extends TaskWriteOptions {
   then?: string | false;
   /** Approve only: a file whose text is carried out instead of the draft (sent as `edits.text`). */
   editedDraftFile?: string;
-  /** Approve only: `<publicId>@<version>`, repeatable: a draft artifact at its current version (sent as `edits.artifacts`). Omit it to approve each draft file as it is now. */
+  /** Approve only: `<id>@<version>`, repeatable: a draft artifact at its current version (sent as `edits.artifacts`). Omit it to approve each draft file as it is now. */
   editArtifact?: string[];
 }
 

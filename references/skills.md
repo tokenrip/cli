@@ -105,4 +105,4 @@ A link-shared skill does not appear in anyone else's `rip skill list`. `--privat
 
 ## MCP
 
-MCP agents use `skill_list`, `skill_get` (its `skill` is an id, a page URL, or a name with `team`) and `skill_publish`. Sharing and deletion are CLI, REST and dashboard only.
+MCP agents use `skill_list`, `skill_get` (its `id` is an id, a page URL, or a name with `team`) and `skill_publish`. Sharing and deletion are CLI, REST and dashboard only.

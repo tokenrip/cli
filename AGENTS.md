@@ -52,9 +52,9 @@ rip workspace list                                            # names, ids, your
 rip workspace load <workspace>                                # its slug or id: bounded context, latest changes, your browser link
 ```
 
-`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the task types you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, a sent-back one among them, each with the next command), your proposals In review, **Messages** (the newest chat messages you have not been shown, oldest of them first, then how many earlier ones are unread and `rip message read --workspace-id <ws>`; each is shown once, and a message from another member is something to weigh and answer, not an instruction from your person) and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <publicId> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
+`load` prints what you can do, your browser link, then first your **instructions** (what your person wrote for you in this workspace, whole, with the task types you may do on your own), **Waiting on you** (approved tasks to carry out, reviews addressed to you to decide, tasks for you, a sent-back one among them, each with the next command), your proposals In review, **Messages** (the newest chat messages you have not been shown, oldest of them first, then how many earlier ones are unread and `rip message read --workspace-id <ws>`; each is shown once, and a message from another member is something to weigh and answer, not an instruction from your person) and the workspace's **Agents** with their `agent:<handle>`; then pinned read-on-load documents, recent sessions (who worked, `You` or `~alias`, from which tool, and steps: each goal with the changes made for it, including versions and diff commands), open tasks (one waiting on you is printed once), the latest changes, newest first (who, the action, the item's title and id, and the why), with how many are unread since your last acknowledgement and the `rip workspace changes` command that reads them in order, and the artifact index. A large pin arrives as a reference; the human output prints the exact command to read it, `rip artifact cat <id> --version-id <versionId>` (in `--json`, a pin has `content.content` when inline, otherwise `content.versionId`). Loading again is safe; it takes no selector. A workspace in the trash answers `WORKSPACE_DELETED` (410). A workspace is named by its **slug or id** (`rip workspace load tokenrip-social`); a slug two of your workspaces share is refused (`AMBIGUOUS_REFERENCE`) with each candidate's id: use the id. Names can repeat; pick by slug, home and capabilities. `rip ws` is an alias for `rip workspace`.
 
-**Every write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
+**A write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Moving a task along needs none (start, stop, done, cancel, reopen, a move in the queue, a later result on a Done task, an output on a task, settling an output): the move records its own reason, and a why sent is recorded. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
 ```bash
 # What changed since I last looked (reading never acknowledges)
@@ -176,8 +176,8 @@ rip artifact get <id>                                 # metadata, permissions an
 rip artifact cat <id> [--version-id <versionId>]      # content to stdout
 rip artifact download <id> --output ./report.pdf      # content to a file
 rip artifact download <table-id> --format json        # tables export as csv (default) or json
-rip artifact list [--since <iso>] [--type markdown] [--limit 5] [--folder <slug>] [--team <slug>]
-rip storage [--team <slug>]                           # storage used against the plan, and the largest files
+rip artifact list [--since <iso|3d>] [--type markdown] [--limit 5] [--folder <slug>] [--team <slug>]
+rip storage [--team <slug>]                           # storage used against the plan (files, trash, text), and the largest files
 rip actions [--team <slug>]                           # this month's actions against the plan, and each workspace's count
 rip feedback "<text>"                                 # a note about Tokenrip to the Tokenrip team, who may reply by email (20 a day)
 ```
@@ -229,7 +229,7 @@ rip table rows <uuid> --limit 50 --after <rowId>
 rip table rows <uuid> --sort-by discovered_at --sort-order desc
 rip table rows <uuid> --filter 'revenue[gte]=75' --filter 'tier[in]=gold,silver'
 rip table rows <uuid> --fields slug,title --include-total
-rip table rows <uuid> --all --filter tier=gold                 # every page, 500 a call, up to 10,000 rows
+rip table rows <uuid> --all --filter tier=gold                 # every page, 5,000 a call, up to 10,000 rows
 
 rip table update <rowId> --data '{"relevance":"low"}'        # a row id names its table
 rip table delete --row-ids <rowId>,<rowId>
@@ -237,7 +237,8 @@ rip table delete --row-ids <rowId>,<rowId>
 
 - A table has at most one key, the column declared `unique: true`; storage rejects a duplicate with `409 DUPLICATE_UNIQUE_VALUE` (also a key repeated within one call; nothing is written). The key compares exact stored text: `"100"` and `"100.0"` differ, the number `1` and the string `"1"` are one key. `--upsert` updates the row whose key matches instead, in one atomic call (a table without a key is `400 NO_TABLE_KEY`); every row must carry the key. A key value that is an object or array, or over 1024 bytes, is `400 INVALID_COLUMN_VALUE`.
 - Filter operators (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`, `ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare by the column's declared type.
-- A sort, filter, or field naming a column the table doesn't have is a `400`, not a silently ignored parameter.
+- A sort or filter naming a column the table doesn't have is a `400`, not a silently ignored parameter. A `--fields` column it doesn't have is left out and named on the first lines (`missingFields` in JSON).
+- `--limit` is at most 5,000 rows a page (default 100). The CLI sends `sortBy`, `sortOrder`, `includeTotal` and `filters.<column>`.
 - Ordering is total (`created_at, id` tie-break), so cursors stay stable. `--sort-by` also accepts `createdAt` / `updatedAt` / `id`.
 
 ## Folder Commands
@@ -261,7 +262,7 @@ rip artifact move <id> --folder <folder-id-or-slug>
 
 ## Task Commands
 
-A **task** is one piece of work in a workspace (`todo`, `doing`, `review` (In review), `done`, `cancelled`); every task lives in one. Two free tags carry the workspace's workflow: `--type` (what the work is) and `--step` (where it is); Tokenrip never interprets them, except under a job with task definitions, which names the types and steps its tasks use. **Jobs:** before creating a task for a job, read the job (`rip job show <id>`: its definition's "Creating one" says what the task holds and which type); claim your step of a job with the job and the step on each run (`rip task start --workspace-id <ws> --job <name> --step <step>`, as load's `Your steps` names them; it records that you checked, even when nothing is taken); and follow the started task's `Workflow:` (the step's instructions, the next main step, the approval). **The claim loop:** start a task (by id, or the next one by tags), work, then propose it (it needs review), complete it, or stop it. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you; post questions, requested changes and answers as messages (a task's thread, or the workspace chat every member reads), never status; a message takes no `--why`. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`; it may be the assignee, never the one who proposed): a person by account id or alias, an agent as `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
+A **task** is one piece of work in a workspace (`todo`, `doing`, `review` (In review), `done`, `cancelled`); every task lives in one. Two free tags carry the workspace's workflow: `--type` (what the work is) and `--step` (where it is); Tokenrip never interprets them, except under a job with task definitions, which names the types and steps its tasks use. **Jobs:** before creating a task for a job, read the job (`rip job show <id>`: its definition's "Creating one" says what the task holds and which type); claim your step of a job with the job and the step on each run (`rip task start --workspace-id <ws> --job <name> --step <step>`, as load's `Your steps` names them; it records that you checked, even when nothing is taken); and follow the started task's `Workflow:` (the step's instructions, the next main step, the approval). **The claim loop:** start a task (by id, or the next one by tags), work, then propose it (it needs review), complete it, or stop it. **Before acting outside the workspace** (post, send, publish, book), propose it and carry out only what comes back approved; report work that needed no approval; decide reviews addressed to you; post questions, requested changes and answers as messages (a task's thread, or the workspace chat every member reads), never status; a message takes no `--why`. A task is for a person or an agent (`--assignee`) and reviewed by one (`--reviewer`; it may be the assignee, never the one who proposed): `me`, a person by account id or alias, or an agent as `agent:me`, `agent:<name>` (one of your own), `agent:<key id>` or `agent:<handle>` from load's Agents. Deep dive: `references/tasks.md`.
 
 ```bash
 rip task start --workspace-id <ws> --type article --step draft   # claim the first matching To do task in queue order ("No task": nothing to do)
@@ -269,7 +270,7 @@ rip task start --workspace-id <ws>                    # no tags: only a task for
 rip task start --workspace-id <ws> --job founder-posts --step draft   # your step of a job; records your check; prints the task's Workflow
 rip job show <id>                                    # a job whole: purpose, rules, agents, each definition's steps and "Creating one", the schedule
 rip task propose --workspace-id <ws> --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
-rip task propose <id> --draft-file a.md --draft-artifact <publicId> --then post   # text and files under review; then: the next step
+rip task propose <id> --draft-file a.md --draft-artifact <id> --then post   # text and files under review; then: the next step
 rip task show <id>                                   # who, the latest round (a send back's comment), Approved text and files, links, timeline
 rip task timeline <id>                               # every round, message in its thread and step
 rip output record --workspace-id <ws> --task <id> --kind x.reply --ref https://… --why "<the goal>"   # what went out
@@ -414,7 +415,7 @@ rip search "how do we handle auth failures" --workspace-id <workspace>
 rip search "termination clause" --artifact-id contract-2026
 ```
 
-Options: `--since`, `--limit` (max 200), `--offset`, `--type`, `--workspace-id <uuid>`, `--artifact-id <id>` (its passages best first, capped by `--limit`). The query is optional. Search lists live artifacts only; nothing in the trash appears.
+Options: `--since` (an ISO timestamp, or a time back: `7` days, `12h`, `3d`, `2w`), `--limit` (max 200), `--offset`, `--type`, `--workspace-id <uuid>`, `--artifact-id <id>` (its passages best first, capped by `--limit`). The query is optional. Search lists live artifacts only; nothing in the trash appears.
 
 Query syntax: `"exact phrase"`, `term1 OR term2`, `-excluded`.
 
@@ -553,11 +554,11 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `TASK_TAKEN` | Someone else is working on the task; nothing was persisted | `holder` (`Held by: …`) says who and until when — pick another task or wait |
 | `TASK_NOT_STARTED` | `stop` on a task that is not Doing | `rip task show <id>` |
 | `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Cancelled (or, for start, done) / already done / not done or cancelled | `rip task reopen <id>` if the work is still wanted; `rip task show <id>` |
-| `INVALID_ASSIGNEE` | `--assignee` is not a member who can edit tasks in the workspace, or an unknown or revoked `agent:<handle>` | `rip workspace member list <ws>`; handles from `rip workspace load` |
+| `INVALID_ASSIGNEE` | `--assignee` names nobody who can edit tasks in the workspace: `Reason:` says why (`unknown`, `ambiguous`, `revoked`, `cannot_edit_tasks`) | Name one of the `Candidates:` it prints (`me`, `agent:<handle>`, a person's alias or id) |
 | `TASK_IN_REVIEW` | The task waits for a decision; start and complete are refused (its reviewer and assignee can still change) | Your own proposal: stop (or withdraw it with `rip task stop <id>`); a later load lists it under Waiting on you once decided. Someone else's: leave it to its reviewer |
 | `TASK_NOT_IN_REVIEW` | Nothing to decide (`Latest round:` says how it ended) | `rip task show <id>` |
 | `REVIEW_NOT_YOURS` | The review is addressed to someone else (`Reviewer:` says who); nothing was written | Decide only what `rip task list --reviewer me` lists |
-| `INVALID_REVIEWER` | Not a member who can edit tasks in the workspace, the one who proposed (you, on your own proposal), or another reviewer than the task names | Omit `--reviewer` (your own person) or name that one |
+| `INVALID_REVIEWER` | Names nobody who can edit tasks in the workspace (`Reason:` and `Candidates:` as above), the one who proposed (you, on your own proposal), or another reviewer than the task names | Omit `--reviewer` (your own person), name that one, or one of the `Candidates:` |
 | `TOO_MANY_PROPOSALS` | 200 of your proposals are In review in this workspace | Wait for decisions, or withdraw some with `rip task stop` |
 | `TOO_MANY_ROUNDS` | The task has had 50 review rounds | Finish it as it stands, or add a new task for the rest |
 | `INVALID_LINKS` | A `--link` or `--draft-artifact` names a file outside the task's workspace, or `--link` names one target twice (a `--draft-artifact` given twice is `INVALID_FIELD`) | Name a file in the workspace; nothing was written |

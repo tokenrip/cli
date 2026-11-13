@@ -71,9 +71,7 @@ export const formatBundleVersions: Formatter = (data) => {
 
 export const formatArtifactCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
-  // `id` and `publicId` carry the same value; the rest of the platform
-  // (agent responses) keys on `publicId`. We echo the alias too so
-  // a caller that just set one can confirm it. See packages/cli/CLAUDE.md.
+  // The artifact's id, and its alias so a caller that just set one can confirm it.
   if (data.id) lines.push(`  ID:      ${data.id}`);
   if (data.alias) lines.push(`  Alias:   ${data.alias}`);
   if (data.url) lines.push(`  URL:     ${data.url}`);
@@ -213,6 +211,8 @@ export const formatStorageUsage: Formatter = (data) => {
   }
   lines.push(`Standalone artifacts: ${formatDecimalBytes(Number(d.standaloneBytes))}`);
   lines.push(`Bundles (every version): ${formatDecimalBytes(Number(d.bundleBytes))}`);
+  // Long text counts too (an older server sends no textBytes).
+  if (typeof d.textBytes === 'number') lines.push(`Text: ${formatDecimalBytes(d.textBytes)} (task briefs, results, drafts, instructions, descriptions)`);
   // The trash counts until it is emptied (an older server sends no trashBytes). It is in two places:
   // the payer's own trash (an account's standalone files, folders, bundles and workspaces; a team's
   // folders and workspaces), and each live workspace's trash, which holds the files deleted inside it.
@@ -396,6 +396,22 @@ export const formatArtifactMetadata: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/**
+ * A long text as one list line (agent call friction plan M5: a version description holds up to 64,000
+ * characters): its line breaks as spaces, its first 280 characters (code points) cut at a word break
+ * in their second half, `…` when anything was left out, as the server's lists cut (`cutForList`). The
+ * single read prints it whole.
+ */
+export function listLine(text: string, max = 280): string {
+  const points = [...text.replace(/\s*\n\s*/g, ' ')];
+  if (points.length <= max) return points.join('');
+  let end = max;
+  for (let index = max; index > max / 2; index--) {
+    if (/\s/u.test(points[index] ?? '')) { end = index; break; }
+  }
+  return `${points.slice(0, end).join('').trimEnd()}…`;
+}
+
 export const formatVersionList: Formatter = (data) => {
   const versions = data as unknown as Record<string, unknown>[];
   if (!Array.isArray(versions) || versions.length === 0) {
@@ -403,7 +419,7 @@ export const formatVersionList: Formatter = (data) => {
   }
   const lines = [`${versions.length} version(s):\n`];
   for (const v of versions) {
-    const label = v.description ? ` "${v.description}"` : '';
+    const label = v.description ? ` "${listLine(String(v.description))}"` : '';
     const size = v.sizeBytes ? ` ${formatBytes(v.sizeBytes as number)}` : '';
     const creator = v.createdByAlias ? ` @${v.createdByAlias}` : '';
     const tag = v.createdByTag ? ` [${v.createdByTag}]` : '';
@@ -689,6 +705,9 @@ export const formatTableRows: Formatter = (data) => {
     if (nextCursor) header += ` shown, ${more}`;
   }
   const lines = [`${header}\n`];
+  // A --fields name the table lacks is left out of each row, not refused.
+  const missing = (data as any).missingFields;
+  if (Array.isArray(missing) && missing.length > 0) lines.push(`  Not in the table (left out): ${missing.join(', ')}\n`);
   for (const r of rows) {
     const dataStr = JSON.stringify(r.data);
     const ago = formatTimeAgo(new Date(r.createdAt));
@@ -1444,7 +1463,8 @@ function taskFileLine(file: TaskFileView): string {
  * stands in its job's definition, then the step's instructions. "Workflow: founder-posts › post · at
  * draft (writer) → next edit"; the last main step says it ends with complete (or, with an approval,
  * in a proposal that returns to its proposer), a side step says so, a step with an approval names its
- * verb, and a step no longer in the definition says that.
+ * verb, and a step no longer in the definition says that. A task at no step (a closed task has none)
+ * prints the job and definition alone.
  */
 function workflowLines(workflow: Record<string, any>, taskStep: string | null): string[] {
   const head = `Workflow: ${workflow.job} › ${workflow.definition}`;
@@ -1452,7 +1472,8 @@ function workflowLines(workflow: Record<string, any>, taskStep: string | null): 
   const path = (workflow.path ?? []) as string[];
   const side = (workflow.side ?? []) as string[];
   const pathLine = `  Path: ${path.join(' › ')}${side.length ? ` · side: ${side.join(', ')}` : ''}`;
-  if (!step) return [`${head} · at ${taskStep ?? '-'} (not a step of the definition)`, pathLine];
+  // Only a step the task names can be outside the definition: a task at no step (a closed task has none) is not.
+  if (!step) return [taskStep ? `${head} · at ${taskStep} (not a step of the definition)` : head, pathLine];
   const where = `at ${step.name}${step.role ? ` (${step.role})` : ''}`;
   const approval = step.approvalVerb ? ` · ends in a proposal (${step.approvalVerb})` : '';
   // The last main step ends with complete; with an approval, approving returns it to its proposer (design §8).
@@ -1620,10 +1641,10 @@ export const formatBulkResult: Formatter = (data) => {
     lines.push('', 'Moved to trash:');
     for (const item of deleted) lines.push(`  ${item.id}  restorable until ${item.purgeAt}`);
   }
-  const failed = (d.failed ?? []) as Array<{ publicId: string; error: string }>;
+  const failed = (d.failed ?? []) as Array<{ id: string; error: string }>;
   if (failed.length > 0) {
     lines.push('', 'Failed:');
-    for (const f of failed) lines.push(`  ${f.publicId}: ${f.error}`);
+    for (const f of failed) lines.push(`  ${f.id}: ${f.error}`);
   }
   return lines.join('\n');
 };
@@ -1677,15 +1698,15 @@ export const formatWorkspaceList: Formatter = (data) => {
  */
 function loadDocumentLines(doc: Record<string, any>): string[] {
   const content = (doc.content ?? {}) as Record<string, any>;
-  const head = `  ${doc.title ?? '(untitled)'}  [${doc.publicId}]`;
+  const head = `  ${doc.title ?? '(untitled)'}  [${doc.artifactId}]`;
   if (typeof content.content === 'string') {
     return [head, ...content.content.split('\n').map((line: string) => `    ${line}`)];
   }
   const versionId = content.versionId ?? doc.currentVersionId;
   const size = content.totalBytes != null ? `${content.totalBytes} bytes, ` : '';
   const read = versionId
-    ? `rip artifact cat ${doc.publicId} --version-id ${versionId}`
-    : `rip artifact cat ${doc.publicId}`;
+    ? `rip artifact cat ${doc.artifactId} --version-id ${versionId}`
+    : `rip artifact cat ${doc.artifactId}`;
   return [head, `    (${size}not inline) read it with: ${read}`];
 }
 
@@ -1902,7 +1923,7 @@ export const formatWorkspaceLoad: Formatter = (data) => {
   const artifactItems: Array<Record<string, any>> = Array.isArray(artifacts.items) ? artifacts.items : [];
   lines.push(...loadSection(
     `Artifacts (${artifactItems.length}${artifacts.hasMore ? '+' : ''}):`,
-    artifactItems.map((a) => `  ${a.title ?? '(untitled)'}  [${a.publicId ?? a.id}]  ${a.type ?? '-'}`),
+    artifactItems.map((a) => `  ${a.title ?? '(untitled)'}  [${a.id}]  ${a.type ?? '-'}`),
   ));
 
   const more: string[] = [];

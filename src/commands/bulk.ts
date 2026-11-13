@@ -32,9 +32,9 @@ export async function artifactBulk(
 
   const { client } = requireAuthClient();
 
-  const body: { action: BulkAction; artifactIds: string[]; folder?: string | null; team?: string; expectedWorkspaceRevisions?: Record<string, number>; why?: string } = {
+  const body: { action: BulkAction; ids: string[]; folder?: string | null; team?: string; expectedWorkspaceRevisions?: Record<string, number>; why?: string } = {
     action: action as BulkAction,
-    artifactIds,
+    ids: artifactIds,
   };
   if (options.expectedWorkspaceRevisions) {
     let revisions: unknown;
@@ -67,7 +67,7 @@ export async function artifactBulk(
   const { data } = await client.post('/v0/artifacts/bulk', body);
   const result = data.data as {
     succeeded: number;
-    failed: { publicId: string; error: string }[];
+    failed: { id: string; error: string }[];
     deleted?: { type: string; id: string; deletedAt: string; purgeAt: string }[];
   };
 

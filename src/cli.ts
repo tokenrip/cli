@@ -24,13 +24,25 @@ import { checkForUpdate } from './update-check.js';
 import { CLI_VERSION } from './version.js';
 import { listCommandsOnUnknown, nameRenamedOptions } from './command-hints.js';
 
+const WHY_SENTENCE = 'One sentence: what the person is trying to accomplish, in their terms — not a description of this edit.';
+
 /**
  * Every writing command states why: one sentence on the person's goal, which the
  * server records on workspace items. `TOKENRIP_WHY` stands in for the flag (for a
- * script with one purpose); the flag wins.
+ * script with one purpose); the flag wins. `exception` names the one case of the
+ * command that needs none.
  */
-function withWhy(command: Command): Command {
-  return command.addOption(new Option('--why <text>', 'One sentence: what the person is trying to accomplish, in their terms — not a description of this edit. Required for workspace items.').env('TOKENRIP_WHY'));
+function withWhy(command: Command, exception?: string): Command {
+  const rule = exception ? `Required for workspace items (${exception}).` : 'Required for workspace items.';
+  return command.addOption(new Option('--why <text>', `${WHY_SENTENCE} ${rule}`).env('TOKENRIP_WHY'));
+}
+
+/**
+ * Moving a task along, or settling an output, records its own reason (agent call
+ * friction design §5.A): the why is optional and recorded when sent.
+ */
+function withOptionalWhy(command: Command): Command {
+  return command.addOption(new Option('--why <text>', `${WHY_SENTENCE} Optional: recorded in History when sent.`).env('TOKENRIP_WHY'));
 }
 
 const program = new Command();
@@ -127,8 +139,8 @@ EXAMPLES:
 
 artifact
   .command('list')
-  .option('--since <iso-date>', 'Only show artifacts modified after this timestamp (ISO 8601)')
-  .option('--limit <n>', 'Maximum number of artifacts to return (default: 20)', '20')
+  .option('--since <when>', 'Only artifacts modified after this: an ISO 8601 timestamp, or a time back: days (7, 0.5) or 12h, 3d, 2w')
+  .option('--limit <n>', 'Maximum number of artifacts to return (default: 20, max: 1000)', '20')
   .option('--type <type>', 'Filter by artifact type (markdown, html, chart, code, text, file)')
   .option('--folder <folder>', 'Filter by folder: an id, or a slug (in --workspace-id, else --team, else your personal folders)')
   .option('--unfiled', 'Show only unfiled artifacts')
@@ -511,7 +523,7 @@ table
   .command('rows')
   .allowExcessArguments(false)
   .argument('<table>', 'Table artifact ID, alias, or full URL')
-  .option('--limit <n>', 'Max rows to return (default: 100, max: 500)')
+  .option('--limit <n>', 'Max rows to return (default: 100, max: 5000)')
   .option('--after <rowId>', 'Cursor: show rows after this row ID')
   .option('--before <rowId>', 'Cursor: show rows before this row ID (not with --after)')
   .option('--sort-by <column>', 'Sort by column name, or createdAt / updatedAt / id')
@@ -519,7 +531,7 @@ table
   .option('--filter <key=value...>', 'Filter rows (repeatable). The key may carry an operator: revenue[gte]=75')
   .option('--fields <columns>', 'Comma-separated columns to return, e.g. slug,title')
   .option('--include-total', 'Also return the total row count matching the filters')
-  .option('--all', 'Read every page (500 rows a call; stops at 10,000 rows; continue with --after)')
+  .option('--all', 'Read every page (5000 rows a call; stops at 10,000 rows; continue with --after)')
   .description('List rows in a table (no sign-in needed for a table anyone with the link may read)')
   .addHelpText('after', `
 The first line says whether the read is whole: "100 rows shown, more remain
@@ -535,6 +547,7 @@ FILTER OPERATORS:
   Comparisons use the column's declared type, so a number column compares
   numerically and a date column chronologically. A filter or sort naming a
   column the table doesn't have is an error, not a silently ignored filter.
+  A --fields column it doesn't have is left out and named on the first lines.
 
 EXAMPLES:
   $ rip table rows 550e8400-...
@@ -1076,7 +1089,7 @@ program
   .option('--type <list>', 'Comma list of event types, e.g. connection.created,credential.rotated,team.member_removed')
   .option('--actor <who>', "Account id or alias, or the literal 'system'")
   .option('--subject <ref>', "One subject's history: the id a row names (a connection's, say), or an artifact's id or alias")
-  .option('--since <iso>', 'ISO timestamp, or a number of days back')
+  .option('--since <iso>', 'ISO timestamp, or a time back: days (7, 0.5) or 12h, 3d, 2w')
   .option('--limit <n>', 'Page size (max 200)')
   .option('--cursor <cursor>', 'Continue from a previous page')
   .addHelpText('after', `
@@ -1103,7 +1116,7 @@ program
   .command('search')
   .argument('[query]', 'Search text (omit it to list by recency within the other filters)')
   .description('Search artifacts by keyword, and inside a workspace by meaning where the server supports it')
-  .option('--since <when>', 'ISO 8601 timestamp or integer days back (e.g. 7 = last week)')
+  .option('--since <when>', 'ISO 8601 timestamp, or a time back: days (7 = last week, 0.5) or 12h, 3d, 2w')
   .option('--limit <n>', 'Max results (default: 50, max: 200)')
   .option('--offset <n>', 'Pagination offset')
   .option('--type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table, csv')
@@ -1807,7 +1820,7 @@ task
   .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
   .option('--unassigned', 'Only tasks for no one, held or not (not with --mine)')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
-  .option('--since <iso>', 'Only tasks created after this ISO timestamp, or this many days back')
+  .option('--since <iso>', 'Only tasks created after this ISO timestamp, or a time back: days (7, 0.5) or 12h, 3d, 2w')
   .option('--order <order>', "omit for queue order when every status is open (created when any is done or cancelled); created: newest first; finished: newest finish first (only with --status done and/or cancelled)")
   .option('--limit <n>', 'Page size (max 200)')
   .option('--cursor <cursor>', 'Continue from a previous page (same filters and order)')
@@ -1840,16 +1853,16 @@ task
   }));
 
 withWhy(task
-  .command('update'))
+  .command('update'), 'optional to move only')
   .argument('<id>', 'Task id')
   .option('--expected-revision <n>', 'The revision you read (rip task show): needed when changing any field; a move alone needs none')
   .option('--title <title>', 'Replace the title')
   .option('--body <markdown>', 'Replace the body')
-  .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
-  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle> (the assignee too; never its proposer)')
+  .option('--assignee <who>', 'Who it is for: me, a person (account id, alias or @alias), or an agent: agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> from rip workspace load')
+  .option('--reviewer <who>', 'Who decides its proposal, named as --assignee (me, a person, agent:<name>, agent:<key id> or agent:<handle>; the assignee too; never its proposer)')
   .option('--type <type>', 'What kind of work it is: a free tag (lowercase letters, digits, - and _); you become who set it')
   .option('--no-type', 'Clear the type')
-  .option('--step <step>', 'Which step of your workflow it is at: a free tag (lowercase letters, digits, - and _)')
+  .option('--step <step>', 'Which step of your workflow it is at: a free tag (lowercase letters, digits, - and _); a Done or Cancelled task has none')
   .option('--no-step', 'Clear the step')
   .option('--job <name>', 'The job it is part of: a live job\'s name in its workspace (rip job list)')
   .option('--no-job', 'Clear the job')
@@ -1878,8 +1891,8 @@ withWhy(task
   .argument('<title>', 'Task title')
   .option('--workspace-id <id>', 'Workspace id or slug: the workspace to file the task in (or --parent-id)')
   .option('--parent-id <id>', 'A task this one belongs under; its workspace is the new task\'s (omit --workspace-id)')
-  .option('--assignee <who>', 'Who it is for: a person (account id or alias) or agent:<handle> from rip workspace load')
-  .option('--reviewer <who>', 'Who decides its proposal: a person or agent:<handle> (the assignee too; never its proposer)')
+  .option('--assignee <who>', 'Who it is for: me, a person (account id, alias or @alias), or an agent: agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> from rip workspace load')
+  .option('--reviewer <who>', 'Who decides its proposal, named as --assignee (me, a person, agent:<name>, agent:<key id> or agent:<handle>; the assignee too; never its proposer)')
   .option('--type <type>', 'What kind of work it is: a free tag agents filter on (lowercase letters, digits, - and _, e.g. blog-post)')
   .option('--step <step>', 'Which step of your workflow it is at: a free tag (e.g. draft)')
   .option('--label <label>', 'A label: your person\'s own word for grouping work (lowercase letters, digits, -, _, : and ., e.g. client:acme; repeatable; at most 20)', collectLink)
@@ -1901,7 +1914,7 @@ EXAMPLES:
     await taskAdd(title, options);
   }));
 
-withWhy(task
+withOptionalWhy(task
   .command('start'))
   .argument('[id]', 'Task id (or start by tags with --workspace-id)')
   .option('--workspace-id <id>', 'Start by tags: the workspace (id or slug) to take the first To do task in queue order from that matches --type and --step')
@@ -1926,7 +1939,7 @@ task's draft artifacts.
     await taskStart(id, options);
   }));
 
-withWhy(task
+withOptionalWhy(task
   .command('stop'))
   .argument('<id>', 'Task id')
   .allowExcessArguments(false)
@@ -1936,11 +1949,11 @@ withWhy(task
     await taskStop(id, options);
   }));
 
-withWhy(task
+withOptionalWhy(task
   .command('done'))
   .argument('<id>', 'Task id')
   .option('--link <type:id>', 'A result link to a file it produced: artifact:<id>[@version] (repeatable). A url:<https://…> is recorded as an output (kind link) on the task, not a link; record a post or anything else that went out with rip output record', collectLink, [])
-  .option('--result-text <text>', 'What came of it, at most 280 characters (e.g. "4 likes")')
+  .option('--result-text <text>', 'What came of it, at most 64,000 characters (e.g. "4 likes", or a whole report)')
   .allowExcessArguments(false)
   .description('Complete a task: one that is free (To do) or yours. An approved proposal: carry out exactly its approved text first')
   .action(wrapCommand(async (id, options) => {
@@ -1948,7 +1961,7 @@ withWhy(task
     await taskDone(id, options);
   }));
 
-withWhy(task
+withOptionalWhy(task
   .command('cancel'))
   .argument('<id>', 'Task id')
   .option('--reason <text>', 'Why it will not be done')
@@ -1960,7 +1973,7 @@ withWhy(task
     await taskCancel(id, options);
   }));
 
-withWhy(task
+withOptionalWhy(task
   .command('reopen'))
   .argument('<id>', 'Task id')
   .allowExcessArguments(false)
@@ -1982,7 +1995,7 @@ withWhy(task
   .option('--then <step>', 'The step an approval moves the task to (a free tag, e.g. publish): it is then unassigned, for whoever does that step')
   .option('--comment <text>', 'A comment for the reviewer, posted with the proposal')
   .option('--type <type>', 'What kind of work it is (a free tag, e.g. x-reply); your instructions may let some types run on their own')
-  .option('--reviewer <who>', 'Who decides: a person or agent:<handle> (default your own person; never you)')
+  .option('--reviewer <who>', 'Who decides: a person, or an agent as agent:<name>, agent:<key id> or agent:<handle> (default your own person; never you)')
   .option('--body <markdown>', 'A new proposal: context for the reviewer')
   .option('--job <name>', 'A new proposal: the job it serves (a live job\'s name); a job with task definitions holds it to its types and steps and fills its step, then and verb')
   .option('--link <type:id>', 'A file or page the proposal uses: artifact:<id>[@version] or url:<https://…> (repeatable)', collectLink, [])
@@ -2007,12 +2020,12 @@ Approved with a then: the task moved to that step for whoever does it; nothing m
   }));
 
 withWhy(task
-  .command('report'))
+  .command('report'), 'optional to add a result to a Done task')
   .argument('[id]', 'A Done task to add a later result to (omit for a new report)')
   .option('--workspace-id <id>', 'Workspace id or slug: a new report\'s workspace (or --parent-id)')
   .option('--parent-id <id>', 'A new report: a task it belongs under; its workspace is the report\'s (omit --workspace-id)')
   .option('--title <title>', 'A new report: what you did')
-  .option('--result-text <text>', 'What came of it, at most 280 characters; a later result replaces it')
+  .option('--result-text <text>', 'What came of it, at most 64,000 characters; a later result replaces it')
   .option('--link <type:id>', 'A result link to a file it produced: artifact:<id>[@version] (repeatable). A url:<https://…> is recorded as an output (kind link) on the task, not a link; record a post or anything else that went out with rip output record', collectLink, [])
   .option('--type <type>', 'A new report: what kind of work it was (a free tag)')
   .option('--label <label>', 'A new report: a label, your person\'s own word for grouping work (repeatable; at most 20)', collectLink)
@@ -2081,7 +2094,7 @@ withWhy(job
   .option('--purpose <text>', 'One line on what the job is for, at most 280 characters (shown under its name wherever jobs are listed)')
   .option('--description <markdown>', 'What the job is and how it is done: the standing brief its agents read')
   .option('--definitions <json|@file>', 'Its task definitions, a JSON array (or @<file> holding one), at most 5: [{ name, types, instructions?, steps: [{ name, role?, everyMinutes?, instructions?, approvalVerb?, side? }] }]')
-  .option('--job-agent <handle[:role]>', 'An agent who does it: a handle from rip workspace load (or agent:<handle>); repeatable, at most 20, each with its role inline', collectLink)
+  .option('--job-agent <handle[:role]>', 'An agent who does it: me, a handle from rip workspace load (or agent:<handle>), agent:<key id> or agent:<name> for your own; repeatable, at most 20, each with its role inline', collectLink)
   .option('--role <role>', 'With one --job-agent: what it does in the job (a free tag, e.g. writer)')
   .allowExcessArguments(false)
   .description('Create a job. A job grants nothing: approvals stay per task')
@@ -2179,7 +2192,7 @@ const output = program
   .description('Outputs: what an agent sent, posted or published outside Tokenrip, recorded with or without a task');
 
 withWhy(output
-  .command('record'))
+  .command('record'), 'optional on a task')
   .requiredOption('--workspace-id <id>', 'Workspace id or slug')
   .requiredOption('--kind <kind>', 'What it was: a free tag that allows dots (x.post, email.reply, li.comment)')
   .option('--target <target>', 'Who or what received it (x:@bob, bob@acme.com, a URL)')
@@ -2205,7 +2218,7 @@ EXAMPLES:
     await outputRecord(options);
   }));
 
-withWhy(output
+withOptionalWhy(output
   .command('update'))
   .argument('<id>', 'Output id (from rip output record or rip output list)')
   .requiredOption('--status <status>', 'sent once it went out, or failed when you know it did not (its key is free again; if you cannot tell, leave it sending)')
@@ -2227,8 +2240,8 @@ output
   .option('--label <labels>', 'Only outputs with all of these labels: repeatable, or a comma list', collectLink)
   .option('--task <id>', 'Only this task\'s outputs')
   .option('--status <status>', 'Only sending, sent or failed outputs')
-  .option('--since <when>', 'Recorded since: an ISO timestamp or a number of days back')
-  .option('--until <when>', 'Recorded until: an ISO timestamp or a number of days back')
+  .option('--since <when>', 'Recorded since: an ISO timestamp, or a time back: days or 12h, 3d, 2w')
+  .option('--until <when>', 'Recorded until: an ISO timestamp, or a time back: days or 12h, 3d, 2w')
   .option('--limit <n>', 'Page size, 1-100 (default 50)')
   .option('--cursor <id>', 'nextCursor of the previous page')
   .allowExcessArguments(false)
@@ -2527,7 +2540,7 @@ const workspaceView = workspace.command('view').description('Inspect or explicit
 workspaceView.command('context').argument('<workspace>', 'Workspace id or slug').allowExcessArguments(false).description("Read the browser tab paired to this agent's key").action(wrapCommand(async (ws) => { const { workspaceViewContext } = await import('./commands/workspace.js'); await workspaceViewContext(ws); }));
 workspaceView.command('open').argument('<artifact>', 'Artifact in a workspace: id, alias or URL').requiredOption('--expected-context-generation <n>', 'contextGeneration from your last `view context`').option('--operation-id <id>', 'Optional idempotency key: a retry with the same key returns the same receipt').allowExcessArguments(false).description("Ask the browser tab paired to this agent's key to open an artifact").action(wrapCommand(async (artifact, options) => { const { workspaceViewOpen } = await import('./commands/workspace.js'); await workspaceViewOpen(artifact, options); }));
 workspace.command('sessions').argument('<workspace>', 'Workspace id or slug').option('--cursor <cursor>', 'Continue from a previous page (pass the same filters)')
-  .option('--by-agent <handle>', "Only this agent's sessions: a handle from rip workspace load (--agent stays the identity switch)")
+  .option('--by-agent <handle>', "Only this agent's sessions: me, a handle from rip workspace load, or a key id (--agent stays the identity switch)")
   .option('--by <who>', "Only people's sessions (people: in the browser) or only agents' (agents), within the latest 1,000 changes")
   .allowExcessArguments(false)
   .description('Recent sessions, newest first: who worked (you or someone else, their agent or the browser, with the agent\'s handle), from which harness, and steps: each goal with the changes made for it')

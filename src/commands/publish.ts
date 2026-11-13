@@ -32,21 +32,19 @@ function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceI
 }
 
 /**
- * Standard create-response payload. Echoes both `id` and `publicId` (same
- * value — the rest of the platform keys on `publicId`) and the `alias` the
- * caller set, so scripts don't print `None` looking for a field publish never
- * returned (Moa debrief §3.6). `aliasFallback` is the `--alias` we sent, used
+ * Standard create-response payload: the artifact's one `id` (agent call friction design G0: the CLI
+ * reads and prints `id`) and the `alias` the caller set, so scripts don't print `None` looking for a
+ * field publish never returned (Moa debrief §3.6). `aliasFallback` is the `--alias` we sent, used
  * when the backend response doesn't echo it.
  */
 function artifactCreatedPayload(
-  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; publicId?: string; alias?: string; rawUrl?: string | null; publicUrl?: string; workspaceId?: string; workspaceRevision?: number },
+  data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; alias?: string; rawUrl?: string | null; publicUrl?: string; workspaceId?: string; workspaceRevision?: number },
   url: string,
   aliasFallback: string | undefined,
 ): Record<string, unknown> {
   const alias = data.alias ?? aliasFallback ?? null;
   return {
     id: data.id,
-    publicId: data.publicId ?? data.id,
     ...(alias ? { alias } : {}),
     url,
     rawUrl: data.rawUrl ?? null,

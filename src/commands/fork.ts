@@ -27,7 +27,7 @@ export async function forkArtifact(
   const { client } = requireAuthClient();
   const body: Record<string, string> = options.versionId
     ? { versionId: options.versionId }
-    : { artifactId: parseArtifactId(identifier!) };
+    : { id: parseArtifactId(identifier!) };
   if (options.title) body.title = options.title;
   if (options.folder) body.folder = options.folder;
   if (options.team) body.team = options.team;

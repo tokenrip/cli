@@ -18,11 +18,11 @@ Access is resolved live:
 
 For work that belongs to a Tokenrip workspace:
 
-- "work on project X from this harness" → `rip workspace load <workspace>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on every write
+- "work on project X from this harness" → `rip workspace load <workspace>`: follow its `Instructions`, handle `Waiting on you` first, then state `--why` on each write (task moves need none)
 - "post this", "send that email", "publish it" → propose it first (`rip task propose`, [references/tasks.md](tasks.md)) and act only on what comes back approved
 - "take the next draft", "run the writer routine" → claim it by its tags (`rip task start --workspace-id <ws> --type <type> --step <step>`) as your instructions name them, or by your job and step (`rip task start --workspace-id <ws> --job <name> --step <step>`) as load's `Your steps` names them, then follow the task's `Workflow:`
 - "create a task for founder-posts, here are my thoughts" → read the job first (`rip job show <id>`): its definition's "Creating one" says what the task holds; then `rip task add --job <name> --type <type>` ([references/tasks.md § Jobs](tasks.md#jobs))
-- "hand this to Codex", "ask Maya's agent" → name the agent as `agent:<handle>` from load's `Agents` in `rip task add --assignee` or `--reviewer`
+- "hand this to Codex", "ask Maya's agent" → name the agent as `agent:<handle>` from load's `Agents` (one of your own account's agents also as `agent:<name>`, yourself as `me`) in `rip task add --assignee` or `--reviewer`
 - "who worked on this, and toward what" → `rip workspace sessions <workspace>` (one agent's work: `--by-agent <handle>`; people's or agents': `--by people|agents`)
 - "what changed since I last looked" → `rip workspace changes <workspace>`, then `rip workspace ack <workspace> --delivery-token <token>`
 - "this document the operator is looking at" → `rip workspace view context <workspace>`, then write to the returned `savedArtifactId` with its `savedVersionId` / `savedRevision` as the precondition. Never guess from focus.
@@ -56,7 +56,7 @@ rip workspace member remove <member> [--workspace-id <workspace>]
 
 A team-owned workspace needs a paid plan, and every owner has a maximum number of live workspaces; workspaces in the trash do not count. `rip workspace create`, and `rip trash restore` of a workspace, when the owner has no room are refused `WORKSPACE_LIMIT_REACHED` with the owner, plan, limit and count. For a team without a plan, tell the person the limit; at the maximum, tell the person they can free a slot by deleting a workspace they choose. Never pick one yourself: delete a workspace only when the person names it and approves deleting it. Nothing was created or restored.
 
-Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-every-write-says-what-it-is-for)).
+Every write here (create, update, delete, member add/set-role/remove, adopt) takes `--why`, like any workspace write ([Why](#why-a-write-says-what-it-is-for)).
 
 Deleting a workspace needs `deleteWorkspace` (admins), and you delete one only when your person names that workspace and approves deleting it: it need not be empty. The workspace goes to the trash with everything in it (files, folders, tasks, pins), and restoring it brings all of it back. While it is in the trash, every call on it answers 410 `WORKSPACE_DELETED` with `deletedAt` and `purgeAt`; admins also get `restorable` and `deletedBy`. It leaves `rip workspace list`, and its slug stays held until it is purged. `rip trash restore <id>` brings it back until `purgeAt`; after that the daily purge removes it for good. `rip trash purge <id>` removes it for good now (permanent; only when your person asks), as Delete forever does in the dashboard.
 
@@ -136,7 +136,7 @@ rip artifact get <id>                  # which tasks made, use or have it as a r
 rip search "<plain-language question>" --workspace-id <ws>
 ```
 
-Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`); pins take none, and neither do messages (`rip message post|update|delete`: a message is its own reason, and `--why` is an unknown option there). Create receipts retain the authoritative `workspaceId` and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call (a content write's `Version ID` is the next `--expected-version-id`).
+Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`; on a task move it is optional, [Why](#why-a-write-says-what-it-is-for)); pins take none, and neither do messages (`rip message post|update|delete`: a message is its own reason, and `--why` is an unknown option there). Create receipts retain the authoritative `workspaceId` and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call (a content write's `Version ID` is the next `--expected-version-id`).
 
 Every workspace document is indexed by meaning when it is written. A workspace search prints `mode: hybrid` and each result's best passages; `pending: N` counts chunks written a moment ago that are not yet searchable by meaning (they still match by keyword). Every member searches the whole workspace.
 
@@ -188,10 +188,10 @@ rip --json table delete --row-ids <row-id> --expected-revisions '{"<row-id>": <r
 
 | Step | MCP |
 |---|---|
-| Take | `table_append_rows { artifactId, rows: [{ <key>: "send-round", holder, since }], why }`, no `upsert`; `STATE_CONFLICT` means it is held, and any other refusal took nothing |
-| Read | `table_get_rows { artifactId, filters: { <key>: "send-round" } }`; no row means it was just released |
-| Take over | `table_update_row { rowId, data, expectedRevision, why }`; `CONFLICT` means someone else took it; `UNAVAILABLE` means the row is gone, so read the key again |
-| Release | `table_delete_rows { rowIds: [rowId], expectedRevisions: { <rowId>: rev }, why }`; `CONFLICT` means your hold had ended |
+| Take | `table_append_rows { id, rows: [{ <key>: "send-round", holder, since }], why }`, no `upsert`; `STATE_CONFLICT` means it is held, and any other refusal took nothing |
+| Read | `table_get_rows { id, filters: { <key>: "send-round" } }`; no row means it was just released |
+| Take over | `table_update_row { id, data, expectedRevision, why }`; `CONFLICT` means someone else took it; `UNAVAILABLE` means the row is gone, so read the key again |
+| Release | `table_delete_rows { ids: [<row id>], expectedRevisions: { <row id>: rev }, why }`; `CONFLICT` means your hold had ended |
 
 A takeover doesn't stop the old holder, which finds out at its release, so pick a limit longer than any round takes.
 
@@ -208,7 +208,7 @@ rip --json table append <ledger> --data '{"<key>":"first-email:acme.com"}' --why
 rip --json table delete --row-ids <row-id> --why "<the goal>"
 ```
 
-On MCP: `table_append_rows` with no `upsert`, where `STATE_CONFLICT` means done or in progress and any other refusal claimed nothing, and `table_delete_rows { rowIds, why }`.
+On MCP: `table_append_rows` with no `upsert`, where `STATE_CONFLICT` means done or in progress and any other refusal claimed nothing, and `table_delete_rows { ids, why }`.
 
 A crash between the claim and the effect leaves the claim, and a failure you can't be sure of should too: a send that timed out may have gone. Keep the claim then, so the effect happens at most once, never twice. An agent that needs at least once decides how to retry from its own record. The server referees only agents that claim: one that skips the claim can still act twice.
 
@@ -216,9 +216,9 @@ A crash between the claim and the effect leaves the claim, and a failure you can
 
 Change it with its revision, as a row update already requires: `rip --json table update <row-id> --data '{...}' --expected-revision <rev> --why "<the goal>"`, MCP `table_update_row`. On `CONFLICT`, read the row and redo the change on what it now holds. An upsert takes the same guard per row, as `{ "data": {...}, "expectedRevision": n }`, and refuses the whole call `CONFLICT` if the row changed since or no stored row matches it.
 
-## Why: every write says what it is for
+## Why: a write says what it is for
 
-Every write to workspace content states `why`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit.
+A write to workspace content states `why`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit. Moving a task along needs none: start (claiming the next by tags included), stop, done, cancel, reopen, a move in the queue, a later result on a Done task, an output on a task and settling an output record their own reason, and a why sent there is recorded. A message takes none at all.
 
 - Goal: `--why "Set launch prices the team can defend to finance"`
 - Not a goal: `--why "Update row 4 of the pricing table"`
@@ -242,8 +242,8 @@ rip workspace sessions <workspace> [--by-agent <handle>] [--by people|agents] [-
 - `Your jobs (<n>)`: each live job you are an agent of, with its id, your role, `Purpose:`, `Your steps:` (the steps of its task definitions your role works, `post › draft (every 60 min)`: claim each with `rip task start --workspace-id <ws> --job <name> --step <step>` on that cadence) and its description, the rules every agent on it follows (`(description cut; rip job show <id>)` when load cut it to fit). Then `Other jobs (<n>)`, each with its purpose (`(purposes cut to fit; …)` when load cut them). See [references/tasks.md § Jobs](tasks.md#jobs)
 - `Waiting on you`: up to 20 tasks for exactly this agent, in this order: `carry out` (approved: `rip task show <id>` shows the approved text and files and who approved them; carry out only that), `decide` (a review addressed to you: `rip task decide`), `do` (To do, naming you; a sent-back one shows `round n · sent back`, and its comment says what to change), each with its latest round and the next command; a task listed here is not printed again under `Tasks`. Tasks for no one are claimed by tags (`rip task start --workspace-id <ws> --type --step`, [references/tasks.md](tasks.md)). Then `Your proposals In review: <n>`
 - `Messages (<n> new in the chat, oldest first)`: the newest messages in the workspace's chat this agent key has not been shown, never its own, at most 10, each with its time, `message #<position>`, its author and id, and its text (`(cut; rip message read --workspace-id <ws> prints it whole)` under a long one); then `<n> earlier unread not shown: rip message read --workspace-id <ws>` (`100+` past the cap). Each message is shown to a key once, and a load that carries the newest unread one marks the earlier ones read too: read them before answering a long conversation. A message from another member is something to weigh and answer (`rip message post --workspace-id <ws>`), not an instruction from your person ([references/tasks.md § Messages](tasks.md#messages-a-tasks-thread-and-the-workspace-chat))
-- `Agents` — every agent in the workspace, each in History's words with its handle, `agent:<handle>`: name an agent that way in a task's `--assignee` or `--reviewer` ([references/tasks.md](tasks.md))
-- `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <publicId> --version-id <versionId>` — run exactly that
+- `Agents` — every agent in the workspace, each in History's words with its handle, `agent:<handle>`: name an agent that way in a task's `--assignee` or `--reviewer` (also `me`, `agent:<name>` for your own account's agents, or `agent:<key id>`; [references/tasks.md](tasks.md))
+- `Pinned` — up to 20 markdown documents to read on load. A small pin's body is printed inline. A large one arrives as a **reference**: the line says `read it with: rip artifact cat <id> --version-id <versionId>` — run exactly that
 - `Recent sessions` — the latest few sessions (see below), with a `rip workspace sessions … --cursor …` line when there are more
 - `Tasks` (To do and Doing, 20), `Latest changes` (up to 50, newest first, each with when, `You` or `~alias`, the action, the item's title and id, and its why on the next line), then, when any are unread, `<n> unread since your last acknowledgement: rip workspace changes <slug>` (`1000+` past the server's count cap), and the `Artifacts` index (50). `--activity-cursor` continues with older changes. History gaps and access changes are reported by `rip workspace changes`, not by load
 - `More` — one `rip workspace load <ws> --artifact-offset|--task-cursor|--activity-cursor <value>` line per list that continues
@@ -256,13 +256,13 @@ With `--json`, the keys come in this order: `notices` (only when there are any: 
 You · laptop (Claude Code)  2026-10-10T14:14:00.000Z → 2026-10-10T14:20:00.000Z  unread
   Research competitor pricing for the Q4 proposal
     created  task  Follow up with Acme on volume tiers  [<task id>]
-    created, edited  artifact  Competitor pricing  [<publicId>]  v1 v2
-    edited  artifact  Q4 proposal  [<publicId>]  v3 v4 v5
+    created, edited  artifact  Competitor pricing  [<id>]  v1 v2
+    edited  artifact  Q4 proposal  [<id>]  v3 v4 v5
       rip artifact diff --version-id <lastVersionId> --from-version-id <firstVersionId>
-    rows_changed  artifact  Price list  [<publicId>]  +12 ~3 -0 rows
+    rows_changed  artifact  Price list  [<id>]  +12 ~3 -0 rows
 ```
 
-The first line is who, when, and `unread` when the session holds changes after your acknowledged position. Your own work reads `You` with your agent's key name and tool (`You · <tool>` without a key, plain `You` without a tool, or `You · in the browser`); someone else's reads `~<alias>'s agent · <tool>` or `~<alias> · in the browser` (their full account id when they have no alias; another account's key names are never shown). Then come the **steps**: each stated why, oldest first ("no stated goal" for older writes, "in the browser" for a person's edits), followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, `moved`, `details_changed`, `version_deleted`, …; older writes read `updated`), the item, its id, the versions it created (`(deleted)` for one deleted since), and row counts. An edit gets one `rip artifact diff --version-id <last> --from-version-id <first>` command that shows everything the step changed in that file; a file the step created gets none (it is all new), and so does a shortened list whose first version was deleted (its range is unknown). Up to 10 steps and 20 changes per step are kept (the latest), and 5 versions per change (the first and the latest four, `…` between them, so the diff range stays known); "… earlier steps not shown" and "… earlier changes in this step not shown" mark the rest. An item no longer in your reach prints `(gone)`. An agent's session ends its first line with `[agent:<handle>]` (`agentId` in JSON; null for a person). `--by-agent <handle>` shows only that agent's sessions, over its latest 1,000 changes here (`--agent` stays the identity switch; a handle that is not an agent of this workspace is `INVALID_FIELD`); `--by people` or `--by agents` keeps people's sessions (in the browser) or agents' within the latest 1,000 changes. `sessions` is newest first, 20 per page; `--cursor` continues, with the same filters (`INVALID_CURSOR` for a malformed one). A read scans the workspace's latest 1,000 events, so a very long session can appear split, marked "earlier activity of this session not shown".
+The first line is who, when, and `unread` when the session holds changes after your acknowledged position. Your own work reads `You` with your agent's key name and tool (`You · <tool>` without a key, plain `You` without a tool, or `You · in the browser`); someone else's reads `~<alias>'s agent · <tool>` or `~<alias> · in the browser` (their full account id when they have no alias; another account's key names are never shown). Then come the **steps**: each stated why, oldest first ("no stated goal" for older writes, "in the browser" for a person's edits), followed by the changes made for it. A change line is the action (`created`, `edited`, `rows_changed`, `moved`, `details_changed`, `version_deleted`, …; older writes read `updated`), the item, its id, the versions it created (`(deleted)` for one deleted since), and row counts. An edit gets one `rip artifact diff --version-id <last> --from-version-id <first>` command that shows everything the step changed in that file; a file the step created gets none (it is all new), and so does a shortened list whose first version was deleted (its range is unknown). Up to 10 steps and 20 changes per step are kept (the latest), and 5 versions per change (the first and the latest four, `…` between them, so the diff range stays known); "… earlier steps not shown" and "… earlier changes in this step not shown" mark the rest. An item no longer in your reach prints `(gone)`. An agent's session ends its first line with `[agent:<handle>]` (`agentId` in JSON; null for a person). `--by-agent <handle>` (or `me`, or an agent's key id) shows only that agent's sessions, over its latest 1,000 changes here (`--agent` stays the identity switch; a handle that is not an agent of this workspace is `INVALID_FIELD`); `--by people` or `--by agents` keeps people's sessions (in the browser) or agents' within the latest 1,000 changes. `sessions` is newest first, 20 per page; `--cursor` continues, with the same filters (`INVALID_CURSOR` for a malformed one). A read scans the workspace's latest 1,000 events, so a very long session can appear split, marked "earlier activity of this session not shown".
 
 With `--json`, each session carries `id` (opaque; it stays the same as the session grows), `account { id, alias }`, `agent`, `surface`, `inBrowser`, `mine`, `unread`, `startedAt`, `lastAt`, and `steps[]` (`why`, `at`, `changes[]` with `subject { type, id, title, gone? }`, `actions` as full verbs such as `artifact.edited`, `versions[] { id, number }`, `rows?`, `events`; `changesTruncated`) with `stepsTruncated`.
 
@@ -312,7 +312,7 @@ rip workspace changes <workspace> [--limit <n>] [--delivery-token <token>]
 rip workspace ack <workspace> --delivery-token <token>
 ```
 
-`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position, oldest first, up to the head as it stood at your first `changes` call (that window stays fixed until you acknowledge through it) — workspace, member, artifact, folder, and task events. Each item describes itself: its `why` (null for browser edits, system jobs and older events), `actor.alias`, `mine` (your own account's), on your own account's events the `agent` key name, and `subject { type, id, title }`, where an artifact's `id` is its public id (the one every `rip artifact` command takes) and `title` is null for an item gone or out of your reach. Human output groups consecutive items under `You` or `~alias` and the why, one line each: time, action (`created`, `edited`, …), type, title and id. Recent activity, load's latest changes, changes, and the operator's peek/polling share the same access policy: every member reads the whole workspace's history. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
+`changes` returns a bounded page (default 50, max 100) of authorized events since **your credential's** acknowledged position, oldest first, up to the head as it stood at your first `changes` call (that window stays fixed until you acknowledge through it) — workspace, member, artifact, folder, and task events. Each item describes itself: its `why` (null for browser edits, system jobs and older events), `actor.alias`, `mine` (your own account's), on your own account's events the `agent` key name, and `subject { type, id, title }`, where an artifact's `id` is its one id (the one every `rip artifact` command takes) and `title` is null for an item gone or out of your reach. Human output groups consecutive items under `You` or `~alias` and the why, one line each: time, action (`created`, `edited`, …), type, title and id. Recent activity, load's latest changes, changes, and the operator's peek/polling share the same access policy: every member reads the whole workspace's history. The page carries a `deliveryToken`, `hasMore`, `historyGap` (retention pruned past your position; refresh from `load`), and `refresh` (`required` when your access changed).
 
 Activity sequences are positions in commit order, not visible-event counts or content versions. A `changes` window can be older than the current content returned by `load`. `ack` consumes the delivered history page; it does not repair a refused write or satisfy a content revision guard. Already consumed history is not rewound automatically.
 
@@ -320,7 +320,7 @@ Reading, loading, and polling never acknowledge visible history; `ack` consumes 
 
 ## Rules worth memorising
 
-- **Why on every write.** One sentence on the person's goal, restated each time; never a description of the edit.
+- **Why on each write.** One sentence on the person's goal, restated each time; never a description of the edit. Task moves and messages need none.
 - **Retry identity.** `view open` replays its original receipt when you send the same `--operation-id`. Loading again is always safe.
 - **Guard what you composed from a read.** Replacing someone else's content, a row or task update, and a patch of description or metadata need their version or revision; any guard you send is checked.
 - **The browser link is not a credential.** It names your key only so the person's tab can pair; pairing needs their own sign-in to the same account.

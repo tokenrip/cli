@@ -13,7 +13,7 @@ export interface DomainErrorDetails {
    * `CONFLICT`: `not_current` when a named draft version is not the file's current one.
    */
   reason?: string;
-  /** `CONFLICT` `not_current`: the draft file's public id. */
+  /** `CONFLICT` `not_current`: the draft file's id. */
   artifact?: string;
   /** `CONFLICT` `not_current`: that file's current version. A malformed one is dropped whole. */
   current?: { id: string; number: number };
@@ -70,7 +70,7 @@ export interface DomainErrorDetails {
   resetsAt?: string;
   /** An input refusal ({@link INPUT_REFUSAL_CODES}): the place below `field` the rule broke (`schema[3].name`). */
   path?: string;
-  /** A row-query refusal: the columns valid for `field` (`sort_by`, `filter` or `fields`), and whether the list was cut. */
+  /** A row-query refusal: the columns valid for `field` (`sortBy` or `filters`), and whether the list was cut. */
   available?: string[];
   availableTruncated?: true;
   /** `INVALID_SCHEMA` on a CSV header: its 1-based column and which rule it broke. */
@@ -84,8 +84,11 @@ export interface DomainErrorDetails {
   until?: string;
   /** `MAINTENANCE`, `RATE_LIMITED`, `SERVER_BUSY`: the server's `Retry-After` in seconds. */
   retryAfterSeconds?: number;
-  /** `AMBIGUOUS_REFERENCE` on a workspace slug: each workspace it names, to be named by its id. */
-  candidates?: WorkspaceCandidateDetails[];
+  /**
+   * `AMBIGUOUS_REFERENCE` on a workspace slug: each workspace it names, to be named by its id.
+   * `INVALID_ASSIGNEE` / `INVALID_REVIEWER`: who the caller could name instead.
+   */
+  candidates?: WorkspaceCandidateDetails[] | PrincipalCandidateDetails[];
   /**
    * `KEY_ACCESS_LIMITED`: `workspaceId` when the refusal names one (the door omits it). `level` is
    * the grant, or null when that workspace is outside the key (or the door named none). `operation`
@@ -104,6 +107,18 @@ export interface WorkspaceCandidateDetails {
   name: string;
   home: 'personal' | { team: string };
 }
+/**
+ * One principal a refusal offers (agent call friction plan M8, the server's `PrincipalCandidate`): an
+ * agent by handle (its name only for the caller's own), the caller's own key not recorded yet as
+ * `me`, or a person by id and alias.
+ */
+export type PrincipalCandidateDetails =
+  | { handle: string; name?: string }
+  | { me: true; name: string }
+  | { id: string; alias: string | null };
+/** The server's `PRINCIPAL_REFUSAL_REASONS` (apps/backend/src/api/service/task-principal.ts). */
+const PRINCIPAL_REFUSAL_REASONS: ReadonlySet<unknown> = new Set(['unknown', 'ambiguous', 'revoked', 'cannot_edit_tasks']);
+
 /** The server's task principal projection (feed, review and instructions plan D3), copied field by field. */
 export interface TaskPrincipalDetails {
   account: { id: string; alias: string | null; former?: true };
@@ -262,11 +277,18 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   else if (code === 'TASK_TAKEN') {
     const holder = taskHolderDetails(body.holder);
     if (holder) details.holder = holder;
-  } else if (code === 'REVIEW_NOT_YOURS' || code === 'INVALID_REVIEWER') {
-    if (body.reviewer === null) details.reviewer = null;
-    else {
-      const reviewer = taskPrincipalDetails(body.reviewer);
-      if (reviewer) details.reviewer = reviewer;
+  } else if (code === 'REVIEW_NOT_YOURS' || code === 'INVALID_REVIEWER' || code === 'INVALID_ASSIGNEE') {
+    if (code !== 'INVALID_ASSIGNEE') {
+      if (body.reviewer === null) details.reviewer = null;
+      else {
+        const reviewer = taskPrincipalDetails(body.reviewer);
+        if (reviewer) details.reviewer = reviewer;
+      }
+    }
+    // A principal refusal (agent call friction plan M8): why, and whom to name instead.
+    if (code !== 'REVIEW_NOT_YOURS' && PRINCIPAL_REFUSAL_REASONS.has(body.reason)) {
+      details.reason = body.reason as string;
+      details.candidates = principalCandidateDetails(body.candidates);
     }
   } else if (code === 'WORKSPACE_LIMIT_REACHED') Object.assign(details, workspaceLimitDetails(body));
   else if (code === 'STORAGE_LIMIT_REACHED') {
@@ -409,6 +431,8 @@ function taskRoundDetails(value: unknown): TaskRoundDetails | undefined {
 }
 
 const NAME_MAX = 255;
+/** An account id, as the server checks one (`accountId`, apps/backend/src/execution/failure.ts). */
+const ACCOUNT_ID = /^rip1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{6,86}$/;
 const shortString = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= NAME_MAX;
 
 /** A `TASK_TAKEN` holder, every field checked; anything malformed drops the whole holder. */
@@ -441,7 +465,7 @@ const ANY_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
 /**
  * Approve's refusal of a named version that is not the file's current one (`not_current`): the reason,
- * the artifact's public id and that version, all required. A malformed current adds nothing, so a
+ * the artifact's id and that version, all required. A malformed current adds nothing, so a
  * secret beside a half-read file cannot cross. A stale task revision stays `currentRevision` alone.
  */
 function notCurrentDetails(body: Record<string, unknown>): Pick<DomainErrorDetails, 'reason' | 'artifact' | 'current'> | undefined {
@@ -452,6 +476,25 @@ function notCurrentDetails(body: Record<string, unknown>): Pick<DomainErrorDetai
   if (typeof version.id !== 'string' || !ANY_UUID.test(version.id)) return undefined;
   if (typeof version.number !== 'number' || !Number.isSafeInteger(version.number) || version.number <= 0) return undefined;
   return { reason: 'not_current', artifact: body.artifact, current: { id: version.id, number: version.number } };
+}
+
+/** A principal refusal's candidates, each field checked; a malformed candidate is dropped whole. */
+function principalCandidateDetails(value: unknown): PrincipalCandidateDetails[] {
+  if (!Array.isArray(value)) return [];
+  const candidates: PrincipalCandidateDetails[] = [];
+  for (const entry of value.slice(0, CANDIDATES_MAX)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const { handle, name, me, id, alias } = entry as Record<string, unknown>;
+    const named = typeof name === 'string' && name.length <= NAME_MAX;
+    if (me === true) { if (named) candidates.push({ me: true, name: name as string }); }
+    else if (typeof handle === 'string' && ANY_UUID.test(handle)) {
+      if (name === undefined) candidates.push({ handle });
+      else if (named) candidates.push({ handle, name: name as string });
+    } else if (typeof id === 'string' && ACCOUNT_ID.test(id) && (alias === null || (typeof alias === 'string' && alias.length <= NAME_MAX))) {
+      candidates.push({ id, alias: alias as string | null });
+    }
+  }
+  return candidates;
 }
 
 /** An ambiguity's workspace candidates, each field checked; a malformed candidate is dropped whole. */

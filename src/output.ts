@@ -1,4 +1,4 @@
-import { CliError, INPUT_REFUSAL_CODES, toCliError } from './errors.js';
+import { CliError, INPUT_REFUSAL_CODES, toCliError, type PrincipalCandidateDetails, type WorkspaceCandidateDetails } from './errors.js';
 import { principalWho, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
 
 let forceJson = false;
@@ -79,9 +79,14 @@ export function outputError(err: CliError): never {
       if (details.latestRound !== undefined) console.error(`Latest round: ${details.latestRound ? `${details.latestRound.number} · ${verdictWords(details.latestRound.verdict)}` : 'none (never proposed)'}`);
       if (err.code === 'RATE_LIMITED' && details.retryAfterSeconds !== undefined) console.error(`Retry after: ${details.retryAfterSeconds} s`);
       if (details.used !== undefined && details.limit !== undefined) console.error(`Workspaces: ${details.used} of ${details.limit}${details.plan ? ` (${details.plan})` : ''}`);
-      for (const candidate of details.candidates ?? []) {
-        const home = candidate.home === 'personal' ? 'personal' : `team ${candidate.home.team}`;
-        console.error(`Candidate: ${candidate.id}  ${home}  ${candidate.name}`);
+      if (err.code === 'INVALID_ASSIGNEE' || err.code === 'INVALID_REVIEWER') {
+        const named = (details.candidates ?? []) as PrincipalCandidateDetails[];
+        if (named.length) console.error(`Candidates: ${named.map(principalCandidateWords).join(', ')}`);
+      } else {
+        for (const candidate of (details.candidates ?? []) as WorkspaceCandidateDetails[]) {
+          const home = candidate.home === 'personal' ? 'personal' : `team ${candidate.home.team}`;
+          console.error(`Candidate: ${candidate.id}  ${home}  ${candidate.name}`);
+        }
       }
     }
   }
@@ -93,6 +98,13 @@ export function outputError(err: CliError): never {
   }
 
   process.exit(1);
+}
+
+/** One principal a refusal offers, as the value to send: `agent:<handle> (name)`, `me (name)`, `@alias` or the account id. */
+function principalCandidateWords(candidate: PrincipalCandidateDetails): string {
+  if ('me' in candidate) return `me (${candidate.name})`;
+  if ('handle' in candidate) return `agent:${candidate.handle}${candidate.name ? ` (${candidate.name})` : ''}`;
+  return candidate.alias ? `@${candidate.alias}` : candidate.id;
 }
 
 /**
@@ -156,7 +168,8 @@ export const ERROR_HINTS: Record<string, string> = {
   TASK_IN_REVIEW: 'The task waits for a decision: nothing starts or completes it (its reviewer and assignee can still change with `rip task update`). If it is your proposal, stop here: once it is decided, `rip workspace load` lists it under Waiting on you (approved: carry it out; sent back: change it as the comment says and propose again; cancelled: do not carry it out). To withdraw your own proposal, `rip task stop <id>` (back to To do) or `rip task cancel <id>`. If it is someone else\'s, leave it to its reviewer.',
   TASK_NOT_IN_REVIEW: 'There is nothing to decide: its latest round was decided already (Latest round above) or it was never proposed. `rip task show <id>` shows where it stands.',
   REVIEW_NOT_YOURS: 'Decide only reviews addressed to you: `rip task list --workspace-id <ws> --reviewer me`. A person decides theirs in the dashboard; never decide your own proposal.',
-  INVALID_REVIEWER: 'Name a member who can edit tasks in this workspace: a person, or agent:<handle> from `rip workspace load`. The reviewer may be the assignee, but never the one who proposed: not yourself on your own proposal, and not the open round\'s proposer when you re-address a review with `rip task update --reviewer`. When proposing, omit --reviewer to ask your own person, or name the reviewer the task already has.',
+  INVALID_ASSIGNEE: 'Name someone who can edit tasks in this workspace: me (you), a person (account id, alias or @alias), or an agent as agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> (from `rip workspace load`). Reason says why this one was refused; Candidates lists whom you can name.',
+  INVALID_REVIEWER: 'Name someone who can edit tasks in this workspace: me, a person (account id, alias or @alias), or an agent as agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> (from `rip workspace load`); Reason says why this one was refused and Candidates lists whom you can name. The reviewer may be the assignee, but never the one who proposed: not yourself on your own proposal, and not the open round\'s proposer when you re-address a review with `rip task update --reviewer`. When proposing, omit --reviewer to ask your own person, or name the reviewer the task already has.',
   TOO_MANY_PROPOSALS: 'You have 200 proposals waiting In review in this workspace. Wait for decisions, or withdraw some with `rip task stop <id>`, before proposing more.',
   TOO_MANY_ROUNDS: 'The task has had 50 review rounds, the most a task holds. Finish it as it stands, or create a new task for the rest.',
   TASK_NOT_DONE: 'A later result goes on a Done task. To finish this one, `rip task done <id> --result-text "…"`.',

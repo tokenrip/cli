@@ -38,10 +38,10 @@ export async function tableAppend(
 }
 
 /** `rip table rows --all`: rows a call (the server's most) and where the walk stops. */
-export const TABLE_ROWS_ALL_PAGE = 500;
+export const TABLE_ROWS_ALL_PAGE = 5000;
 export const TABLE_ROWS_ALL_CAP = 10_000;
 
-type TableRowsPage = { rows: Array<{ id: string }>; nextCursor: string | null; total?: number };
+type TableRowsPage = { rows: Array<{ id: string }>; nextCursor: string | null; total?: number; missingFields?: string[] };
 
 export async function tableRows(
   identifier: string,
@@ -67,16 +67,16 @@ export async function tableRows(
   if (options.limit) params.limit = options.limit;
   if (options.after) params.after = options.after;
   if (options.before) params.before = options.before;
-  if (options.sortBy) params.sort_by = options.sortBy;
-  if (options.sortOrder) params.sort_order = options.sortOrder;
+  if (options.sortBy) params.sortBy = options.sortBy;
+  if (options.sortOrder) params.sortOrder = options.sortOrder;
   if (options.fields) params.fields = options.fields;
-  if (options.includeTotal) params.include_total = 'true';
+  if (options.includeTotal) params.includeTotal = 'true';
   if (options.filter) {
     for (const f of options.filter) {
       // Split on the first '=' so an operator suffix in the key survives:
-      // `revenue[gte]=75` → `filter.revenue[gte]=75`.
+      // `revenue[gte]=75` → `filters.revenue[gte]=75`.
       const eq = f.indexOf('=');
-      if (eq > 0) params[`filter.${f.slice(0, eq)}`] = f.slice(eq + 1);
+      if (eq > 0) params[`filters.${f.slice(0, eq)}`] = f.slice(eq + 1);
     }
   }
 
@@ -88,17 +88,18 @@ export async function tableRows(
 
   // Every page with the same filters, sort and fields, following `nextCursor` (a row id) until it is
   // null or the cap is reached; the total is asked for once. A cursor the server repeats stops the walk.
-  const { include_total: _total, after: _after, ...walkParams } = params;
+  const { includeTotal: _total, after: _after, ...walkParams } = params;
   const result: TableRowsPage = { rows: [], nextCursor: null };
   let cursor: string | undefined = options.after;
   let first = true;
   for (;;) {
     const pageParams: Record<string, string> = { ...walkParams, limit: String(TABLE_ROWS_ALL_PAGE) };
     if (cursor) pageParams.after = cursor;
-    if (first && options.includeTotal) pageParams.include_total = 'true';
+    if (first && options.includeTotal) pageParams.includeTotal = 'true';
     const { data } = await client.get(`/v0/artifacts/${uuid}/rows`, { params: pageParams });
     const page = data.data as TableRowsPage;
     if (first && typeof page.total === 'number') result.total = page.total;
+    if (first && Array.isArray(page.missingFields)) result.missingFields = page.missingFields;
     first = false;
     result.rows.push(...page.rows);
     const next = typeof page.nextCursor === 'string' ? page.nextCursor : null;
@@ -140,6 +141,6 @@ export async function tableDelete(
     catch { throw new CliError('INVALID_JSON', '--expected-revisions is not valid JSON.'); }
   }
   // The server's count: an id that names no row you can read is skipped, not deleted.
-  const { data } = await client.delete('/v0/rows', { data: { rowIds: ids, expectedRevisions, why: options.why } });
+  const { data } = await client.delete('/v0/rows', { data: { ids, expectedRevisions, why: options.why } });
   outputSuccess({ deleted: (data as { data: { deleted: number } }).data.deleted }, formatRowsDeleted);
 }
