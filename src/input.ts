@@ -1,5 +1,17 @@
 import { CliError } from './errors.js';
 
+/**
+ * `--expected-revision` (or `flag`): the revision read, a decimal whole number of at least 1 (never
+ * `0x3` or `1.5`). `readWith` is the command that reads it, named in the refusal.
+ */
+export function parseRevision(value: string, readWith = 'rip task show <id>', flag = '--expected-revision'): number {
+  const revision = /^[1-9][0-9]*$/.test(value) ? Number(value) : NaN;
+  if (!Number.isSafeInteger(revision)) {
+    throw new CliError('INVALID_ARGUMENT', `${flag} must be a whole number of at least 1: the revision you read (${readWith}), got "${value}".`);
+  }
+  return revision;
+}
+
 export function parseNonNegativeInteger(value: string, option: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {

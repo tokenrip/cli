@@ -221,7 +221,7 @@ Create a table with `artifact publish --type table`, then manage rows with the `
 rip artifact publish --type table --title "Research" --strict \
   --schema '[{"name":"slug","type":"text","unique":true},{"name":"company","type":"text"}]'
 
-rip table append <uuid> --data '{"slug":"acme","company":"Acme"}'      # max 1000 rows per call
+rip table append <uuid> --data '{"slug":"acme","company":"Acme"}'      # max 1000 rows and 16 MiB of row values per call
 rip table append <uuid> --file rows.json
 rip table append <uuid> --data '{"slug":"acme","company":"Acme Inc"}' --upsert
 

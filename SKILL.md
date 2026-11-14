@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.26
+version: 2.6.27
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.26 -->
+<!-- tokenrip-skill-version: 2.6.27 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -142,7 +142,7 @@ Read your instructions and what waits on you first, then the pins and the recent
 
 To create in a workspace, pass `--workspace-id`, or a `--folder` that is a workspace folder (it puts the artifact in its workspace). Beside `--workspace-id`, `--folder` names a folder in that workspace. Omit `--visibility`, `--team` and `--public-asset` when creating workspace content. On an existing workspace artifact, `--visibility private` means no public access. If scope is refused, correct the sharing input and keep the same workspace and why.
 
-**Everyone in a workspace sees all of it**: files, tables, folders, tasks and history. Keep private work in a separate workspace. A **viewer** reads; an **editor** also writes, deletes to the trash and shares; an **admin** (the owner, or the owning team's owner and admins) also renames and deletes the workspace. Any editor can make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login; `--visibility private` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Replacing a file someone else wrote needs its version id ([Updating a file](#updating-a-file)); row and task updates carry their revision (moving a task in the queue needs none), and a patch of description or metadata the workspace revision; insert-only table rows need none unless they expand the schema. The server answers `CONFLICT` if a guard you sent is stale. See `references/workspaces.md`.
+**Everyone in a workspace sees all of it**: files, tables, folders, tasks and history. Keep private work in a separate workspace. A **viewer** reads; an **editor** also writes, deletes to the trash and shares; an **admin** (the owner, or the owning team's owner and admins) also renames and deletes the workspace. Any editor can make one file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login; `--visibility private` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. New artifacts need no expected revision. Replacing a file someone else wrote needs its version id ([Updating a file](#updating-a-file)); row and task updates carry their revision (moving a task in the queue needs none), and a patch of description or metadata the workspace revision; insert-only table rows need none. A table write may send the table's revision (`--expected-table-revision`, the `tableRevision` a read or receipt returned) to refuse if anything in the table changed since. The server answers `CONFLICT` if a guard you sent is stale. See `references/workspaces.md`.
 
 Activity sequences are positions, not counts or content versions. `load` shows the latest changes and how many are unread; `rip workspace changes` reads the unread ones in order and reports history gaps and access changes. Reading, loading, and operator polling never acknowledge visible history. Explicit `rip workspace ack <ws> --delivery-token <token>` consumes its delivered page and cannot repair a content write or satisfy its revision guard.
 

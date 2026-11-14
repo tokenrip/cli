@@ -61,6 +61,10 @@ export function outputError(err: CliError): never {
       if (err.code === 'CONFLICT' && details.current) console.error(`Current version: v${details.current.number}`);
       if (details.currentRevision) console.error(`Current revision: ${details.currentRevision}`);
       if (details.currentWorkspaceRevision) console.error(`Current workspace revision: ${details.currentWorkspaceRevision}`);
+      if (details.currentTableRevision) console.error(`Current table revision: ${details.currentTableRevision}`);
+      if ((err.code === 'TOO_MANY_ROWS' || err.code === 'ROWS_TOO_LARGE') && details.actual !== undefined) {
+        console.error(`Limit: ${details.limit} ${err.code === 'TOO_MANY_ROWS' ? 'rows' : 'bytes of row values'} per call (sent ${details.actual})`);
+      }
       if (err.code === 'CONFLICT') console.error('Read the current resource and reconcile your changes before another write.');
       // The server's message names the read that supplies the token; the line adds only the field.
       if (err.code === 'PRECONDITION_REQUIRED' && details.field) console.error(`Required field: ${details.field}.`);

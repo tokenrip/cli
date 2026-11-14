@@ -179,15 +179,15 @@ rip artifact move <id> --folder <folder-id-or-slug> [--expected-workspace-revisi
 rip folder create <slug> --workspace-id <ws>   ·   rip folder list --workspace-id <ws>
 rip folder update <folder-id> --history <setting> [--expected-workspace-revision <n>]
 rip folder rename|delete <folder-id> … [--expected-workspace-revision <n>]
-rip table append <table-id> --data … [--expected-workspace-revision <n>]
-rip table update <row-id> --data … --expected-revision <row-rev>
-rip table delete --row-ids <id,id> [--expected-revisions '{"<row-id>": <rev>}']
+rip table append <table-id> --data … [--expected-table-revision <n>]
+rip table update <row-id> --data … --expected-revision <row-rev> [--expected-table-revision <n>]
+rip table delete --row-ids <id,id> [--expected-revisions '{"<row-id>": <rev>}'] [--expected-table-revision <n>]
 rip task add "<title>" --workspace-id <ws>   ·   rip task list --workspace-id <ws>
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --reviewer]
 rip task update <task-id> --position top|bottom | --before|--after <task-id>   # a move: no revision
 ```
 
-New artifact, folder, and task creation needs no revision. Insert-only rows need none; an upsert overwrites its match unless you send the row's revision, and a sent revision with no stored row is refused `CONFLICT`. A plain append of a stored key is refused, so when several agents add one key, one wins (`references/workspaces.md` § Coordinating agents on a row). History sequence numbers never guard content. Workspace creation omits standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. `--workspace-id` beside `--team` is `INVALID_SCOPE`. Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
+New artifact, folder, and task creation needs no revision. Insert-only rows need none. Any table write may send the table's revision (`--expected-table-revision`, the `tableRevision` from `rip table rows` or the last receipt) to be refused `CONFLICT { currentTableRevision }` if anything in the table changed since. An upsert overwrites its match unless you send the row's revision, and a sent revision with no stored row is refused `CONFLICT`. A plain append of a stored key is refused, so when several agents add one key, one wins (`references/workspaces.md` § Coordinating agents on a row). History sequence numbers never guard content. Workspace creation omits standalone visibility/team-sharing fields (`WORKSPACE_AUTHORITY`). To open one file to anyone with its URL, patch it afterwards: `rip artifact patch <id> --visibility link`. `--workspace-id` beside `--team` is `INVALID_SCOPE`. Every one of these writes also takes `--why`. A correction retains the content and the why; acknowledgment consumes history and cannot repair a write conflict.
 
 ## Artifact commands
 
@@ -416,7 +416,7 @@ Create a table with `rip artifact publish --type table` (with `--schema` or `--f
 
 ### `rip table append <uuid>`
 
-Append rows (max 1000 per call).
+Append rows: at most 1000 rows and 16 MiB of row values (the JSON text of the array of the rows' values) per call. Over either, the call is refused with 413 `TOO_MANY_ROWS` or `ROWS_TOO_LARGE` (`details { field, limit, actual }` in `--json`) and nothing is written. Split a larger write; the calls are separate writes, so pass each receipt's `tableRevision` as `--expected-table-revision` on the next to keep the set guarded.
 
 ```bash
 rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
@@ -424,7 +424,7 @@ rip table append 550e8400-... --file rows.json
 rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert
 ```
 
-Options: `--data <json>` (object or array), `--file <path>`, `--upsert` (update the row whose key matches instead of inserting), `--expected-workspace-revision <n>`, `--why <text>`. Each row in the reply carries `action: created | updated`.
+Options: `--data <json>` (object or array), `--file <path>`, `--upsert` (update the row whose key matches instead of inserting), `--expected-table-revision <n>` (refuse the whole call, `409 CONFLICT` with `currentTableRevision`, if anything in the table changed since that `tableRevision`; validated locally as a whole number ≥ 1), `--why <text>`. Each row in the reply carries `action: created | updated` and `tableRevision`; human output prints `Table revision: N`.
 
 A table has at most one key, its `unique: true` column; `--upsert` matches on it (a table without one is `NO_TABLE_KEY`). The key compares the exact stored text: `"100"` and `"100.0"` are different keys, the number `1` and the string `"1"` the same key. Before any row is written: a key repeated within the call, or without `--upsert` a key a stored row already holds, is `409 DUPLICATE_UNIQUE_VALUE` (the message names the column and value, withheld for a `sensitive` column); an upsert row without its key is `MISSING_FIELD`; a key value that is an object or array, or over 1024 bytes, is `INVALID_COLUMN_VALUE`.
 
@@ -443,7 +443,7 @@ Options: `--limit <n>` (default 100, max 5000), `--after <rowId>`, `--before <ro
 
 The first line says whether the read is whole: `100 rows shown, more remain (--after <id>)` when more rows follow the page, `100 of 2,345 rows` with `--include-total` (plus `, more remain (--after <id>)` when they do), `12 rows` (`1 row`) when no more rows follow (after `--after`, the rows before it are not counted); `No rows.` when none match. The closing `More rows available. Use --after <id>` line stays.
 
-`--all` reads every page: 5,000 rows a call, following `nextCursor` with the same filters, sort and fields, and `includeTotal` on the first page only. It stops at 10,000 rows; then the first line says more remain and names the 10,000th row's id to continue from with `--after`, sent with the same filters and sort. `--after` starts the walk from that row; `--limit` and `--before` beside `--all` are refused before any call (`INVALID_ARGS`). A cursor the server answers twice stops the walk (`ROWS_CURSOR_REPEATED`). `--json` prints `{ rows, nextCursor, total? }` (a page's shape without `prevCursor`), with `nextCursor` set only when the cap stopped the walk.
+`--all` reads every page: 5,000 rows a call, following `nextCursor` with the same filters, sort and fields, and `includeTotal` on the first page only. It stops at 10,000 rows; then the first line says more remain and names the 10,000th row's id to continue from with `--after`, sent with the same filters and sort. `--after` starts the walk from that row; `--limit` and `--before` beside `--all` are refused before any call (`INVALID_ARGS`). A cursor the server answers twice stops the walk (`ROWS_CURSOR_REPEATED`). `--json` prints `{ rows, nextCursor, tableRevision, total? }` (a page's shape without `prevCursor`), with `nextCursor` set only when the cap stopped the walk and `tableRevision` the first page's: guard the next write with it, so a change made during the walk refuses that write. Human output prints `Table revision: N` under the first line, on one page or `--all`.
 
 ### `rip table update <rowId>`
 
@@ -453,7 +453,7 @@ Update one row by its own id (partial merge; `PUT /v0/rows/:rowId`, the row name
 rip table update 660f9500-... --data '{"relevance":"low"}'
 ```
 
-Required: `--data <json>`. Options: `--expected-revision <n>` (workspace rows), `--expected-workspace-revision <n>`, `--why <text>`.
+Required: `--data <json>`. Options: `--expected-revision <n>` (workspace rows), `--expected-table-revision <n>`, `--why <text>`. The receipt carries `tableRevision` (human output: `Table revision: N`).
 
 On a keyed table, setting the key to a value another row holds is 409 `DUPLICATE_UNIQUE_VALUE` (naming the column, and the value unless the column is `sensitive`), and a key value that is an object or array, or longer than 1024 bytes, is 400 `INVALID_COLUMN_VALUE` naming the column. Nothing is written.
 
@@ -465,7 +465,7 @@ Delete rows by their own ids, all of one table (`DELETE /v0/rows`; rows of two t
 rip table delete --row-ids 660f9500-...,770a0600-...
 ```
 
-Required: `--row-ids <ids>`. Options: `--expected-revisions <json>` (workspace rows), `--why <text>`.
+Required: `--row-ids <ids>`. Options: `--expected-revisions <json>` (workspace rows), `--expected-table-revision <n>`, `--why <text>`. The receipt carries `tableRevision` when a named row resolved the table; when none of the named rows exists any more it carries none, and the guard is not checked.
 
 ## Folder commands
 

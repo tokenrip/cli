@@ -8,6 +8,8 @@ export interface DomainErrorDetails {
   currentVersionId?: string;
   currentRevision?: number;
   currentWorkspaceRevision?: number;
+  /** `CONFLICT` on a row write: the table's revision now. */
+  currentTableRevision?: number;
   /**
    * `INVALID_SKILL`: which skill rule refused (closed set, mirrors the server).
    * `CONFLICT`: `not_current` when a named draft version is not the file's current one.
@@ -51,9 +53,14 @@ export interface DomainErrorDetails {
    */
   owner?: { kind: 'personal' | 'team'; id: string; name: string | null };
   plan?: string;
-  /** A number on `WORKSPACE_LIMIT_REACHED`; on `RATE_LIMITED`, which limit refused. */
+  /**
+   * A number on `WORKSPACE_LIMIT_REACHED`, `TOO_MANY_ROWS` and `ROWS_TOO_LARGE`; on `RATE_LIMITED`,
+   * which limit refused.
+   */
   limit?: number | CapacityLimit;
   used?: number;
+  /** `TOO_MANY_ROWS` / `ROWS_TOO_LARGE`: the rows, or bytes of row values, the call sent. */
+  actual?: number;
   /**
    * `STORAGE_LIMIT_REACHED`: the payer's bytes used, its plan's limit, what the write would have
    * added, and the plan. All four or none (a workspace's guest gets none).
@@ -257,7 +264,7 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
   const details: DomainErrorDetails = {};
   if (code === 'CONFLICT') {
     if (typeof body.currentVersionId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.currentVersionId)) details.currentVersionId = body.currentVersionId;
-    for (const field of ['currentRevision', 'currentWorkspaceRevision'] as const) {
+    for (const field of ['currentRevision', 'currentWorkspaceRevision', 'currentTableRevision'] as const) {
       const revision = body[field];
       if (typeof revision === 'number' && Number.isSafeInteger(revision) && revision > 0) details[field] = revision;
     }
@@ -291,6 +298,11 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       details.candidates = principalCandidateDetails(body.candidates);
     }
   } else if (code === 'WORKSPACE_LIMIT_REACHED') Object.assign(details, workspaceLimitDetails(body));
+  else if (code === 'TOO_MANY_ROWS' || code === 'ROWS_TOO_LARGE') {
+    // A per-call row limit: all three or none.
+    const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+    if (body.field === 'rows' && count(body.limit) && count(body.actual)) Object.assign(details, { field: 'rows', limit: body.limit, actual: body.actual });
+  }
   else if (code === 'STORAGE_LIMIT_REACHED') {
     const { usedBytes, limitBytes, addedBytes, plan } = body;
     const counts = [usedBytes, limitBytes, addedBytes];

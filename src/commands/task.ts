@@ -3,6 +3,7 @@ import path from 'node:path';
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
 import { CliError } from '../errors.js';
+import { parseRevision } from '../input.js';
 import { formatTask, formatTaskList, formatTaskStarted, formatTaskTimeline } from '../formatters.js';
 
 export interface TaskListOptions {
@@ -211,17 +212,7 @@ export async function taskAdd(title: string, options: TaskAddOptions): Promise<v
   outputSuccess(data.data, formatTask);
 }
 
-/**
- * `--expected-revision`: the revision read, a decimal whole number of at least 1 (never `0x3` or
- * `1.5`). `readWith` is the command that reads it, named in the refusal.
- */
-export function parseRevision(value: string, readWith = 'rip task show <id>'): number {
-  const revision = /^[1-9][0-9]*$/.test(value) ? Number(value) : NaN;
-  if (!Number.isSafeInteger(revision)) {
-    throw new CliError('INVALID_ARGUMENT', `--expected-revision must be a whole number of at least 1: the revision you read (${readWith}), got "${value}".`);
-  }
-  return revision;
-}
+export { parseRevision } from '../input.js';
 
 /** The move `--position`, `--before` or `--after` names, at most one, as the server's `position`. */
 function queuePosition(options: TaskUpdateOptions): string | { before: string } | { after: string } | undefined {

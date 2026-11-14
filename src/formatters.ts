@@ -728,6 +728,7 @@ export const formatTableRows: Formatter = (data) => {
   // A --fields name the table lacks is left out of each row, not refused.
   const missing = (data as any).missingFields;
   if (Array.isArray(missing) && missing.length > 0) lines.push(`  Not in the table (left out): ${missing.join(', ')}\n`);
+  if (typeof (data as any).tableRevision === 'number') lines.push(`Table revision: ${(data as any).tableRevision}\n`);
   for (const r of rows) {
     const dataStr = JSON.stringify(r.data);
     const ago = formatTimeAgo(new Date(r.createdAt));
@@ -737,6 +738,11 @@ export const formatTableRows: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** `Table revision: N`, the value to send as --expected-table-revision next, when the server sent one. */
+function tableRevisionLine(value: unknown): string[] {
+  return typeof value === 'number' ? [`Table revision: ${value}`] : [];
+}
+
 export const formatRowsAppended: Formatter = (data) => {
   const count = (data as any).count ?? 0;
   const rows = (data as any).rows ?? [];
@@ -744,15 +750,17 @@ export const formatRowsAppended: Formatter = (data) => {
   for (const r of rows) {
     if (r.id) lines.push(`  ${r.id}`);
   }
+  // Every item carries the table's revision after the call; the first one's is the value.
+  lines.push(...tableRevisionLine(rows[0]?.tableRevision));
   return lines.join('\n');
 };
 
 export const formatRowUpdated: Formatter = (data) => {
-  return `Updated row ${data.id}`;
+  return [`Updated row ${data.id}`, ...tableRevisionLine(data.tableRevision)].join('\n');
 };
 
 export const formatRowsDeleted: Formatter = (data) => {
-  return `Deleted ${data.deleted} row(s)`;
+  return [`Deleted ${data.deleted} row(s)`, ...tableRevisionLine(data.tableRevision)].join('\n');
 };
 
 export const formatSearchResults: Formatter = (data) => {

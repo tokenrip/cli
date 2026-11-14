@@ -487,8 +487,8 @@ withWhy(table
   .option('--data <json>', 'Row data as inline JSON (single object or array)')
   .option('--file <path>', 'Path to JSON file with row data (object or array)')
   .option('--upsert', 'Update the row whose key (the table\'s unique: true column) matches instead of inserting')
-  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
-  .description('Append one or more rows to a table (max 1000 per call)')
+  .option('--expected-table-revision <n>', 'Optional: refuse (CONFLICT) if the table changed since this tableRevision (from rows --json, the table read, or the last receipt)')
+  .description('Append one or more rows to a table (at most 1000 rows and 16 MiB of row values per call)')
   .addHelpText('after', `
 EXAMPLES:
   $ rip table append 550e8400-... --data '{"company":"Acme","signal":"API launch"}'
@@ -496,7 +496,15 @@ EXAMPLES:
   $ rip table append 550e8400-... --data '{"slug":"post","title":"v2"}' --upsert
   $ rip table append 550e8400-... --data '{"data":{"slug":"post","title":"v3"},"expectedRevision":2}' --upsert
 
-NOTE: Maximum 1000 rows per call. For larger datasets, split into multiple calls.
+LIMITS: at most 1000 rows and 16 MiB of row values (the JSON text of the array
+of the rows' values) per call; over either is 413 TOO_MANY_ROWS or ROWS_TOO_LARGE. Split
+larger writes, passing --expected-table-revision from each receipt to keep the
+set guarded.
+
+TABLE GUARD: --expected-table-revision <n> refuses the whole call (409 CONFLICT,
+with currentTableRevision) if anything in the table changed since that
+tableRevision: any row or column, by anyone. Nothing in the call is written.
+Each receipt carries the new tableRevision to send with the next call.
 
 UPSERT: --upsert makes publishing idempotent in one call. It matches on the
 table's key, its one unique: true column (a table without one is refused,
@@ -570,7 +578,7 @@ withWhy(table
   .argument('<rowId>', 'Row ID to update (it names its table)')
   .requiredOption('--data <json>', 'Fields to update as JSON (partial merge)')
   .option('--expected-revision <n>', 'Required live row revision for a workspace row')
-  .option('--expected-workspace-revision <n>', 'Optional: refuse if the item changed since this revision')
+  .option('--expected-table-revision <n>', 'Optional: refuse (CONFLICT) if the table changed since this tableRevision (from rows --json, the table read, or the last receipt)')
   .description('Update a single row of a table, by its own id')
   .addHelpText('after', `
 EXAMPLES:
@@ -586,6 +594,7 @@ withWhy(table
   .allowExcessArguments(false)
   .requiredOption('--row-ids <ids>', 'Comma-separated row IDs to delete, all of one table (they name it)')
   .option('--expected-revisions <json>', 'Optional: map row IDs to revisions; refuse if a row changed since')
+  .option('--expected-table-revision <n>', 'Optional: refuse (CONFLICT) if the table changed since this tableRevision (from rows --json, the table read, or the last receipt)')
   .description('Delete rows of a table, by their own ids')
   .addHelpText('after', `
 EXAMPLES:

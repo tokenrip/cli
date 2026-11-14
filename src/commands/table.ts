@@ -4,12 +4,13 @@ import { optionalAuthClient, requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatTableRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
+import { parseRevision } from '../input.js';
 import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
 
 export async function tableAppend(
   identifier: string,
-  options: { data?: string; file?: string; upsert?: boolean; expectedWorkspaceRevision?: string; why?: string },
+  options: { data?: string; file?: string; upsert?: boolean; expectedTableRevision?: string; why?: string },
 ): Promise<void> {
   const uuid = parseArtifactId(identifier);
   let rows: Record<string, unknown>[];
@@ -30,7 +31,7 @@ export async function tableAppend(
   const body: Record<string, unknown> = { rows };
   // Upsert matches on the table's key (its unique: true column); a table without one refuses NO_TABLE_KEY.
   if (options.upsert) body.upsert = true;
-  if (options.expectedWorkspaceRevision) body.expectedWorkspaceRevision = Number(options.expectedWorkspaceRevision);
+  if (options.expectedTableRevision !== undefined) body.expectedTableRevision = tableRevisionOption(options.expectedTableRevision);
   if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, body);
   // `data` is the array of rows, so the reply's hints sit beside it; the receipt carries them.
@@ -41,7 +42,14 @@ export async function tableAppend(
 export const TABLE_ROWS_ALL_PAGE = 5000;
 export const TABLE_ROWS_ALL_CAP = 10_000;
 
-type TableRowsPage = { rows: Array<{ id: string }>; nextCursor: string | null; total?: number; missingFields?: string[] };
+type TableRowsPage = {
+  rows: Array<{ id: string }>;
+  nextCursor: string | null;
+  total?: number;
+  missingFields?: string[];
+  /** `--all` keeps the first page's: a change mid-read then conflicts when it is sent back (design §8). */
+  tableRevision?: number;
+};
 
 export async function tableRows(
   identifier: string,
@@ -100,6 +108,7 @@ export async function tableRows(
     const page = data.data as TableRowsPage;
     if (first && typeof page.total === 'number') result.total = page.total;
     if (first && Array.isArray(page.missingFields)) result.missingFields = page.missingFields;
+    if (first && typeof page.tableRevision === 'number') result.tableRevision = page.tableRevision;
     first = false;
     result.rows.push(...page.rows);
     const next = typeof page.nextCursor === 'string' ? page.nextCursor : null;
@@ -118,22 +127,33 @@ export async function tableRows(
   outputSuccess(result as unknown as Record<string, unknown>, formatTableRows);
 }
 
+const optionalNumber = (value: string | undefined): number | undefined => (value === undefined ? undefined : Number(value));
+/** `--expected-table-revision`: a whole number of at least 1, refused locally otherwise. */
+const tableRevisionOption = (value: string): number => parseRevision(value, 'rip table rows <table> --json', '--expected-table-revision');
+
 /** `PUT /v0/rows/:rowId`: the row id names its table. */
 export async function tableUpdate(
   rowId: string,
-  options: { data: string; expectedRevision?: string; expectedWorkspaceRevision?: string; why?: string },
+  options: { data: string; expectedRevision?: string; expectedTableRevision?: string; why?: string },
 ): Promise<void> {
   const parsed = parseJsonObjectOption(options.data, '--data');
+  const expectedTableRevision = options.expectedTableRevision === undefined ? undefined : tableRevisionOption(options.expectedTableRevision);
   const { client } = requireAuthClient();
-  const { data } = await client.put(`/v0/rows/${encodeURIComponent(rowId)}`, { data: parsed, expectedRevision: options.expectedRevision === undefined ? undefined : Number(options.expectedRevision), expectedWorkspaceRevision: options.expectedWorkspaceRevision === undefined ? undefined : Number(options.expectedWorkspaceRevision), why: options.why });
+  const { data } = await client.put(`/v0/rows/${encodeURIComponent(rowId)}`, {
+    data: parsed,
+    expectedRevision: optionalNumber(options.expectedRevision),
+    expectedTableRevision,
+    why: options.why,
+  });
   outputSuccess(data.data, formatRowUpdated);
 }
 
 /** `DELETE /v0/rows`: rows of one table by their own ids. */
 export async function tableDelete(
-  options: { rowIds: string; expectedRevisions?: string; why?: string },
+  options: { rowIds: string; expectedRevisions?: string; expectedTableRevision?: string; why?: string },
 ): Promise<void> {
   const ids = options.rowIds.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  const expectedTableRevision = options.expectedTableRevision === undefined ? undefined : tableRevisionOption(options.expectedTableRevision);
   const { client } = requireAuthClient();
   let expectedRevisions: Record<string, number> | undefined;
   if (options.expectedRevisions) {
@@ -141,6 +161,13 @@ export async function tableDelete(
     catch { throw new CliError('INVALID_JSON', '--expected-revisions is not valid JSON.'); }
   }
   // The server's count: an id that names no row you can read is skipped, not deleted.
-  const { data } = await client.delete('/v0/rows', { data: { ids, expectedRevisions, why: options.why } });
-  outputSuccess({ deleted: (data as { data: { deleted: number } }).data.deleted }, formatRowsDeleted);
+  const { data } = await client.delete('/v0/rows', {
+    data: { ids, expectedRevisions, expectedTableRevision, why: options.why },
+  });
+  // The table's revision is there only when the named rows resolved a table.
+  const receipt = (data as { data: { deleted: number; tableRevision?: number } }).data;
+  outputSuccess(
+    { deleted: receipt.deleted, ...(typeof receipt.tableRevision === 'number' ? { tableRevision: receipt.tableRevision } : {}) },
+    formatRowsDeleted,
+  );
 }

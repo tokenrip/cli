@@ -313,6 +313,11 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         currentVersionId?: unknown;
         currentRevision?: unknown;
         currentWorkspaceRevision?: unknown;
+        /** `CONFLICT` on a row write: the table's revision now (`expectedTableRevision` was stale). */
+        currentTableRevision?: unknown;
+        /** `TOO_MANY_ROWS` / `ROWS_TOO_LARGE`: the per-call limit and what the call sent. */
+        limit?: unknown;
+        actual?: unknown;
         reason?: unknown;
         /** `TASK_TAKEN`: who holds the task. */
         holder?: unknown;
@@ -392,9 +397,11 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
-          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'reason', 'holder', 'reviewer', 'latestRound', 'output',
+          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'currentTableRevision', 'reason', 'holder', 'reviewer', 'latestRound', 'output',
             'usedBytes', 'limitBytes', 'addedBytes', 'usedActions', 'limitActions', 'resetsAt', 'plan', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
+          // A per-call row limit's numbers sit at the top level; other codes keep their own `limit`.
+          ...(errorCode === 'TOO_MANY_ROWS' || errorCode === 'ROWS_TOO_LARGE' ? { limit: data.limit, actual: data.actual } : {}),
         });
         for (const issue of Array.isArray(safeDetails) ? safeDetails : []) {
           const path = (issue.path ?? []).join('.');
