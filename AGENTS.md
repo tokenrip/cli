@@ -65,10 +65,9 @@ rip workspace ack <workspace> --delivery-token <token>
 rip workspace sessions <workspace> [--cursor <nextCursor>]
 
 # Stopping: complete what you finished; put what you hold but didn't finish back to To do,
-# its body saying how far it got (a proposal stays In review; no note restates them)
+# with a comment in its thread saying how far it got (a proposal stays In review; no note restates them)
 rip task done <id> --why "<the goal>"
-rip task stop <id> --why "<the goal>"
-rip task update <id> --expected-revision <n> --body "<how far it got>" --why "<the goal>"
+rip task stop <id> --comment "<how far it got>" [--assignee <who>]
 
 # Lifecycle and members
 rip workspace create <slug> [--name "Roadmap"] [--description <text>] [--team <team-slug-or-id>] --why "<the goal>"   # name defaults to the slug
@@ -278,7 +277,8 @@ rip task done <id> --result-text "4 likes"
 rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
 rip task report <id> --result-text "12 likes"        # a later result on a Done task
 rip task list --workspace-id <ws> --reviewer me      # reviews addressed to you
-rip task decide <id> --approve|--send-back --expected-revision <n> [--comment "…"] [--then <step>|--no-then] [--edited-draft-file f]
+rip task decide <id> --approve --expected-revision <n> [--comment "…"] [--then <step> | --no-then] [--then-assignee <who> | --no-then-assignee] [--edited-draft-file f]
+rip task decide <id> --send-back --comment "…" --expected-revision <n>   # what to change; the task goes back To do
 rip message post --task-id <id> "Name the day or the date?"   # a question, a requested change or an answer, in the task's thread
 rip message post --workspace-id <ws> "Who owns the launch email?"   # in the workspace chat; --file <path> for longer text
 rip message read --workspace-id <ws>                    # the chat, newest first (or --task-id <id>); --cursor for older
@@ -295,13 +295,13 @@ rip task update <id> --position top|bottom           # move it in the queue (or 
 
 rip task start <id> --lease-hours 4                  # your key's hold under a LEASE
 rip task start <id>                                  # again on a long run: renews (never shorter)
-rip task stop <id>                                   # back to To do (your own proposal: withdraws it)
+rip task stop <id>                                   # back to To do (your own proposal: withdraws it); --assignee <who> | --no-assignee and --comment say who is next
 rip task cancel <id> --reason "duplicate"            # also says no to a proposal In review (a reviewer may)
 rip task reopen <id>
 rip workspace changes <ws>                           # task events are workspace activity
 ```
 
-A proposal comes back **In review** (stop) or **approved at once** when it goes to your own person and its type is on your instructions' on-its-own list (`doing`, held by you; with `--then`, To do at that step). On a later run its latest round says how it ended: **approved** (carry out only its approved round's final text and files, the reviewer's edits included, then complete it with the result; never act twice; approved with a then, it moved to that step for whoever does it), **sent back** (its comment says what to change: revise and propose again on the same task, with the same `--then`) or **cancelled** (the task was cancelled: do not carry it out). A review's answers are approve and send back; to say no, cancel the task. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
+A proposal comes back **In review** (stop) or **approved at once** when it goes to your own person and its type is on your instructions' on-its-own list (`doing`, held by you; with `--then`, To do at that step). On a later run its latest round says how it ended: **approved** (carry out only its approved round's final text and files, the reviewer's edits included, then complete it with the result; never act twice; approved with a then, it moved to that step for whoever does it, or for the one the proposal named with `--then-assignee`), **sent back** (its comment says what to change: revise and propose again on the same task, with the same `--then`) or **cancelled** (the task was cancelled: do not carry it out). A review's answers are approve and send back; to say no, cancel the task. You decide only reviews whose reviewer is exactly your key (`REVIEW_NOT_YOURS` otherwise); a person decides theirs in the dashboard, where only your person writes your instructions.
 
 **Queue order:** a workspace's tasks wait in a queue; a new one joins the back. `rip task list` of open statuses (the default) and load's open tasks follow it, front first (`--order created` is newest first), and starting by tags takes from the front. A move (`rip task update <id> --position top|bottom`, or `--before|--after <id>`, one per call) sent with only `--why` needs no `--expected-revision` and changes no revision.
 
@@ -556,9 +556,9 @@ Use on `artifact publish` / `artifact upload` to build lineage and traceability:
 | `WORKSPACE_AUTHORITY` | Incompatible standalone sharing fields on a workspace item | Omit the named fields; keep the content and the why |
 | `STATE_CONFLICT` | Unclassified state conflict | Inspect current state; no resource-version claim is implied |
 | `WORKSPACE_REQUIRED` | `task list` / `task add` without a workspace | Pass `--workspace-id` |
-| `TASK_TAKEN` | Someone else is working on the task; nothing was persisted | `holder` (`Held by: …`) says who and until when — pick another task or wait |
-| `TASK_NOT_STARTED` | `stop` on a task that is not Doing | `rip task show <id>` |
-| `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Cancelled (or, for start, done) / already done / not done or cancelled | `rip task reopen <id>` if the work is still wanted; `rip task show <id>` |
+| `TASK_TAKEN` | Someone else is working on the task; nothing was persisted | `Held by: …` says who and until when — pick another task or wait. Like every refused task move it also prints `Waits on:` and `You can:` (the commands open to you now; `details.task` in `--json`) |
+| `TASK_NOT_STARTED` | `stop` on a task that is not Doing (or a hold whose lease lapsed) | Follow `You can:` |
+| `TASK_CLOSED` / `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Cancelled (or, for start, done) / already done / not done or cancelled | `rip task reopen <id>` if the work is still wanted; `You can:` lists what is open |
 | `INVALID_ASSIGNEE` | `--assignee` names nobody who can edit tasks in the workspace: `Reason:` says why (`unknown`, `ambiguous`, `revoked`, `cannot_edit_tasks`) | Name one of the `Candidates:` it prints (`me`, `agent:<handle>`, a person's alias or id) |
 | `TASK_IN_REVIEW` | The task waits for a decision; start and complete are refused (its reviewer and assignee can still change) | Your own proposal: stop (or withdraw it with `rip task stop <id>`); a later load lists it under Waiting on you once decided. Someone else's: leave it to its reviewer |
 | `TASK_NOT_IN_REVIEW` | Nothing to decide (`Latest round:` says how it ended) | `rip task show <id>` |

@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.27
+version: 2.6.28
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.27 -->
+<!-- tokenrip-skill-version: 2.6.28 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -131,7 +131,7 @@ Read your instructions and what waits on you first, then the pins and the recent
 | Context | `rip workspace load <ws>` | Your instructions, what waits on you, unread chat messages, the agents' handles, pins (inline, or `rip artifact cat <id> --version-id <v>`), recent sessions, tasks, changes, artifacts, browser link |
 | Who worked on what | `rip workspace sessions <ws>` | Recent sessions, newest first: `You` or `~alias`, which tool, then steps: each why with the changes made for it (versions, diff commands, rows); `unread` marks sessions after your acknowledged position |
 | What changed | `rip workspace changes <ws>` | Events since you last acknowledged: who (`You` or `~alias`), the why, the action, and the item by title and id, plus a `deliveryToken` |
-| Work queue | `rip task list --workspace-id <ws>` | To do and Doing tasks, their type and step, and who holds each; `--reviewer me` for reviews waiting on you; `rip task start --workspace-id <ws> --type <t> --step <s>` claims the next one (`references/tasks.md`) |
+| Work queue | `rip task list --workspace-id <ws>` | To do and Doing tasks, their type and step, and who holds each; `--waiting` for what is your turn (approved work to carry out, reviews to decide, tasks for you), each row saying who it waits on; `rip task start --workspace-id <ws> --type <t> --step <s>` claims the next one (`references/tasks.md`) |
 | Search | `rip search "<query>"` | Existing artifacts — avoid duplicate publishes |
 | Teams | `rip team list` | Team slugs for `--team` flags |
 | Recent work | `rip artifact list --limit 5` | Your recent standalone artifacts |
@@ -183,8 +183,7 @@ Keep a document in every agent's context on load?
 
 Stopping? Leave open work where it is recorded; no note restates it.
   → rip task done <id>                                             # what you finished
-  → rip task stop <id>                                             # what you hold but didn't finish: back to To do
-  → rip task update <id> --expected-revision <n> --body "..."      # its body says how far it got; a proposal stays In review
+  → rip task stop <id> --comment "..." [--assignee <who>]          # what you hold but didn't finish: back to To do, the comment saying how far it got; --assignee names who takes it next (they are told); a proposal stays In review
 ```
 
 ### What to publish
@@ -281,7 +280,7 @@ How did the review end? (rip task show <id>: Latest round; rip workspace load li
   approved  → carry out exactly the approved round's final text and files (rip task show <id> --json:
               approvedRound.final.text, and final.artifacts at their versions), once; then
               rip output record --workspace-id <ws> --task <id> --kind x.post --ref <url>; rip task done <id> --result-text "4 likes"
-              Approved with a then: it is unassigned at that step, for whoever does it; it no longer waits on you.
+              Approved with a then: it is unassigned at that step, for whoever does it, unless the proposal names who takes it (--then-assignee); it no longer waits on you.
   sent back → the round's comment says what to change: revise, then rip task propose <id> … again, with the same --then
   cancelled → it was cancelled and waits on no one: do not carry it out
   It failed? Propose again with what went wrong, or rip task cancel <id> --reason "…". Never act twice.
@@ -301,9 +300,9 @@ A question, a requested change or an answer?
   → rip message read --workspace-id <ws>                                 # the chat, newest first (load carries the newest unread)
 
 Ordinary work?
-  → rip task list --workspace-id <ws> [--mine | --unassigned] [--type <t>] [--step <s>] [--status todo|review]
+  → rip task list --workspace-id <ws> [--waiting | --mine | --unassigned] [--type <t>] [--step <s>] [--status todo|review]
   → rip task done <id> --link artifact:<id>[@version] --result-text "…"
-  → rip task stop <id>  ·  rip task cancel <id> --reason "..."  ·  rip task reopen <id>
+  → rip task stop <id> [--assignee <who> | --no-assignee] [--comment "..."]  ·  rip task cancel <id> --reason "..."  ·  rip task reopen <id>
   → rip task add "<title>" --workspace-id <ws> | --parent-id <id> [--assignee <who>] [--reviewer <who>] [--job <name>] [--type <t>] [--step <s>] [--link artifact:<id>]
 ```
 
@@ -462,10 +461,9 @@ rip output record --workspace-id 4f2c1b90-... --task 7a1c2d1e-... --kind x.reply
 rip task done 7a1c2d1e-... --result-text "Posted"
 rip task report 7a1c2d1e-... --result-text "12 likes"      # a later result goes on the same task
 
-# 6. Report work that needed no review (nothing posted, sent or published outside the workspace). Stopping half done? Put it back to To do, its body saying how far it got
+# 6. Report work that needed no review (nothing posted, sent or published outside the workspace). Stopping half done? Put it back to To do with a comment saying how far it got
 rip task report --workspace-id 4f2c1b90-... --title "Drafted the FAQ" --link artifact:<id>
-rip task stop 9b2e4f6a-...
-rip task update 9b2e4f6a-... --expected-revision 3 --body "Replied to 4 of 9; the rest need pricing"
+rip task stop 9b2e4f6a-... --comment "Replied to 4 of 9; the rest need pricing"
 ```
 
 ### Example 2: An article through draft, send back and post
@@ -526,7 +524,7 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 | `WORKSPACE_REQUIRED` | `rip task list` / `task add` need `--workspace-id`; every task lives in a workspace |
 | `SKILL_NOT_FOUND` / `OPERATOR_AMBIGUOUS` / `INVALID_SKILL` | Not in reach of this agent (add `--team`, or switch `--agent`); two operators share the name (read by id); fix the folder per `reason` (`references/skills.md`) |
 | `TASK_TAKEN` | Someone else is working on the task; `holder` says who. Pick another task or wait; nothing was saved |
-| `TASK_NOT_STARTED` / `TASK_CLOSED` / `TASK_ALREADY_DONE` | `stop` on a task that is not Doing (or your hold lapsed) / the task is cancelled or done: `rip task reopen` it if the work is not finished (`references/tasks.md` § Error recovery) |
+| `TASK_NOT_STARTED` / `TASK_CLOSED` / `TASK_ALREADY_DONE` | `stop` on a task that is not Doing (or your hold lapsed) / the task is cancelled or done: `rip task reopen` it if the work is not finished. The refusal prints `Waits on:` and `You can:` (the commands open to you now) on stderr (`references/tasks.md` § Error recovery) |
 | `TASK_IN_REVIEW` | The task waits for a decision: nothing starts or completes it. Your own proposal: stop (or withdraw it with `rip task stop <id>`); once decided, a later load shows it under Waiting on you. Someone else's: leave it to its reviewer |
 | `REVIEW_NOT_YOURS` / `TASK_NOT_IN_REVIEW` | Decide only reviews addressed to you (`rip task list --reviewer me`), never your own proposal; `Reviewer:` says whose it is. Already decided (`Latest round:` says how it ended): `rip task show <id>` |
 | `INVALID_REVIEWER` / `TOO_MANY_PROPOSALS` / `TOO_MANY_ROUNDS` / `TASK_NOT_DONE` | Omit `--reviewer` (your person) or name one of the `Candidates:` the refusal prints, never the one who proposed / 200 proposals In review: wait for decisions / the task's 50 review rounds are used: finish it as it stands, or add a new task for the rest / a later result needs a Done task: `rip task done` |

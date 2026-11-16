@@ -1,5 +1,5 @@
-import { CliError, INPUT_REFUSAL_CODES, toCliError, type PrincipalCandidateDetails, type WorkspaceCandidateDetails } from './errors.js';
-import { principalWho, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
+import { CliError, INPUT_REFUSAL_CODES, toCliError, type PrincipalCandidateDetails, type TaskAnswerDetails, type WorkspaceCandidateDetails } from './errors.js';
+import { principalWho, taskAnswerLines, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
 
 let forceJson = false;
 let configHuman = false;
@@ -76,11 +76,20 @@ export function outputError(err: CliError): never {
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
       if (err.code === 'VERSION_IN_USE' && details.task) console.error(`In use by: task ${details.task}, round ${details.round}`);
-      if (details.holder) console.error(`Held by: ${taskHolderLine(details.holder)}`);
+      // A refused task move's answer (`task`, an object; `VERSION_IN_USE` carries a task id there). Its
+      // holder, reviewer and status are the ones printed when it has them; the top-level fields an
+      // older server sends (window task-refusal-flat-fields-window) are the fallback, so none prints twice.
+      const answer: TaskAnswerDetails | undefined = details.task && typeof details.task === 'object' ? details.task : undefined;
+      const holder = answer && 'holder' in answer ? answer.holder : details.holder;
+      if (holder) console.error(`Held by: ${taskHolderLine(holder)}`);
       if (details.output) console.error(`Held by output: ${details.output.id} (${details.output.kind}, ${details.output.status}${details.output.ref ? `, ${details.output.ref}` : ''})`);
-      if (details.reviewer !== undefined) console.error(`Reviewer: ${details.reviewer ? principalWho(details.reviewer) : 'any person who can edit tasks'}`);
-      if (details.status) console.error(`Status: ${details.status}`);
+      const reviewer = details.reviewer !== undefined || err.code !== 'REVIEW_NOT_YOURS' ? details.reviewer : answer?.reviewer;
+      if (reviewer !== undefined) console.error(`Reviewer: ${reviewer ? principalWho(reviewer) : 'any person who can edit tasks'}`);
+      const status = details.status ?? answer?.status;
+      if (status) console.error(`Status: ${status}`);
       if (details.latestRound !== undefined) console.error(`Latest round: ${details.latestRound ? `${details.latestRound.number} · ${verdictWords(details.latestRound.verdict)}` : 'none (never proposed)'}`);
+      // Who the task waits on and what the caller can do now: details, printed in every mode.
+      if (answer) for (const line of taskAnswerLines(answer)) console.error(line);
       if (err.code === 'RATE_LIMITED' && details.retryAfterSeconds !== undefined) console.error(`Retry after: ${details.retryAfterSeconds} s`);
       if (details.used !== undefined && details.limit !== undefined) console.error(`Workspaces: ${details.used} of ${details.limit}${details.plan ? ` (${details.plan})` : ''}`);
       if (err.code === 'INVALID_ASSIGNEE' || err.code === 'INVALID_REVIEWER') {
@@ -95,11 +104,10 @@ export function outputError(err: CliError): never {
     }
   }
 
-  // Always write actionable hints to stderr when interactive
-  if (process.stderr.isTTY) {
-    const hint = errorHint(err);
-    if (hint) console.error(`Hint: ${hint}`);
-  }
+  // The next step, on stderr whether or not it is a terminal (agents read piped stderr), in every
+  // output mode: stdout stays the command's data.
+  const hint = errorHint(err);
+  if (hint) console.error(`Hint: ${hint}`);
 
   process.exit(1);
 }
@@ -117,7 +125,7 @@ function principalCandidateWords(candidate: PrincipalCandidateDetails): string {
  */
 export const ACTIONS_GUEST_HINT = 'Nothing was changed. Reading still works. Tell your person.';
 
-/** The terminal hint for a failure: the command's own, else the code's. */
+/** The hint for a failure: the command's own, else the code's. */
 function errorHint(err: CliError): string | undefined {
   if (err.hint) return err.hint;
   if (err.code === 'ACTIONS_LIMIT_REACHED' && !err.details) return ACTIONS_GUEST_HINT;

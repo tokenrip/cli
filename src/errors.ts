@@ -37,8 +37,12 @@ export interface DomainErrorDetails {
   reviewer?: TaskPrincipalDetails | null;
   /** `TASK_NOT_IN_REVIEW`: where the task is now. */
   status?: string;
-  /** `VERSION_IN_USE`: the task whose review round keeps the version, and the round. */
-  task?: string | null;
+  /**
+   * `VERSION_IN_USE`: the id of the task whose review round keeps the version (with `round`).
+   * A refused task move ({@link TASK_ANSWER_CODES}): the task's answer, who it waits on and what the
+   * caller can do now.
+   */
+  task?: string | null | TaskAnswerDetails;
   round?: number | null;
   /**
    * `OUTPUT_EXISTS`: the output not failed that holds the key (its id, kind, status, target, ref, the
@@ -132,6 +136,42 @@ export interface TaskPrincipalDetails {
   agent: { id: string | null; name: string | null; harness: string | null } | null;
   mine: boolean;
   isCaller: boolean;
+}
+/** The server's `TASK_MOVES` (apps/backend/src/db/models/task-vocabulary.ts), in its order. */
+export const TASK_MOVES = ['start', 'stop', 'complete', 'cancel', 'reopen', 'propose', 'decide', 'report'] as const;
+export type TaskMove = (typeof TASK_MOVES)[number];
+/** The server's `TASK_WAITS_ON_WHO`, `TASK_WAITS_ON_TO` and `TASK_MOVE_REFUSALS` (the same file). */
+const TASK_WAITS_ON_WHO = ['assignee', 'reviewer', 'holder', 'anyone'] as const;
+const TASK_WAITS_ON_TO = ['do', 'carry_out', 'decide', 'finish'] as const;
+const TASK_MOVE_REFUSALS: ReadonlySet<unknown> = new Set([
+  'WORKSPACE_FORBIDDEN', 'LINK_SESSION_FORBIDDEN', 'TASK_IN_REVIEW', 'TASK_TAKEN', 'TASK_NOT_STARTED', 'TASK_ALREADY_DONE',
+  'TASK_CLOSED', 'TASK_NOT_CLOSED', 'TASK_NOT_IN_REVIEW', 'REVIEW_NOT_YOURS', 'TASK_NOT_DONE',
+]);
+/** The codes whose refusal carries the task's answer as `task` (the server's `answerCodes`, apps/backend/src/execution/failure.ts). */
+const TASK_ANSWER_CODES: ReadonlySet<string> = new Set([
+  'TASK_TAKEN', 'TASK_IN_REVIEW', 'TASK_NOT_IN_REVIEW', 'REVIEW_NOT_YOURS', 'TASK_NOT_STARTED', 'TASK_CLOSED', 'TASK_ALREADY_DONE',
+  'TASK_NOT_CLOSED', 'TASK_NOT_DONE',
+]);
+/** Whose turn a task is, as the server's `waitsOn` says it (task turns design § 5.1). */
+export interface TaskWaitsOnDetails {
+  who: (typeof TASK_WAITS_ON_WHO)[number];
+  to: (typeof TASK_WAITS_ON_TO)[number];
+  you: boolean;
+  /** Only when the task waits on the caller and its sign-in cannot make the expected move: that refusal's code. */
+  blocked?: string;
+}
+/**
+ * The task's answer on a refused move (the server's `TaskAnswer`, task turns plan D6), each field
+ * kept only when the server sent it well formed: an older server sends none, and `task` is absent.
+ */
+export interface TaskAnswerDetails {
+  id?: string;
+  status?: string;
+  waitsOn?: TaskWaitsOnDetails | null;
+  moves?: TaskMove[];
+  holder?: TaskHolderDetails | null;
+  assignee?: TaskPrincipalDetails | null;
+  reviewer?: TaskPrincipalDetails | null;
 }
 /** The server's `TASK_ROUND_VERDICTS` (apps/backend/src/db/models/task-vocabulary.ts). */
 export const TASK_ROUND_VERDICTS = ['approved', 'sent_back', 'cancelled', 'withdrawn', 'replaced'] as const;
@@ -348,6 +388,11 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
       if (latestRound) details.latestRound = latestRound;
     }
   } else if (code === 'KEY_ACCESS_LIMITED') Object.assign(details, keyAccessLimitedDetails(body));
+  // A refused move carries the task's answer beside its own details (task turns design § 5.4).
+  if (TASK_ANSWER_CODES.has(code)) {
+    const task = taskAnswerDetails(body.task);
+    if (task) details.task = task;
+  }
   return Object.keys(details).length ? details : undefined;
 }
 
@@ -429,6 +474,44 @@ function taskPrincipalDetails(value: unknown): TaskPrincipalDetails | undefined 
     agent: agent ? { id: agent.id as string | null, name: agent.name as string | null, harness: agent.harness as string | null } : null,
     mine: p.mine, isCaller: p.isCaller,
   };
+}
+
+/**
+ * The task's answer on a refused move, field by field as the server validates it: a malformed field
+ * is dropped alone (a `waitsOn` whose `who`, `to` or `you` is malformed goes whole, its `blocked`
+ * alone; a move outside the closed set alone; a malformed holder or principal whole), and nothing
+ * but these fields crosses. Undefined when the body carries no answer.
+ */
+function taskAnswerDetails(value: unknown): TaskAnswerDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const t = value as Record<string, unknown>;
+  const task: TaskAnswerDetails = {};
+  if (typeof t.id === 'string' && ANY_UUID.test(t.id)) task.id = t.id;
+  if (typeof t.status === 'string' && TASK_STATUSES.has(t.status)) task.status = t.status;
+  const waitsOn = t.waitsOn as Record<string, unknown> | null | undefined;
+  if (waitsOn === null) task.waitsOn = null;
+  else if (waitsOn && typeof waitsOn === 'object' && (TASK_WAITS_ON_WHO as readonly unknown[]).includes(waitsOn.who)
+    && (TASK_WAITS_ON_TO as readonly unknown[]).includes(waitsOn.to) && typeof waitsOn.you === 'boolean') {
+    task.waitsOn = {
+      who: waitsOn.who as TaskWaitsOnDetails['who'], to: waitsOn.to as TaskWaitsOnDetails['to'], you: waitsOn.you,
+      ...(TASK_MOVE_REFUSALS.has(waitsOn.blocked) ? { blocked: waitsOn.blocked as string } : {}),
+    };
+  }
+  // The server's order is the table's, which is `TASK_MOVES`'.
+  if (Array.isArray(t.moves)) task.moves = TASK_MOVES.filter((move) => (t.moves as unknown[]).includes(move));
+  if (t.holder === null) task.holder = null;
+  else {
+    const holder = taskHolderDetails(t.holder);
+    if (holder) task.holder = holder;
+  }
+  for (const role of ['assignee', 'reviewer'] as const) {
+    if (t[role] === null) task[role] = null;
+    else {
+      const principal = taskPrincipalDetails(t[role]);
+      if (principal) task[role] = principal;
+    }
+  }
+  return Object.keys(task).length ? task : undefined;
 }
 
 /** A latest round, every field checked; anything malformed drops the whole round. */
@@ -557,7 +640,7 @@ function trashedDetails(body: Record<string, unknown>): DomainErrorDetails {
 
 export class CliError extends Error {
   public readonly details?: CliErrorDetails;
-  /** The terminal hint for this failure when the command knows better than `ERROR_HINTS[code]`. */
+  /** The hint for this failure when the command knows better than `ERROR_HINTS[code]`. */
   public hint?: string;
   /**
    * What a multi-call command finished before it failed (`rip trash purge --all`: the pages

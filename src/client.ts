@@ -325,6 +325,8 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         reviewer?: unknown;
         /** `TASK_NOT_IN_REVIEW`: the latest round and how it ended. */
         latestRound?: unknown;
+        /** A refused task move: the task's answer (who it waits on, the caller's open moves). */
+        task?: unknown;
         /** An input refusal's place, valid columns and CSV header (`INVALID_FIELD`, the row-query and CSV codes). */
         path?: unknown;
         available?: unknown;
@@ -397,7 +399,7 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
         const safeDetails = safeErrorDetails(errorCode, Array.isArray(data.details) ? data.details : {
           ...trashed,
           ...(data.details && typeof data.details === 'object' ? data.details : {}),
-          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'currentTableRevision', 'reason', 'holder', 'reviewer', 'latestRound', 'output',
+          ...Object.fromEntries(['field', 'fields', 'status', 'currentVersionId', 'currentRevision', 'currentWorkspaceRevision', 'currentTableRevision', 'reason', 'holder', 'reviewer', 'latestRound', 'task', 'output',
             'usedBytes', 'limitBytes', 'addedBytes', 'usedActions', 'limitActions', 'resetsAt', 'plan', 'path', 'available', 'availableTruncated', 'column', 'rule', 'resource']
             .filter(field => data[field as keyof typeof data] !== undefined).map(field => [field, data[field as keyof typeof data]])),
           // A per-call row limit's numbers sit at the top level; other codes keep their own `limit`.

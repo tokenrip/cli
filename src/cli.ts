@@ -1856,6 +1856,7 @@ task
   .option('--job <name>', 'Only tasks of this job (its name, from rip workspace load or rip job list)')
   .option('--mine', 'Only tasks for you (your person, or you as an agent) or held by you')
   .option('--unassigned', 'Only tasks for no one, held or not (not with --mine)')
+  .option('--waiting', 'Only what waits on you: approved work to carry out, reviews addressed to you, then To do tasks for you, each in queue order (takes no --order; a task you already hold without an approval is not listed)')
   .option('--reviewer <me>', "Only 'me': reviews In review addressed to you (rip task decide them)")
   .option('--since <iso>', 'Only tasks created after this ISO timestamp, or a time back: days (7, 0.5) or 12h, 3d, 2w')
   .option('--order <order>', "omit for queue order when every status is open (created when any is done or cancelled); created: newest first; finished: newest finish first (only with --status done and/or cancelled)")
@@ -1863,6 +1864,11 @@ task
   .option('--cursor <cursor>', 'Continue from a previous page (same filters and order)')
   .allowExcessArguments(false)
   .description('List tasks')
+  .addHelpText('after', `
+Examples:
+  $ rip task list --workspace-id acme --waiting
+  $ rip task list --workspace-id acme --mine --status todo,doing
+`)
   .action(wrapCommand(async (options) => {
     const { taskList } = await import('./commands/task.js');
     await taskList(options);
@@ -1979,8 +1985,17 @@ task's draft artifacts.
 withOptionalWhy(task
   .command('stop'))
   .argument('<id>', 'Task id')
+  .option('--assignee <who>', 'Who it is for next: me, a person (account id, alias or @alias), or an agent: agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> from rip workspace load')
+  .option('--no-assignee', 'Leave it for anyone')
+  .option('--comment <text>', 'A comment posted to the task\'s thread with the stop: what the next one needs to know')
   .allowExcessArguments(false)
-  .description('Stop a task you hold, or withdraw your own proposal In review; it goes back to To do (workspace admins may stop anyone\'s)')
+  .description('Stop a task you hold, or withdraw your own proposal In review; it goes back to To do (workspace admins may stop anyone\'s). Say who is next with --assignee; without it the task stays for whoever it was for')
+  .addHelpText('after', `
+EXAMPLES:
+  $ rip task stop 7a1c2d1e-...                                                    # back to To do, for whoever it was for
+  $ rip task stop 7a1c2d1e-... --assignee agent:9b1d0e2a-... --comment "Outline is in the draft; the numbers still need checking"
+  $ rip task stop 7a1c2d1e-... --no-assignee                                       # for anyone
+`)
   .action(wrapCommand(async (id, options) => {
     const { taskStop } = await import('./commands/task.js');
     await taskStop(id, options);
@@ -2029,7 +2044,8 @@ withWhy(task
   .option('--draft <text>', 'The exact text the action uses (the post, the email)')
   .option('--draft-file <path>', 'Read the draft from a file, verbatim')
   .option('--verb <verb>', 'The approve button\'s word, e.g. Post or Send (default Approve)')
-  .option('--then <step>', 'The step an approval moves the task to (a free tag, e.g. publish): it is then unassigned, for whoever does that step')
+  .option('--then <step>', 'The step an approval moves the task to (a free tag, e.g. publish): it is then for whoever does that step, or for --then-assignee')
+  .option('--then-assignee <who>', 'With --then: who the task is for at that step once approved (the reviewer may change it): me, a person (account id, alias or @alias), or an agent: agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> from rip workspace load')
   .option('--comment <text>', 'A comment for the reviewer, posted with the proposal')
   .option('--type <type>', 'What kind of work it is (a free tag, e.g. x-reply); your instructions may let some types run on their own')
   .option('--reviewer <who>', 'Who decides: a person, or an agent as agent:<name>, agent:<key id> or agent:<handle> (default your own person; never you)')
@@ -2044,12 +2060,13 @@ EXAMPLES:
   $ rip task propose --workspace-id 4f2c1b90-... --title "Reply to @jen" --draft-file reply.txt --verb Post --type x-reply
   $ rip task propose 7a1c2d1e-... --draft-file post.md --then publish --comment "Shorter, as asked"     # a task you are doing, sent back to you, or your own proposal
   $ rip task propose 7a1c2d1e-... --draft-artifact 3c9e7f10-... --draft-artifact 8d2a4b61-...@2 --then post    # the files under review, each at its version
+  $ rip task propose 7a1c2d1e-... --draft-file post.md --then publish --then-assignee agent:publisher    # once approved, it waits at publish for that agent
   $ rip task propose --workspace-id 4f2c1b90-... --title "Take on the launch" --draft-file take.txt --job x-replies --type tweet    # under a job with task definitions: its first step, then and verb filled
 
 In review: stop; on a later run, rip workspace load lists it under Waiting on you once it is decided
 (approved: carry it out; sent back: the comment says what to change, then propose again).
 Doing and approved: carry out exactly approvedRound.final.text now, then rip task done <id> --result-text "…".
-Approved with a then: the task moved to that step for whoever does it; nothing more for you.
+Approved with a then: the task moved to that step for whoever does it (or for --then-assignee); nothing more for you.
 `)
   .action(wrapCommand(async (id, options) => {
     const { taskPropose } = await import('./commands/task.js');
@@ -2089,6 +2106,8 @@ const taskDecideCommand = withWhy(task
   .option('--comment <text>', 'A comment posted with the decision (required with --send-back: what to change)')
   .option('--then <step>', 'With --approve: move the task to this step instead of the proposal\'s then')
   .option('--no-then', 'With --approve: apply no then (the proposer carries it out)')
+  .option('--then-assignee <who>', 'With --approve: who the task is for at the next step, instead of the proposal\'s choice: me, a person (account id, alias or @alias), or an agent: agent:me, agent:<name> (your own agents), agent:<key id> or agent:<handle> from rip workspace load')
+  .option('--no-then-assignee', 'With --approve: leave the next step for whoever does it')
   .option('--edited-draft-file <path>', 'With --approve: read the text to carry out instead of the draft from a file, verbatim')
   .option('--edit-artifact <id@version>', 'With --approve: a draft artifact at its current version (repeatable). Omit it to approve each draft file as it is now', collectLink, [])
   .allowExcessArguments(false)
@@ -2098,6 +2117,7 @@ EXAMPLES:
   $ rip task decide 7a1c2d1e-... --approve --expected-revision 3
   $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edited-draft-file edited.txt --then publish
   $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --edit-artifact 3c9e7f10-...@4
+  $ rip task decide 7a1c2d1e-... --approve --expected-revision 3 --then-assignee agent:publisher    # the next step is for that agent
   $ rip task decide 7a1c2d1e-... --send-back --expected-revision 3 --comment "Name the day, not the date"
   $ rip task cancel 7a1c2d1e-... --reason "Not this week"   # to say no
 `)

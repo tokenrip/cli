@@ -1216,11 +1216,87 @@ function deciderWords(r: Record<string, any>): string {
   return r.decidedBy ? ` by ${principalWho(r.decidedBy as TaskPrincipalView)}` : '';
 }
 
-/** Who a listed task is with, after its latest round: its holder, who an In review task waits on, or who it is for. */
+/** `waitsOn.to` in words, after "to". */
+const WAITS_ON_TO_WORDS: Record<string, string> = { do: 'do it', carry_out: 'carry it out', decide: 'decide', finish: 'finish' };
+
+/**
+ * Who a task waits on and why, from the server's `waitsOn` (task turns plan M7): "~alek to decide",
+ * "anyone (you) to do it". `who` names the field of the same task that holds the principal, read in
+ * the who-words that field prints in elsewhere. An unaddressed review reads "any person who can edit
+ * tasks": only a person decides one. "(you)" marks a task waiting on the reader, unless the who-words
+ * already say so ("You …", "… this agent"). Null when the task waits on no one (finished) or the
+ * server sent no `waitsOn`.
+ */
+export function waitsOnWords(t: Record<string, any>): string | null {
+  const waits = t.waitsOn;
+  if (!waits || typeof waits !== 'object') return null;
+  let who: string;
+  if (waits.who === 'anyone') who = waits.to === 'decide' ? 'any person who can edit tasks' : 'anyone';
+  else if (waits.who === 'holder' && t.holder) who = holderWho(t.holder as TaskHolderView);
+  else if ((waits.who === 'assignee' || waits.who === 'reviewer') && t[waits.who]) who = principalWho(t[waits.who] as TaskPrincipalView);
+  else who = `its ${waits.who}`;
+  const marked = waits.you && !who.startsWith('You') && !who.endsWith('this agent');
+  return `${who}${marked ? ' (you)' : ''} to ${WAITS_ON_TO_WORDS[waits.to] ?? waits.to}`;
+}
+
+/** The why a command needs, as a visible placeholder: without it (or `TOKENRIP_WHY`) the command is refused `WHY_REQUIRED`. */
+const WHY_PLACEHOLDER = '--why "…"';
+
+/**
+ * The commands that make each move the server lists in `moves`, each one runnable as written once
+ * its placeholders are filled: a command that needs a why shows `--why "…"` (propose and decide;
+ * the moves and a later result on a Done task need none), and decide prints its two choices as two
+ * commands, never joined by `|`, which a shell reads as a pipe. A refused move's answer carries no
+ * revision, so decide then shows `<revision>`: the task's read supplies it. A move this CLI does
+ * not know prints as its word.
+ */
+function moveCommands(move: string, id: string, revision: unknown): string[] {
+  switch (move) {
+    case 'start': return [`rip task start ${id}`];
+    case 'stop': return [`rip task stop ${id}`];
+    case 'complete': return [`rip task done ${id}`];
+    case 'cancel': return [`rip task cancel ${id}`];
+    case 'reopen': return [`rip task reopen ${id}`];
+    case 'propose': return [`rip task propose ${id} --draft-file <path> ${WHY_PLACEHOLDER}`];
+    case 'decide': {
+      const expected = `--expected-revision ${revision ?? '<revision>'} ${WHY_PLACEHOLDER}`;
+      return [`rip task decide ${id} --approve ${expected}`, `rip task decide ${id} --send-back --comment "…" ${expected}`];
+    }
+    case 'report': return [`rip task report ${id} --result-text "…"`];
+    default: return [move];
+  }
+}
+
+/**
+ * The task's answer as lines (`rip task show`, and a refused move's `task`): `Waits on:` (with
+ * `Blocked:` when the reader's sign-in cannot make the move expected of it) and `You can:`, each
+ * open move as its command (decide as its two) in the order sent, or "nothing right now". A field the server did not
+ * send prints no line, so an older server prints none.
+ */
+export function taskAnswerLines(t: Record<string, any>): string[] {
+  const lines: string[] = [];
+  const waits = waitsOnWords(t);
+  if (waits) lines.push(`Waits on:   ${waits}`);
+  if (waits && t.waitsOn.blocked) lines.push(`Blocked:    this sign-in cannot make that move (${t.waitsOn.blocked})`);
+  if (Array.isArray(t.moves)) {
+    const moves = t.moves as string[];
+    if (moves.length) lines.push('You can:', ...moves.flatMap((move) => moveCommands(move, t.id ?? '<id>', t.revision)).map((command) => `  ${command}`));
+    else lines.push('You can:    nothing right now');
+  }
+  return lines;
+}
+
+/**
+ * Who a listed task is with, after its latest round. From a server that sends `waitsOn`: who it
+ * waits on and why (a finished task, which waits on no one, keeps who it was for). From an older
+ * one: its holder, who an In review task waits on, or who it is for.
+ */
 function taskWho(t: Record<string, any>): string {
   const parts: string[] = t.latestRound ? [roundWords(t.latestRound)] : [];
-  if (t.holder) parts.push(holderWho(t.holder as TaskHolderView));
-  else if (t.status === 'review') parts.push(`waiting on ${t.reviewer ? principalWho(t.reviewer as TaskPrincipalView) : 'anyone'}`);
+  const waits = waitsOnWords(t);
+  if (waits) parts.push(`waits on ${waits}`);
+  else if (t.holder && !('waitsOn' in t)) parts.push(holderWho(t.holder as TaskHolderView));
+  else if (t.status === 'review' && !('waitsOn' in t)) parts.push(`waiting on ${t.reviewer ? principalWho(t.reviewer as TaskPrincipalView) : 'anyone'}`);
   else if (t.assignee) parts.push(`for ${principalWho(t.assignee as TaskPrincipalView)}`);
   return parts.join(' · ');
 }
@@ -1245,7 +1321,7 @@ function taskJob(job: { id?: string; name?: string } | null | undefined): string
   return job ? `${job.name} [${job.id}]` : '-';
 }
 
-/** `rip task list` — one row per task: status, tags (type/step), title, then who holds it, who it waits on, or who it is for, the id, its job and its labels. */
+/** `rip task list` — one row per task: the status as sent, tags (type/step), title, then who it waits on and why (an older server: who holds it, who it waits on, or who it is for), the id, its job and its labels. */
 export const formatTaskList: Formatter = (data) => {
   const tasks = ((data as any).tasks ?? []) as Array<Record<string, any>>;
   const nextCursor = (data as any).nextCursor as string | null;
@@ -1311,7 +1387,8 @@ function roundVerdictLine(r: Record<string, any>): string {
 }
 
 /**
- * One round whole (`rip task show`): its step, proposer, verb and then, how it ended, the then an
+ * One round whole (`rip task show`): its step, proposer, verb and then (with who the next step is
+ * for, when the round names one), how it ended, the then an
  * approval applied, the decision comment, the draft and the approver's edit. The text the approved
  * round leaves to carry out is printed once, as Approved text, so here the draft is left out when it
  * is that text, and the edit always is.
@@ -1324,7 +1401,8 @@ function roundLines(heading: string, r: Record<string, any>, approvedNumber: num
     `  Proposed:  ${principalWho(r.proposedBy as TaskPrincipalView)} at ${r.proposedAt}`,
   ];
   if (r.approveVerb) lines.push(`  Approve:   ${r.approveVerb}`);
-  if (r.then) lines.push(`  Then:      ${r.then}`);
+  // Who the task is for at the next step once approved (the reviewer may change it).
+  if (r.then) lines.push(`  Then:      ${r.then}${r.thenAssignee ? `, for ${principalLine(r.thenAssignee as TaskPrincipalView)}` : ''}`);
   lines.push(`  Verdict:   ${roundVerdictLine(r)}`);
   if (r.appliedThen) lines.push(`  Applied:   then ${r.appliedThen}`);
   if (r.comment) {
@@ -1520,7 +1598,8 @@ export const formatTaskStarted: Formatter = (data) => {
 };
 
 /**
- * `rip task show` — one task: who it is for and who reviews it, the text to carry out (the approved
+ * `rip task show` — one task: who it is for and who reviews it, who it waits on and what the reader
+ * can do now as commands ({@link taskAnswerLines}), the text to carry out (the approved
  * round's final text), its latest round (and `--round`'s), the result, its Files (the detail's
  * derived `files`, each with its relationship) and Links (its URL links, results marked), children
  * and the newest page of its timeline. A write receipt has no `files`, so it prints "Files & links"
@@ -1542,7 +1621,8 @@ export const formatTask: Formatter = (data) => {
   if ('job' in t) lines.push(`Job:        ${taskJob(t.job)}`);
   if (t.assignee) lines.push(`For:        ${principalLine(t.assignee as TaskPrincipalView)}`);
   if ('reviewer' in t) lines.push(`Reviewer:   ${t.reviewer ? principalLine(t.reviewer as TaskPrincipalView) : 'any person who can edit tasks'}`);
-  if (t.holder) lines.push(`Doing:      ${taskHolderLine(t.holder as TaskHolderView)}`);
+  if (t.holder && t.status === 'doing') lines.push(`Doing:      ${taskHolderLine(t.holder as TaskHolderView)}`);
+  lines.push(...taskAnswerLines(t));
   if (t.parentId) lines.push(`Parent:     ${t.parentId}`);
   if (t.completedAt) lines.push(`Completed:  ${t.completedBy ? principalWho(t.completedBy as TaskPrincipalView) : (t.completedById ?? '-')} at ${t.completedAt}`);
   if (t.status === 'cancelled' && t.cancelledAt) {
@@ -2220,7 +2300,7 @@ function instructionsLines(instructions: Record<string, any> | null): string[] {
 const WAITING_WORDS: Record<string, string> = { carry_out: 'carry out', decide: 'decide', do: 'do' };
 const WAITING_NEXT: Record<string, string> = {
   carry_out: 'carry out: the exact text is approvedRound.final.text in rip task show <id> --json; carry out exactly that, then rip task done <id> --result-text "…"',
-  decide: 'decide: rip task show <id>, then rip task decide <id> --approve|--send-back --expected-revision <revision> (a send back needs --comment; to say no, rip task cancel <id>)',
+  decide: 'decide: rip task show <id>, then rip task decide <id> --approve --expected-revision <revision> --why "…", or rip task decide <id> --send-back --comment "…" --expected-revision <revision> --why "…" (to say no, rip task cancel <id>)',
   do: 'do: read it with rip task show <id> (a round sent back says what to change in its comment); if it acts outside the workspace, propose first (rip task propose <id>)',
 };
 

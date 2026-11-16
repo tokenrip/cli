@@ -33,6 +33,7 @@ Every task lives in exactly one workspace, and everyone in the workspace sees it
 rip task list --workspace-id <ws>                        # To do and Doing tasks you can see
 rip task list --workspace-id <ws> --type article --step draft    # by tags
 rip task list --workspace-id <ws> --reviewer me          # reviews In review addressed to you
+rip task list --workspace-id <ws> --waiting              # only what waits on you: approved work, reviews to decide, tasks for you
 rip task list --workspace-id <ws> --mine                 # for you (your person, or you as an agent) or held by you
 rip task list --workspace-id <ws> --unassigned           # for no one, held or not
 rip task list --workspace-id <ws> --status review        # every proposal In review you can see
@@ -41,7 +42,11 @@ rip task list --workspace-id <ws> --status done,cancelled --order finished   # m
 rip task show <id>                                       # everything: who, the rounds, what to carry out, links, children, the newest timeline entries
 ```
 
-Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (omitted: [queue order](#queue-order) when every status is open, else newest first; `created`, newest first; or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--label` (repeated or a comma list: only tasks with all of those labels), `--job <name>`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's type and step and its latest round (`round 2 · sent back`).
+Filters: `--status` (comma list of `todo,doing,review,done,cancelled`, or `all`; default `todo,doing`, or `review` with `--reviewer me` alone), `--order` (omitted: [queue order](#queue-order) when every status is open, else newest first; `created`, newest first; or `finished`, which needs `--status` of only `done` and/or `cancelled`), `--type`, `--step`, `--label` (repeated or a comma list: only tasks with all of those labels), `--job <name>`, `--mine` or `--unassigned` (not both), `--reviewer me`, `--waiting`, `--since`, `--limit` (max 200), `--cursor` (replay it with the same filters and order). Each row shows the task's status, its type and step, its latest round (`round 2 · sent back`) and whose turn it is.
+
+**Whose turn, and what you can do.** Every task says who it waits on and why: `waits on <who> to do it` (To do), `to carry it out` (To do, approved), `to finish` (Doing, its holder) or `to decide` (In review, its reviewer); `anyone` when nobody is named (`any person who can edit tasks` for a review addressed to no one: only a person decides it), `(you)` when it waits on you and the words do not already say so (`You …`, `… this agent`), and nothing for a Done or Cancelled task. `rip task show <id>` prints it as `Waits on:` and adds `You can:`, the moves open to you right now as the commands to run (`rip task start <id>`, `rip task done <id>`, …), or `nothing right now`. Each runs as written once its placeholders are filled: a propose or a decide shows `--why "…"` (refused `WHY_REQUIRED` without it, unless `TOKENRIP_WHY` is set), and a decide prints two commands, one with `--approve` and one with `--send-back --comment "…"`, both with the task's revision; a `Blocked:` line means the task waits on you but this sign-in cannot make that move. In `--json` these are `waitsOn` (`{ who, to, you, blocked? }`, `who` naming the task's `assignee`, `reviewer` or `holder` field, or `anyone`; null when finished), `moves` (from `start`, `stop`, `complete`, `cancel`, `reopen`, `propose`, `decide`, `report`) and `lastMessageAt` (the newest message in the task's thread, or null). The status is the one that holds now: an agent's hold whose lease ran out reads `todo` with no holder.
+
+**`--waiting`** lists only what waits on you, in the order `rip workspace load` lists it: approved work to carry out, reviews to decide, then To do tasks for you, each in queue order. It takes no `--order` and combines with the other filters. Approved work you already started is listed too (its row reads `to finish`); a task you hold without an approval is not.
 
 ### Type and step
 
@@ -50,7 +55,7 @@ Two free tags carry your workspace's own workflow. **`type`** is what the work i
 - Set both with `rip task add --type --step` and `rip task update --type --step` (`--no-type` / `--no-step` clear one); setting the type records you as who gave it.
 - **Labels** are your person's own words for grouping work (`client:acme`, `campaign.q4`, `urgent`): a set of at most 20 per task, lowercase letters, digits, `-`, `_`, `:` and `.`. Set them with `--label` (repeatable) on `rip task add` and a new `rip task report`, change them with `rip task update --add-label <l> --remove-label <l>`, and filter with `rip task list --label client:acme,urgent` (all of them). `rip task show` prints them; Tokenrip never interprets them.
 - `rip task propose` and `rip task report` take `--type`: on an existing task it fills a missing type, and another type is `INVALID_FIELD`.
-- A proposal's **`--then <step>`** is the step an approval moves the task to. Approved with a then, the task is To do at that step and assigned to no one, for whoever does that step to claim. Without one it comes back to you to carry out. The reviewer may change or clear it when approving. Under a job with task definitions, `--then` must be a step of the task's definition, and at a step that ends in an approval an omitted `--then` is the next main step and an omitted `--verb` the step's.
+- A proposal's **`--then <step>`** is the step an approval moves the task to. Approved with a then, the task is To do at that step and assigned to no one, for whoever does that step to claim, unless the proposal names who takes it: `--then-assignee <who>` (named as an assignee is) makes it for them at that step, and the reviewer may change or clear that when approving. Without one it comes back to you to carry out. The reviewer may change or clear it when approving. Under a job with task definitions, `--then` must be a step of the task's definition, and at a step that ends in an approval an omitted `--then` is the next main step and an omitted `--verb` the step's.
 
 ### Start: claim your next piece of work
 
@@ -125,9 +130,9 @@ rip task propose <id> --draft "Thanks Jen, we ship Thursday!" --comment "Shorter
 - **On an existing task** it works from To do or Doing when the task is free or held by you, and on your own proposal In review, whose round it replaces (that round closes `replaced`). Your hold is cleared; the assignment never changes, so a task you claimed by tags stays for no one. The title and parent never change. Someone else's proposal is `TASK_IN_REVIEW`.
 - **Who reviews it.** The task's reviewer when one is set (naming a different one is `INVALID_REVIEWER`), else your `--reviewer`, else your own person. Never you.
 - **The reply.** Usually `status: review` (In review): stop. Do not act, and do not ask in the chat; the reviewer decides (a person in the dashboard). A re-proposal bumps the revision, so a decision made on the old draft is refused `CONFLICT`.
-- **On its own.** When the proposal goes to your own person and its type is on your instructions' on-its-own list, it comes back approved at once (the round names the instructions version): without `--then`, `status: doing`, held by you, to carry out now; with `--then`, To do at that step for whoever does it. That holds only when your own account gave the task its type: your own new proposals, tasks your person (or another of their agents) wrote or tagged with that type, and types you set on a task that had none. A type someone else gave a task never approves it on its own.
+- **On its own.** When the proposal goes to your own person and its type is on your instructions' on-its-own list, it comes back approved at once (the round names the instructions version): without `--then`, `status: doing`, held by you, to carry out now; with `--then`, To do at that step for whoever does it (or for `--then-assignee`). That holds only when your own account gave the task its type: your own new proposals, tasks your person (or another of their agents) wrote or tagged with that type, and types you set on a task that had none. A type someone else gave a task never approves it on its own.
 - **Limits.** At most 50 rounds per task (`TOO_MANY_ROUNDS`), 200 of your proposals In review per workspace (`TOO_MANY_PROPOSALS`), 10 draft files per round; a task holds at most 100 children.
-- **Withdraw** your own proposal with `rip task stop <id>`: the round closes `withdrawn` and the task goes back to To do, still for whoever it was for. `rip task cancel <id> --reason "…"` ends it instead: the round closes `cancelled` and the task is Cancelled. Its proposer, the proposer's person or whoever decides it may cancel it; anyone else gets `REVIEW_NOT_YOURS`.
+- **Withdraw** your own proposal with `rip task stop <id>`: the round closes `withdrawn` and the task goes back to To do, still for whoever it was for unless you say who is next (`--assignee <who>` or `--no-assignee`, with an optional `--comment`, as on any stop). `rip task cancel <id> --reason "…"` ends it instead: the round closes `cancelled` and the task is Cancelled. Its proposer, the proposer's person or whoever decides it may cancel it; anyone else gets `REVIEW_NOT_YOURS`.
 
 ### Read the decision
 
@@ -136,7 +141,7 @@ rip task propose <id> --draft "Thanks Jen, we ship Thursday!" --comment "Shorter
 | Latest round | The task is | Next |
 |---|---|---|
 | in review | In review | Nothing: wait for the decision |
-| `approved` | To do (or Doing, approved on its own), for you to carry out; with a then, To do at that step for whoever claims it | Carry out exactly the approved round's final material, then `rip task done` |
+| `approved` | To do (or Doing, approved on its own), for you to carry out; with a then, To do at that step for whoever claims it, or for the one `--then-assignee` named | Carry out exactly the approved round's final material, then `rip task done` |
 | `sent_back` | To do, still for whoever it was for, at the same step | Read the comment, revise, `rip task propose <id>` again (keep `--then`) |
 | `cancelled` | Cancelled, with the canceller's reason | Nothing; do not carry it out |
 | `withdrawn` | To do (stopped) | Its proposer withdrew it with `rip task stop`, or lost access to the task |
@@ -184,7 +189,7 @@ rip task cancel <id> --reason "Not this week"                       # to say no:
 ```
 
 - An agent decides only a review whose reviewer is exactly its key. A person's review, an unaddressed one (any other person decides those), another agent's, and your own proposal are `REVIEW_NOT_YOURS`, with `Reviewer:` saying whose it is; nothing is written. A person decides theirs in the dashboard, from their own sign-in.
-- A review has two answers: exactly one of `--approve` and `--send-back`. `--comment` may go with either (posted in the same write) and is required with `--send-back`: it says what to change. `--approve` takes `--then <step>` (overrides the proposal's) or `--no-then` (clears it), `--edited-draft-file` (the text then carried out; kept only when it differs) and `--edit-artifact <id>@<version>` (the current version of a draft file). Omitting `--edit-artifact` approves each draft file as it is now. A named version that is not current is `CONFLICT` with `details.reason` `not_current` and `details.current` (`Current version: vN`), and no `currentRevision`.
+- A review has two answers: exactly one of `--approve` and `--send-back`. `--comment` may go with either (posted in the same write) and is required with `--send-back`: it says what to change. `--approve` takes `--then <step>` (overrides the proposal's) or `--no-then` (clears it), `--then-assignee <who>` (who the task is for at the next step, instead of the proposal's choice) or `--no-then-assignee` (leave that step for whoever does it), `--edited-draft-file` (the text then carried out; kept only when it differs) and `--edit-artifact <id>@<version>` (the current version of a draft file). Omitting `--edit-artifact` approves each draft file as it is now. A named version that is not current is `CONFLICT` with `details.reason` `not_current` and `details.current` (`Current version: vN`), and no `currentRevision`.
 - `--send-back` makes the task To do with its assignment and step unchanged, so it goes back to whoever had it.
 - To say no, cancel the task: `rip task cancel <id> --reason "…" --expected-revision <n>`. The reviewer may cancel a task In review; the round closes `cancelled`. `--expected-revision` (optional) is the revision you read: a draft replaced, decided or started since is `CONFLICT` and nothing is cancelled. `--decline` and `--reason` on decide are refused with a hint naming `rip task cancel`.
 - An approval is refused `DELETED` while a draft file is in the trash or after it was purged: send it back or cancel it instead.
@@ -289,7 +294,9 @@ reopen: done and cancelled go back to todo; a proposal cancelled In review and s
 ```bash
 rip task start <id> --lease-hours 4
 rip task start <id>                              # again on long work: renews your lease
-rip task stop <id>                               # back to To do (on your own proposal: withdraws it)
+rip task stop <id>                               # back to To do, for whoever it was for (on your own proposal: withdraws it)
+rip task stop <id> --assignee agent:<handle> --comment "Outline is in the draft; the numbers still need checking"   # hand it on
+rip task stop <id> --no-assignee                 # back to To do, for anyone
 rip task done <id> --result-text "…" --link artifact:q3-memo@2
 rip task cancel <id> --reason "duplicate"
 rip task reopen <id>
@@ -312,7 +319,7 @@ Creating, editing, proposing, deciding and a new report state `--why "<the perso
 - **Visibility** follows the workspace: every member sees every task. No access: `WORKSPACE_FORBIDDEN`.
 - **Writing** (add, propose, report, start, stop, done, cancel, reopen, update) needs task-write access: any editor or admin, guests included, on any task. A viewer holds none. A workspace in the trash answers 410 `WORKSPACE_DELETED` to every task call until an admin restores it.
 - **Posting a message** in the task's thread needs only read access: anyone who can read the task, viewers included (a key limited to reading is refused `KEY_ACCESS_LIMITED`).
-- **Stop** is for the holder. The person may stop any of their own agents' holds, and a workspace admin may stop anyone's; everyone else gets `TASK_TAKEN`.
+- **Stop** is for the holder. The person may stop any of their own agents' holds, and a workspace admin may stop anyone's; everyone else gets `TASK_TAKEN`. A stop can say who is next: `--assignee <who>` (named as on `add`), `--no-assignee` (anyone), and `--comment "…"`, posted to the task's thread in the same write; a newly named assignee is notified. Without them the task stays for whoever it was for.
 - Losing task-write access (removed from the workspace or its owning team, or changed to viewer) stops your holds, withdraws your open proposals, and clears the assignee and reviewer roles you can no longer fill.
 
 ### Files and links
@@ -448,6 +455,8 @@ That value lands on the task's `holder.surface` and every activity row — so a 
 
 ## Error recovery
 
+A refused move (`TASK_TAKEN`, `TASK_IN_REVIEW`, `TASK_NOT_IN_REVIEW`, `REVIEW_NOT_YOURS`, `TASK_NOT_STARTED`, `TASK_CLOSED`, `TASK_ALREADY_DONE`, `TASK_NOT_CLOSED`, `TASK_NOT_DONE`) prints where the task stands, on stderr: `Status:`, `Waits on:` and `You can:`, the commands open to you now (in `--json`, `details.task`: `{ id, status, waitsOn, moves, holder, assignee, reviewer }`). Take the next step from `You can:` instead of reading the task again; a move that needs the task's revision (decide, printed with `--expected-revision <revision>`) still needs a read for it: `rip task show <id>`. A `Hint:` line, when the code has one, also prints on stderr, in a terminal or not.
+
 | Error | Fix |
 |---|---|
 | `WORKSPACE_REQUIRED` | `task list` / `task add` / a new `task propose` or `task report` need `--workspace-id`: every task lives in a workspace |
@@ -468,9 +477,9 @@ That value lands on the task's `holder.surface` and every activity row — so a 
 | `MESSAGE_NOT_YOURS` / `MESSAGE_NOT_FOUND` | Only a message's author changes or deletes it: post your own instead / the message is deleted, or in a thread you cannot read |
 | `CONFLICT` | On `decide`: the task revision moved (`currentRevision`: read the task again), or a named `--edit-artifact` version is not the file's current one (`details.current`, printed `Current version: vN`; name that version; no `currentRevision`). On `update`: re-read and retry |
 | `PRECONDITION_REQUIRED` | `decide` and `update` need `--expected-revision` (a move alone, `--position`/`--before`/`--after`, needs none) |
-| `TASK_NOT_STARTED` | `stop` on a task that is not Doing (or your lease already lapsed). `rip task show <id>` |
-| `TASK_CLOSED` | The task is cancelled (or, for `start`, done). Reopen it first if the work is still wanted |
-| `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Already done (reopen first) / only done or cancelled tasks reopen. `rip task show <id>` |
+| `TASK_NOT_STARTED` | `stop` on a task that is not Doing (or your lease already lapsed). `You can:` lists what is open |
+| `TASK_CLOSED` | The task is cancelled (or, for `start`, done). Reopen it first if the work is still wanted (`You can:` lists `rip task reopen <id>` when you may) |
+| `TASK_ALREADY_DONE` / `TASK_NOT_CLOSED` | Already done (reopen first, or add a later result with `rip task report <id>`) / only done or cancelled tasks reopen. `Waits on:` and `You can:` say where it stands |
 | `INVALID_ASSIGNEE` | The `--assignee` names nobody who can edit tasks in the workspace: the error's `details.reason` is `unknown` (an unknown person too), `ambiguous` (two of your agents share the name), `revoked` or `cannot_edit_tasks`, and `details.candidates` lists who you can name (your own agents by handle and name, you as `me` when your key has not been recorded here yet, people by id and alias, other agents by handle); the human output prints them on one `Candidates:` line |
 | `INVALID_FIELD` | A draft over 64,000 characters, a verb over 24, a result or cancel reason over 64,000, a type or step not matching the grammar, a type other than the task's, a draft file given twice or an 11th, an edit of a file not in the draft or not later than it, a round number the task does not have, or a parent outside the workspace (or with 100 children). `field` says which |
 | `INVALID_CURSOR` | Cursors are opaque: re-run the query rather than editing the value |

@@ -21,6 +21,8 @@ export interface TaskListOptions {
   mine?: boolean;
   /** Only tasks for no one (`assignee=none`); never beside `mine`. */
   unassigned?: boolean;
+  /** Only what waits on the caller (`waiting=me`): the one waiting rule, in its own order. */
+  waiting?: boolean;
   since?: string;
   limit?: string;
   cursor?: string;
@@ -132,6 +134,7 @@ export async function taskList(options: TaskListOptions): Promise<void> {
   if (options.job) q.set('job', options.job);
   if (options.mine) q.set('assignee', 'me');
   if (options.unassigned) q.set('assignee', 'none');
+  if (options.waiting) q.set('waiting', 'me');
   if (options.since) q.set('since', options.since);
   if (options.limit) q.set('limit', options.limit);
   if (options.cursor) q.set('cursor', options.cursor);
@@ -297,10 +300,24 @@ export async function taskStart(id: string | undefined, options: TaskStartOption
   outputSuccess(data.data, formatTaskStarted);
 }
 
-/** Put a task you hold back in To do, or withdraw your own proposal In review (its round closes withdrawn). */
-export async function taskStop(id: string, options: TaskWriteOptions = {}): Promise<void> {
+export interface TaskStopOptions extends TaskWriteOptions {
+  /** Who the task is for next, named as on `task add`, or `false` (`--no-assignee`) for anyone. */
+  assignee?: string | false;
+  /** A comment posted to the task's thread with the stop. */
+  comment?: string;
+}
+
+/**
+ * Put a task you hold back in To do, or withdraw your own proposal In review (its round closes
+ * withdrawn). `--assignee` says who it is for next (`--no-assignee`: anyone) and `--comment` posts
+ * to its thread in the same write; without them the task stays for whoever it was for.
+ */
+export async function taskStop(id: string, options: TaskStopOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(taskPath(id, 'stop'), attribution(options));
+  const body: Record<string, unknown> = { ...attribution(options) };
+  if (options.assignee !== undefined) body.assignee = options.assignee === false ? null : options.assignee;
+  if (options.comment !== undefined) body.comment = options.comment;
+  const { data } = await client.post(taskPath(id, 'stop'), body);
   outputSuccess(data.data, formatTask);
 }
 
@@ -396,6 +413,8 @@ export interface TaskProposeOptions extends TaskWriteOptions {
   verb?: string;
   /** The step an approval moves the task to (a free tag); the reviewer may change or clear it. */
   then?: string;
+  /** With `then`: who the task is for at that step once approved; the reviewer may change or clear it. */
+  thenAssignee?: string;
   /** A comment posted with the proposal, in the same write. */
   comment?: string;
   /** What kind of work it is; on an existing task, set only when it has none. */
@@ -434,7 +453,8 @@ export function parseEditArtifacts(raw: string[] | undefined): { artifact: strin
  * Propose an action before it leaves the workspace (feed, review and instructions design §5.7): a new
  * task In review, or a new round on a task that is free or yours (replacing your own open round). The
  * reply is In review (stop: it comes back to you), or approved when your instructions allow its type:
- * doing (carry out `approvedRound.final.text` now), or with `then`, at that step for whoever takes it.
+ * doing (carry out `approvedRound.final.text` now), or with `then`, at that step for whoever takes it
+ * (`thenAssignee` names who).
  */
 export async function taskPropose(id: string | undefined, options: TaskProposeOptions): Promise<void> {
   newTaskFields(id, options as Record<string, unknown>, { title: '--title', workspaceId: '--workspace-id', parentId: '--parent-id', body: '--body', job: '--job' }, 'proposal');
@@ -452,6 +472,7 @@ export async function taskPropose(id: string | undefined, options: TaskProposeOp
   if (draftArtifacts.length) body.draftArtifacts = draftArtifacts;
   if (options.verb !== undefined) body.approveVerb = options.verb;
   if (options.then !== undefined) body.then = options.then;
+  if (options.thenAssignee !== undefined) body.thenAssignee = options.thenAssignee;
   if (options.comment !== undefined) body.comment = options.comment;
   if (options.type !== undefined) body.type = options.type;
   if (options.reviewer !== undefined) body.reviewer = options.reviewer;
@@ -509,6 +530,8 @@ export interface TaskDecideOptions extends TaskWriteOptions {
   comment?: string;
   /** Approve only: the step to move the task to instead of the proposal's, or `false` (`--no-then`) for none. */
   then?: string | false;
+  /** Approve only: who the task is for at the next step instead of the proposal's choice, or `false` (`--no-then-assignee`) for whoever starts it. */
+  thenAssignee?: string | false;
   /** Approve only: a file whose text is carried out instead of the draft (sent as `edits.text`). */
   editedDraftFile?: string;
   /** Approve only: `<id>@<version>`, repeatable: a draft artifact at its current version (sent as `edits.artifacts`). Omit it to approve each draft file as it is now. */
@@ -518,7 +541,7 @@ export interface TaskDecideOptions extends TaskWriteOptions {
 const DECISIONS = [['approve', 'approve'], ['sendBack', 'send_back']] as const;
 
 /**
- * Decide a review addressed to you: approve (optionally with edits and a then) or send it back with a
+ * Decide a review addressed to you: approve (optionally with edits, a then and who takes it) or send it back with a
  * comment. A no is `rip task cancel` (plan D22). Every flag rule is checked before the edits file is read.
  */
 export async function taskDecide(id: string, options: TaskDecideOptions): Promise<void> {
@@ -526,6 +549,7 @@ export async function taskDecide(id: string, options: TaskDecideOptions): Promis
   if (chosen.length !== 1) throw invalid('Give exactly one of --approve and --send-back. To say no, cancel the task: rip task cancel <id> [--reason <text>].');
   const decision = chosen[0]![1];
   if (decision !== 'approve' && options.then !== undefined) throw invalid('--then and --no-then go with --approve: they set the step an approval moves the task to.');
+  if (decision !== 'approve' && options.thenAssignee !== undefined) throw invalid('--then-assignee and --no-then-assignee go with --approve: they set who the task is for at the step an approval moves it to.');
   if (decision !== 'approve' && options.editedDraftFile !== undefined) throw invalid('An edited draft goes with --approve: it is the text then carried out.');
   if (decision !== 'approve' && options.editArtifact?.length) throw invalid('--edit-artifact goes with --approve: it names the version of a draft artifact then carried out.');
   if (decision === 'send_back' && options.comment === undefined) throw invalid('A send back needs --comment: what to change before the next round.');
@@ -535,6 +559,7 @@ export async function taskDecide(id: string, options: TaskDecideOptions): Promis
   const body: Record<string, unknown> = { expectedRevision, decision };
   if (options.comment !== undefined) body.comment = options.comment;
   if (options.then !== undefined) body.then = options.then === false ? null : options.then;
+  if (options.thenAssignee !== undefined) body.thenAssignee = options.thenAssignee === false ? null : options.thenAssignee;
   if (edited !== undefined || editedArtifacts.length) {
     body.edits = { ...(edited !== undefined ? { text: edited } : {}), ...(editedArtifacts.length ? { artifacts: editedArtifacts } : {}) };
   }

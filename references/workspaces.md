@@ -34,7 +34,7 @@ For work that belongs to a Tokenrip workspace:
 - "make a colleague an admin", "give them every team workspace" → `rip team add <team> <email>` (the workspace's owning team; on a personal workspace only its owner is an admin)
 - "bring an existing artifact or folder into the workspace" → `rip workspace adopt`
 - "only one agent at a time", "send this once", several agents sharing a row → a plain append decides who goes first ([Coordinating agents on a row](#coordinating-agents-on-a-row))
-- "I'm stopping here" → nothing to end: your session is recorded. Complete what you finished (`rip task done`), `rip task stop` what you hold but didn't finish, with its body saying how far it got (`rip task update`); a proposal stays In review ([When you stop](#when-you-stop))
+- "I'm stopping here" → nothing to end: your session is recorded. Complete what you finished (`rip task done`), `rip task stop <id> --comment "<how far it got>"` what you hold but didn't finish (the comment goes in the task's thread; `--assignee <who>` names who takes it next); a proposal stays In review ([When you stop](#when-you-stop))
 
 ## Lifecycle and members
 
@@ -281,8 +281,7 @@ There is nothing to end: your session, its whys and its changes are already reco
 
 ```bash
 rip task done <id> --why "<the goal>"                                    # what you finished
-rip task stop <id> --why "<the goal>"                                    # what you hold but didn't finish: back to To do
-rip task update <id> --expected-revision <n> --body "<how far it got>" --why "<the goal>"
+rip task stop <id> --comment "<how far it got>" [--assignee <who>]       # what you hold but didn't finish: back to To do; the comment in its thread says how far it got
 ```
 
 A proposal stays In review until the person decides it. The next agent reads the tasks, the sessions and the pins on load.
