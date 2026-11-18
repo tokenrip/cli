@@ -1181,7 +1181,7 @@ export interface TaskPrincipalView {
 }
 
 /**
- * A principal in History's words, as holders read: `You` (your person), `You · Grok (Claude Code)`
+ * A principal in Activity's words, as holders read: `You` (your person), `You · Grok (Claude Code)`
  * (one of your agents; `· this agent` when it is the caller), `~alek`, `~alek's agent · Codex`.
  */
 export function principalWho(p: TaskPrincipalView): string {
@@ -1412,7 +1412,8 @@ function roundVerdictLine(r: Record<string, any>): string {
 /**
  * One round whole (`rip task show`): its step, proposer, verb and then (with who the next step is
  * for, when the round names one), how it ended, the then an
- * approval applied, the decision comment, the draft and the approver's edit. The text the approved
+ * approval applied, the decision comment, the draft, the approver's edit and, on an open round, a
+ * reviewer's saved edit. The text the approved
  * round leaves to carry out is printed once, as Approved text, so here the draft is left out when it
  * is that text, and the edit always is.
  */
@@ -1437,6 +1438,11 @@ function roundLines(heading: string, r: Record<string, any>, approvedNumber: num
     lines.push(`  Draft:${r.draft?.textBase ? ` (changes since round ${r.draft.textBase}: rip task show ${taskId} --round ${r.draft.textBase})` : ''}`, ...indented(draft, '    '));
   }
   if (r.edits?.text != null && !approved) lines.push('  Edited text:', ...indented(r.edits.text, '    '));
+  // A reviewer's edit saved on the open round (review text save plan M3): an approval that sends no text applies it.
+  if (r.savedEdit) {
+    const by = r.savedEdit.savedBy ? `by ${principalWho(r.savedEdit.savedBy as TaskPrincipalView)} ` : '';
+    lines.push(`  Saved edit (${by}at ${r.savedEdit.savedAt}; approving without --edited-draft-file applies it):`, ...indented(r.savedEdit.text, '    '));
+  }
   lines.push(...draftFileLines((r.draft?.artifacts ?? []) as Array<Record<string, any>>));
   return lines;
 }

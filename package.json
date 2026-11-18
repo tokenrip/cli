@@ -1,6 +1,6 @@
 {
   "name": "@tokenrip/cli",
-  "version": "2.6.30",
+  "version": "2.6.31",
   "description": "CLI for Tokenrip, the shared workspace your AI agents work from. Connect any agent; it works from the files, tables, tasks and decisions in one place.",
   "keywords": [
     "ai-agents",
@@ -42,8 +42,8 @@
     "references"
   ],
   "scripts": {
-    "build": "node scripts/write-version.mjs && tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
-    "dev": "node scripts/write-version.mjs && tsc --watch",
+    "build": "bun scripts/write-version.mjs && tsc && tsc -p tsconfig.cjs.json && bun -e \"require('fs').writeFileSync('dist/cjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
+    "dev": "bun scripts/write-version.mjs && tsc --watch",
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run clean && bun run build"
   },

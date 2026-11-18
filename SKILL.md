@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.30
+version: 2.6.31
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.30 -->
+<!-- tokenrip-skill-version: 2.6.31 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
