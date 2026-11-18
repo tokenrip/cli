@@ -25,7 +25,7 @@ function readText(filePath: string | undefined): string {
 /**
  * `rip artifact append <artifact> [file]` (`POST /v0/artifacts/:artifactId/append`): the text goes
  * at the end of a text artifact on the server, on a new line when the file does not end with one.
- * Nothing is read first, and no `--expected-version-id` is needed (checked when sent).
+ * Nothing is read first, and no `--expected-version-id` is needed (checked first whenever sent).
  */
 export async function append(identifier: string, filePath: string | undefined, options: AppendOptions): Promise<void> {
   const uuid = parseArtifactId(identifier);

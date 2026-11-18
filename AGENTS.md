@@ -178,7 +178,7 @@ rip artifact download <table-id> --format json        # tables export as csv (de
 rip artifact list [--since <iso|3d>] [--type markdown] [--limit 5] [--folder <slug>] [--team <slug>]
 rip storage [--team <slug>]                           # storage used against the plan (files, trash, text), and the largest files
 rip actions [--team <slug>]                           # this month's actions against the plan, and each workspace's count
-rip feedback "<text>"                                 # a note about Tokenrip to the Tokenrip team, who may reply by email (20 a day)
+rip feedback "<text>"                                 # an optional note to the Tokenrip team: what you tried, what you expected; you may send one on your own; they may reply by email (20 a day)
 ```
 
 ### Delete, fork, bulk

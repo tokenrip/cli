@@ -12,6 +12,8 @@ export async function search(
     type?: string;
     workspaceId?: string;
     artifactId?: string;
+    /** `any` (the default) or `words`; the server refuses `words` without a query, naming `match`. */
+    match?: string;
   },
 ): Promise<void> {
   const { client } = requireAuthClient();
@@ -23,6 +25,7 @@ export async function search(
   if (options.type) params.type = options.type;
   if (options.workspaceId) params.workspaceId = options.workspaceId;
   if (options.artifactId) params.artifactId = options.artifactId;
+  if (options.match) params.match = options.match;
 
   const { data } = await client.get('/v0/search', { params });
   outputSuccess(data.data, formatSearchResults);

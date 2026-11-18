@@ -210,7 +210,7 @@ withWhy(artifact
   .option('--title <title>', 'Also update the artifact title (applied via a follow-up patch)')
   .option('--alias <alias>', 'Also update the artifact alias (applied via a follow-up patch)')
   .option('--keep-previous', 'Keep the version this write replaces, whatever the history setting says')
-  .option('--expected-version-id <id>', 'The current version id you read: needed to replace content another agent or person wrote; checked when sent')
+  .option('--expected-version-id <id>', 'The current version id you read: needed to replace content another agent or person wrote; checked first whenever sent')
   .option('--dry-run', 'Validate without publishing')
   .description('Replace an artifact\'s content: from a file, or by --find/--replace edits')
   .addHelpText('after', `
@@ -1157,11 +1157,18 @@ program
   .option('--type <type>', 'Artifact type: markdown, html, code, json, text, file, chart, table, csv')
   .option('--workspace-id <id>', 'Workspace id or slug: search that workspace, with passages')
   .option('--artifact-id <id>', 'Scope to one artifact (its id or alias): its passages, best first, up to --limit')
+  .option('--match <any|words>', 'words: only results whose text holds the query\'s words (needs a query); any (default): also similar ones')
   .addHelpText('after', `
+Search reads an artifact's title and the current version's headings and body
+(markdown, HTML, code and text; a document's leading heading only when it has text
+of its own), not its alias, description or metadata. It matches stemmed English
+words, not characters: to look up an identifier, use --match words.
+
 Inside a workspace (--workspace-id, or --artifact-id of a workspace document) the
 search prints each result's best passages, and where the server has an embedding
 provider it ranks by keywords and meaning together ("mode: hybrid"). "pending: N" counts chunks not yet searchable by
-meaning. Everywhere else the ranking is by keyword.
+meaning. Everywhere else the ranking is by keyword. A result marked "(meaning only)"
+was found by meaning alone: none of its text holds the query's words.
 
 EXAMPLES:
   $ rip search "quarterly report"
@@ -1170,6 +1177,7 @@ EXAMPLES:
   $ rip search "proposal" --limit 10
   $ rip search "how do we handle auth failures" --workspace-id <workspace>
   $ rip search "termination clause" --artifact-id contract-2026 --limit 5
+  $ rip search "ACME-1234" --match words --workspace-id <workspace>
 `)
   .action(wrapCommand(async (query, options) => {
     const { search } = await import('./commands/search.js');
@@ -2150,7 +2158,7 @@ withWhy(job
   .requiredOption('--name <name>', 'The job\'s name, unique in the workspace, archived jobs included (lowercase letters, digits, - and _)')
   .option('--purpose <text>', 'One line on what the job is for, at most 280 characters (shown under its name wherever jobs are listed)')
   .option('--description <markdown>', 'What the job is and how it is done: the standing brief its agents read')
-  .option('--definitions <json|@file>', 'Its task definitions, a JSON array (or @<file> holding one), at most 5: [{ name, types, instructions?, steps: [{ name, role?, everyMinutes?, instructions?, approvalVerb?, side? }] }]')
+  .option('--definitions <json|@file>', 'Its task definitions, a JSON array (or @<file> holding one), at most 5: [{ name, types, instructions?, steps: [{ name, role?, schedule?: { cron, timeZone? }, instructions?, approvalVerb?, side? }] }]')
   .option('--job-agent <handle[:role]>', 'An agent who does it: me, a handle from rip workspace load (or agent:<handle>), agent:<key id> or agent:<name> for your own; repeatable, at most 20, each with its role inline', collectLink)
   .option('--role <role>', 'With one --job-agent: what it does in the job (a free tag, e.g. writer)')
   .allowExcessArguments(false)
@@ -2880,18 +2888,24 @@ NOTES:
 // ── feedback ────────────────────────────────────────────────────────
 program
   .command('feedback')
-  .argument('<text>', 'The note: what went wrong, what was confusing or missing, or an idea')
+  .argument('<text>', 'The note: what you were trying to do, what you expected, and what happened')
   .allowExcessArguments(false)
-  .description('Send a note about Tokenrip to the Tokenrip team')
+  .description('Send an optional note about Tokenrip to the Tokenrip team')
   .addHelpText('after', `
 EXAMPLES:
   $ rip feedback "rip table append --upsert refused a row I expected to update"
   $ rip feedback "An idea: a CSV export of a table's rows" --json
 
 NOTES:
-  The note goes by email to the Tokenrip team, from the person behind this
-  account, and they may reply to that person's email. Write about Tokenrip
-  itself: never include the person's files, messages or workspace content.
+  An optional note about Tokenrip itself: a call that didn't do what you
+  expected, something confusing, or something you needed. The team reads
+  every note to fix what gets in agents' way. An agent may send one on its
+  own, and mention it to the person when they are present. Most useful: what
+  you were trying to do, what you expected, and what happened; one note per
+  problem. Never include the person's files, messages or workspace content,
+  or any key or secret.
+  Tokenrip keeps the note and emails it to the team within about a minute,
+  from the person behind this account; they may reply to that person's email.
   Quote the whole note. Up to 5,000 characters; 20 notes a day per person.
 `)
   .action(wrapCommand(async (text: string) => {

@@ -69,6 +69,20 @@ export const formatBundleVersions: Formatter = (data) => {
   return lines.join('\n');
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The version a fork copied (self-describing responses M4): `Forked from: <artifactId> v<n> (<versionId>)`.
+ * Only the server's shape prints (an artifact id and a whole version from 1); the version id only when it
+ * is one (null for some older forks). Anything else (a legacy `{ assetId }`, a string) prints nothing.
+ */
+function forkSourceLine(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const { artifactId, versionId, version } = value as Record<string, unknown>;
+  if (typeof artifactId !== 'string' || !artifactId || typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) return null;
+  return `  Forked from: ${artifactId} v${version}${typeof versionId === 'string' && UUID.test(versionId) ? ` (${versionId})` : ''}`;
+}
+
 export const formatArtifactCreated: Formatter = (data) => {
   const lines = [`Created: ${data.title || '(untitled)'}`];
   // The artifact's id, and its alias so a caller that just set one can confirm it.
@@ -80,6 +94,8 @@ export const formatArtifactCreated: Formatter = (data) => {
   if (data.type) lines.push(`  Type:    ${data.type}`);
   if (data.mimeType) lines.push(`  MIME:    ${data.mimeType}`);
   if (data.currentVersionId) lines.push(`  Version: ${data.currentVersionId}`);
+  const source = forkSourceLine(data.forkedFrom);
+  if (source) lines.push(source);
   if (data.workspaceId) {
     lines.push(`  Workspace: ${data.workspaceId}`);
     if (data.workspaceRevision) lines.push(`  Revision: ${data.workspaceRevision}`);
@@ -779,8 +795,12 @@ export const formatSearchResults: Formatter = (data) => {
     const title = r.title || '(untitled)';
     const ago = formatTimeAgo(new Date(r.updated_at));
     const artifactType = (r.artifact?.artifact_type ?? '').padEnd(10);
-    const versions = r.artifact?.version_count ? `v${r.artifact.version_count}` : '';
-    lines.push(`  artifact   ${artifactType}  ${r.id}  ${title}  ${versions}  ${ago}`);
+    // `version_count` is how many versions the artifact keeps (pruning lowers it), not a version number.
+    const count = r.artifact?.version_count;
+    const versions = count ? `${count} version${count === 1 ? '' : 's'}` : '';
+    // Found by meaning alone: no indexed text of it holds the query's words (self-describing responses M7).
+    const meaningOnly = r.matchedBy === 'meaning' ? '  (meaning only)' : '';
+    lines.push(`  artifact   ${artifactType}  ${r.id}  ${title}  ${versions}${meaningOnly}  ${ago}`);
     if (r.url) lines.push(`          ${r.url}`);
     const passages: Array<{ section: string | null; text: string }> = Array.isArray(r.passages) ? r.passages : [];
     if (passages.length) {
@@ -953,17 +973,20 @@ function formatBytes(bytes: number): string {
 const ANSI = { green: '\x1b[32m', red: '\x1b[31m', dim: '\x1b[2m', reset: '\x1b[0m' };
 
 export const formatVersionDiff: Formatter = (data) => {
+  type DiffStats = { added: number; removed: number; unit?: 'words' | 'lines' };
   const payload = data.payload as
-    | { strategy: 'text'; segments: { op: string; value: string }[]; stats: { added: number; removed: number } }
-    | { strategy: 'rows'; rows: { op: string; value: string }[]; stats: { added: number; removed: number } }
+    | { strategy: 'text'; segments: { op: string; value: string }[]; stats: DiffStats }
+    | { strategy: 'rows'; rows: { op: string; value: string }[]; stats: DiffStats }
     | null;
 
   if (!payload) {
     return 'No diff — earliest version or non-diffable artifact type.';
   }
 
+  // What the counts count (self-describing responses M6); a server before `unit` counts by strategy.
+  const unit = payload.stats.unit ?? (payload.strategy === 'rows' ? 'lines' : 'words');
   const header = `Changes vs v${data.baseVersion}  ` +
-    `${ANSI.green}+${payload.stats.added}${ANSI.reset} ${ANSI.red}-${payload.stats.removed}${ANSI.reset}\n`;
+    `${ANSI.green}+${payload.stats.added}${ANSI.reset} ${ANSI.red}-${payload.stats.removed}${ANSI.reset} ${unit}\n`;
 
   if (payload.strategy === 'text') {
     let body = '';
@@ -1567,9 +1590,10 @@ function taskFileLine(file: TaskFileView): string {
 
 /**
  * A task's workflow (job definitions plan M6), on `rip task show` and the start printers: where it
- * stands in its job's definition, then the step's instructions. "Workflow: founder-posts › post · at
- * draft (writer) → next edit"; the last main step says it ends with complete (or, with an approval,
- * in a proposal that returns to its proposer), a side step says so, a step with an approval names its
+ * stands in its job's definition, the path, the step's schedule (job builder plan M3: its
+ * expression and zone, or `on demand`), then the step's instructions. "Workflow: founder-posts ›
+ * post · at draft (writer) → next edit"; the last main step says it ends with complete (or, with an
+ * approval, in a proposal that returns to its proposer), a side step says so, a step with an approval names its
  * verb, and a step no longer in the definition says that. A task at no step (a closed task has none)
  * prints the job and definition alone.
  */
@@ -1586,7 +1610,7 @@ function workflowLines(workflow: Record<string, any>, taskStep: string | null): 
   // The last main step ends with complete; with an approval, approving returns it to its proposer (design §8).
   const last = step.approvalVerb ? ` · the last step: ends in a proposal (${step.approvalVerb}) that returns to its proposer` : ' · the last step: complete it';
   const onward = step.next ? ` → next ${step.next}${approval}` : side.includes(step.name) ? ` · a side step${approval}` : last;
-  const lines = [`${head} · ${where}${onward}`, pathLine];
+  const lines = [`${head} · ${where}${onward}`, pathLine, `  Schedule: ${scheduleText(step)}`];
   if (step.instructions) lines.push(...indented(step.instructions));
   return lines;
 }
@@ -2056,9 +2080,21 @@ function trimmedCount(shown: number, total: unknown): string {
   return typeof total === 'number' && total > shown ? `${shown} of ${total}` : String(shown);
 }
 
-/** A step's cadence in load's words: `every 60 min`, or `on demand` with none. */
-function stepCadenceWords(everyMinutes: unknown): string {
-  return typeof everyMinutes === 'number' ? `every ${everyMinutes} min` : 'on demand';
+/** A step's schedule (job builder plan M2): a cron expression in a zone, or null when it is worked on demand. */
+function stepSchedule(step: Record<string, any>): { cron: string; timeZone: string | null } | null {
+  const schedule = step.schedule;
+  if (!schedule || typeof schedule !== 'object' || typeof schedule.cron !== 'string') return null;
+  return { cron: schedule.cron, timeZone: typeof schedule.timeZone === 'string' ? schedule.timeZone : null };
+}
+
+/**
+ * A step's schedule as written (job builder plan P12): the expression and its zone, `0 5 * * 1
+ * America/New_York`, or `on demand`. Agents read cron as written; the dashboard has the words.
+ */
+function scheduleText(step: Record<string, any>): string {
+  const schedule = stepSchedule(step);
+  if (!schedule) return 'on demand';
+  return schedule.timeZone ? `${schedule.cron} ${schedule.timeZone}` : schedule.cron;
 }
 
 /**
@@ -2076,7 +2112,7 @@ function loadJobsLines(jobs: Record<string, any>, workspaceId: string): string[]
     const head = [`  ${job.name}  [${job.id}]${part ? `  ${part}` : ''}`];
     if (job.purpose) head.push(`    Purpose: ${job.purpose}`);
     const steps: Array<Record<string, any>> = Array.isArray(job.steps) ? job.steps : [];
-    if (steps.length) head.push(`    Your steps: ${steps.map((step) => `${step.definition} › ${step.step} (${stepCadenceWords(step.everyMinutes)})`).join(', ')}`);
+    if (steps.length) head.push(`    Your steps: ${steps.map((step) => `${step.definition} › ${step.step} (${scheduleText(step)})`).join(', ')}`);
     if (job.descriptionCut) return [...head, `    (description cut; rip job show ${job.id})`];
     return job.description ? [...head, ...indented(job.description, '    ')] : head;
   }));
@@ -2105,16 +2141,9 @@ function jobAgentLine(a: Record<string, any>): string {
   return words.join('  ');
 }
 
-/** A step's cadence in the largest whole unit: `1d`, `1h`, `90m`. */
-function everyWords(minutes: number): string {
-  if (minutes % 1440 === 0) return `${minutes / 1440}d`;
-  if (minutes % 60 === 0) return `${minutes / 60}h`;
-  return `${minutes}m`;
-}
-
-/** One step in a lane: its name, then `[role, cadence]` with whichever it has. */
+/** One step in a lane: its name, then `[role, schedule]` with whichever it has (a step on demand shows no schedule). */
 function laneStep(step: Record<string, any>): string {
-  const tags = [step.role, typeof step.everyMinutes === 'number' ? everyWords(step.everyMinutes) : null].filter(Boolean);
+  const tags = [step.role, stepSchedule(step) ? scheduleText(step) : null].filter(Boolean);
   return tags.length ? `${step.name} [${tags.join(', ')}]` : String(step.name);
 }
 
@@ -2160,10 +2189,12 @@ function scheduleWords(health: { state?: string; late?: number; notChecked?: num
 }
 
 /**
- * The job's schedule in `rip job show` (job definitions plan M5): its state, then one line per
- * scheduled step of each definition: `definition › step [role, every …]: health`, and its last
- * check (when, and by whom: a job agent as who it is, another agent as `agent:<handle>`). Nothing for a job with no scheduled step, or a reply without health (a
- * server before checks, or the list's outline).
+ * The job's schedule in `rip job show` (job definitions plan M5; job builder plan M3): its state,
+ * then one line per scheduled step of each definition: `definition › step [role, <cron> <zone>]:
+ * health`, its next due time (`next <time>`, when the read carries one), when it turns late (`late
+ * after <time>`, or `late since <time>` for a late step; self-describing responses M6) and its last check (when,
+ * and by whom: a job agent as who it is, another agent as `agent:<handle>`). Nothing for a job with
+ * no scheduled step, or a reply without health (a server before checks, or the list's outline).
  */
 function scheduleLines(job: Record<string, any>): string[] {
   if (!job.health || !Array.isArray(job.definitions)) return [];
@@ -2176,10 +2207,13 @@ function scheduleLines(job: Record<string, any>): string[] {
   const lines: string[] = [];
   for (const definition of job.definitions as Array<Record<string, any>>) {
     for (const step of Array.isArray(definition.steps) ? definition.steps as Array<Record<string, any>> : []) {
-      if (typeof step.everyMinutes !== 'number' || !step.health) continue;
-      const tags = [step.role, `every ${everyWords(step.everyMinutes)}`].filter(Boolean).join(', ');
+      if (!stepSchedule(step) || !step.health) continue;
+      const tags = [step.role, scheduleText(step)].filter(Boolean).join(', ');
+      const next = step.nextDueAt ? `, next ${step.nextDueAt}` : '';
+      // When it turns late with no further check; for a late step, when it became late (null: it never does).
+      const late = step.lateAt ? `, late ${step.health === 'late' ? 'since' : 'after'} ${step.lateAt}` : '';
       const check = step.lastCheck ? `, last checked ${step.lastCheck.at} by ${who(String(step.lastCheck.agent))}` : '';
-      lines.push(`  ${definition.name} › ${step.name} [${tags}]: ${STEP_HEALTH_WORDS[step.health] ?? step.health}${check}`);
+      lines.push(`  ${definition.name} › ${step.name} [${tags}]: ${STEP_HEALTH_WORDS[step.health] ?? step.health}${next}${late}${check}`);
     }
   }
   return lines.length ? [`Schedule: ${scheduleWords(job.health)}`, ...lines] : [];

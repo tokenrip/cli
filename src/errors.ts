@@ -3,6 +3,7 @@ export interface ValidationDetail {
   message?: string;
 }
 export interface DomainErrorDetails {
+  /** The input a refusal names, on any code (a field-shaped name only). */
   field?: string;
   fields?: string[];
   currentVersionId?: string;
@@ -79,7 +80,7 @@ export interface DomainErrorDetails {
   usedActions?: number;
   limitActions?: number;
   resetsAt?: string;
-  /** An input refusal ({@link INPUT_REFUSAL_CODES}): the place below `field` the rule broke (`schema[3].name`). */
+  /** Any refusal naming `field`: the place below it the rule broke (`schema[3].name`, `rows[3].data.sku`). */
   path?: string;
   /** A row-query refusal: the columns valid for `field` (`sortBy` or `filters`), and whether the list was cut. */
   available?: string[];
@@ -247,9 +248,9 @@ const SKILL_INVALID_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The refusals that name the input they refuse (agent refusals plan M8): the contract's `INVALID_FIELD`,
- * the row-query codes and the CSV codes. Only these carry `field`, `path`, `available`, `column`,
- * `rule` and the CSV `reason`.
+ * The refusals that say what is valid at the input they refuse (agent refusals plan M8): the contract's
+ * `INVALID_FIELD`, the row-query codes and the CSV codes. Only these carry `available`, `column`,
+ * `rule` and the CSV `reason`. `field` and `path` cross on any code ({@link namedFieldDetails}).
  */
 export const INPUT_REFUSAL_CODES: ReadonlySet<string> = new Set([
   'INVALID_FIELD', 'INVALID_SORT_COLUMN', 'INVALID_FILTER_COLUMN', 'INVALID_SCHEMA', 'INVALID_CSV',
@@ -270,11 +271,26 @@ function withinCharacters(text: string, max: number): boolean {
   return text.length <= max || (text.length <= 2 * max && [...text].length <= max);
 }
 
+/** A field-shaped name, as the server's `isNamedField` (apps/backend/src/api/validation/operation-contract.ts). */
+const NAMED_FIELD = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
+/** A place below a field, as the server's `fieldPath` (apps/backend/src/execution/failure.ts). */
+const FIELD_PATH = /^[a-zA-Z][a-zA-Z0-9_]*(\[\d{1,4}\]|\.[a-zA-Z][a-zA-Z0-9_]*)*$/;
+
+/**
+ * The input a refusal names, on any code (self-describing responses M2: every coded input refusal
+ * carries `field`): a field-shaped `field`, and `path` only when it is a place below that field.
+ */
+function namedFieldDetails(body: Record<string, unknown>): Pick<DomainErrorDetails, 'field' | 'path'> {
+  const { field, path } = body;
+  if (typeof field !== 'string' || !NAMED_FIELD.test(field)) return {};
+  const below = typeof path === 'string' && path.length <= 128 && (path.startsWith(`${field}.`) || path.startsWith(`${field}[`))
+    && FIELD_PATH.test(path);
+  return below ? { field, path } : { field };
+}
+
 /** An input refusal's details, field by field: each copied when valid, dropped when malformed. */
 function inputRefusalDetails(body: Record<string, unknown>): DomainErrorDetails {
   const details: DomainErrorDetails = {};
-  if (shortString(body.field)) details.field = body.field;
-  if (shortString(body.path)) details.path = body.path;
   const { available } = body;
   if (Array.isArray(available) && available.length <= AVAILABLE_MAX
     && available.every((name) => typeof name === 'string' && withinCharacters(name, COLUMN_NAME_MAX))) {
@@ -310,10 +326,7 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     }
     const moved = notCurrentDetails(body);
     if (moved) Object.assign(details, moved);
-  } else if (code === 'PRECONDITION_REQUIRED' && typeof body.field === 'string'
-    && ['expectedVersionId', 'expectedRevision', 'expectedRevisions', 'expectedWorkspaceRevision'].includes(body.field)) details.field = body.field;
-  else if (code === 'INVALID_SCOPE' && body.field === 'workspaceId') details.field = body.field;
-  else if ((code === 'WORKSPACE_AUTHORITY' || code === 'INELIGIBLE_STORAGE') && Array.isArray(body.fields)) {
+  } else if ((code === 'WORKSPACE_AUTHORITY' || code === 'INELIGIBLE_STORAGE') && Array.isArray(body.fields)) {
     const allowed = code === 'INELIGIBLE_STORAGE' ? ['publicAsset'] : ['visibility', 'team', 'teams', 'folder'];
     const fields = [...new Set(body.fields.filter((field): field is string => typeof field === 'string' && allowed.includes(field)))].slice(0, 8);
     if (fields.length) details.fields = fields;
@@ -393,6 +406,8 @@ export function safeErrorDetails(code: string, value: unknown): DomainErrorDetai
     const task = taskAnswerDetails(body.task);
     if (task) details.task = task;
   }
+  // The input it refuses, whatever the code; a code's own field check above wins.
+  if (details.field === undefined) Object.assign(details, namedFieldDetails(body));
   return Object.keys(details).length ? details : undefined;
 }
 

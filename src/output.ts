@@ -1,4 +1,4 @@
-import { CliError, INPUT_REFUSAL_CODES, toCliError, type PrincipalCandidateDetails, type TaskAnswerDetails, type WorkspaceCandidateDetails } from './errors.js';
+import { CliError, toCliError, type PrincipalCandidateDetails, type TaskAnswerDetails, type WorkspaceCandidateDetails } from './errors.js';
 import { principalWho, taskAnswerLines, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
 
 let forceJson = false;
@@ -40,6 +40,15 @@ function hintMessages(data: Record<string, unknown>): string[] {
   return hints.flatMap((hint) => (hint && typeof hint === 'object' && typeof hint.message === 'string' ? [hint.message] : []));
 }
 
+/**
+ * Whether a refusal's field prints as a "Required field" line rather than a `Field:` line: a missing
+ * precondition, and a scope missing its workspace. A scope refusal naming another field (`team`, sent
+ * beside `workspaceId`) names the field it refuses, as any other refusal does.
+ */
+function requiredField(code: string, field: string): boolean {
+  return code === 'PRECONDITION_REQUIRED' || (code === 'INVALID_SCOPE' && field === 'workspaceId');
+}
+
 export function outputError(err: CliError): never {
   if (isJsonMode()) {
     console.log(JSON.stringify({
@@ -68,11 +77,11 @@ export function outputError(err: CliError): never {
       if (err.code === 'CONFLICT') console.error('Read the current resource and reconcile your changes before another write.');
       // The server's message names the read that supplies the token; the line adds only the field.
       if (err.code === 'PRECONDITION_REQUIRED' && details.field) console.error(`Required field: ${details.field}.`);
-      if (INPUT_REFUSAL_CODES.has(err.code) && details.field) console.error(`Field: ${details.field}${details.path ? ` (${details.path})` : ''}`);
+      // Any refusal naming its input (self-describing responses M2); a precondition and a scope keep their own line.
+      if (details.field && !requiredField(err.code, details.field)) console.error(`Field: ${details.field}${details.path ? ` (${details.path})` : ''}`);
       if (details.available) console.error(`Available columns: ${details.available.join(', ') || '(none)'}${details.availableTruncated ? " (more in the table's schema)" : ''}`);
       if (details.column !== undefined) console.error(`Header column ${details.column}`);
-      if (details.resource) console.error(`Not found: ${details.resource}. Name it by ${NOT_FOUND_NAMING[details.resource] ?? 'the id its list returns'}.`);
-      if (err.code === 'INVALID_SCOPE' && details.field) console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
+      if (err.code === 'INVALID_SCOPE' && details.field === 'workspaceId') console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link'}`);
       if (details.reason) console.error(`Reason: ${details.reason}`);
       if (err.code === 'VERSION_IN_USE' && details.task) console.error(`In use by: task ${details.task}, round ${details.round}`);
@@ -131,12 +140,6 @@ function errorHint(err: CliError): string | undefined {
   if (err.code === 'ACTIONS_LIMIT_REACHED' && !err.details) return ACTIONS_GUEST_HINT;
   return ERROR_HINTS[err.code];
 }
-
-/** How each kind of reference is named, as the server's `UNAVAILABLE` message says it; any other kind by its id. */
-const NOT_FOUND_NAMING: Readonly<Record<string, string>> = {
-  artifact: 'its full id, alias or page URL',
-  folder: 'its id or slug',
-};
 
 export function wrapCommand<T extends (...args: any[]) => Promise<void>>(fn: T): T {
   const wrapped = async (...args: any[]) => {
@@ -201,7 +204,6 @@ export const ERROR_HINTS: Record<string, string> = {
   TEAM_HAS_PLAN: "Cancel the team's plan in Billing first.",
   STORAGE_LIMIT_REACHED: 'Nothing was stored. Tell your person, and do not delete anything on your own. Whoever pays (your account, your team, or the workspace\'s owner) can free space (`rip storage` shows what your account or team holds; deleted files count until their trash is emptied, `rip trash purge --all`, with `--team <slug>` for a team\'s or `--workspace-id <id>` for files deleted inside a workspace; `rip artifact prune-versions <id>` clears old versions) or move growing records into a table.',
   ACTIONS_LIMIT_REACHED: 'Nothing was changed. Reading still works. Tell your person: `rip actions` shows your account\'s count and reset, with `--team <slug>` for a team\'s.',
-  FEEDBACK_UNAVAILABLE: 'Nothing was sent. Try again later, or reply to any email from Tokenrip.',
   MAILBOX_CODE_INVALID: 'Use the six-digit code from the latest confirmation email: `rip notify mailbox --code <code>`. Five wrong codes end it; then set the address again.',
   MAILBOX_CODE_EXPIRED: 'The code lasted 30 minutes or five tries. Set the address again for a new one: `rip notify mailbox <address>`.',
   MAILBOX_NOT_PENDING: 'No code is waiting. Set the address first (`rip notify mailbox <address>`), then confirm with the emailed code; `rip notify` shows the mailbox.',
