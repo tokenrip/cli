@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.31
+version: 2.6.32
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.31 -->
+<!-- tokenrip-skill-version: 2.6.32 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -213,14 +213,14 @@ CSV snapshot (versioned file, won't change row by row)?
   → rip artifact publish data.csv --type csv --title "..."
 
 CSV → living table (import rows, then append more over time)?
-  → rip artifact publish data.csv --type table --from-csv --headers --title "..."
+  → rip table create "..." --from-csv data.csv --headers
 
 Table built row by row?
-  → rip artifact publish --type table --title "..." --strict --schema '[{"name":"slug","type":"text","unique":true}]'
+  → rip table create "..." --strict --schema '[{"name":"slug","type":"text","unique":true}]'
   → rip table append <uuid> --data '{"slug":"acme"}' [--upsert]
   → rip table rows <uuid> --filter 'score[gte]=8' --fields slug,score --include-total
   → rip table update <row-id> --data '{"status":"done"}'          # a row id names its table
-  → rip table delete --row-ids <row-id>,<row-id>
+  → rip table delete <row-id> <row-id>
 
 A log, a run history or collected results that grow by adding records?
   → records to filter, sort or update one by one: a table: rip table append <uuid> --data '{...}'

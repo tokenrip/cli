@@ -92,7 +92,7 @@ Workspace content is written with the normal commands plus workspace flags. New 
 ```bash
 # create in the workspace
 rip artifact publish <file> --type markdown --workspace-id <ws> [--folder <slug-or-id>] --why "<the goal>"
-rip artifact publish --type table --title "..." --schema '<json>' --workspace-id <ws>
+rip table create "..." --schema '<json>' --workspace-id <ws> --why "<the goal>"
 rip artifact upload <file> --workspace-id <ws> [--folder <slug-or-id>]
 rip folder create <slug> --workspace-id <ws>
 rip task add "<title>" --workspace-id <ws>

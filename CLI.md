@@ -153,14 +153,14 @@ rip workspace view open <artifact> --expected-context-generation <n> [--operatio
 
 ### `rip workspace changes <workspace>` / `rip workspace ack <workspace>`
 
-Ordered changes since your credential's acknowledged position. Reading never acknowledges.
+`changes` reads the next page of the workspace change feed, oldest first, from your credential's acknowledged position. Reading never acknowledges: acknowledge the page with `rip workspace ack <workspace> --delivery-token <token>` before reading the next, or pass `--delivery-token` to `changes` to read the same page again. For the newest changes use `rip workspace load`.
 
 ```bash
 rip workspace changes <workspace> [--limit <n>] [--delivery-token <token>]
 rip workspace ack <workspace> --delivery-token <token>
 ```
 
-`changes` returns up to 100 events (default 50), each with its `why`, `actor.alias`, `mine`, `subject { type, id, title }` (an artifact's id; `title` null when the item is gone or out of reach) and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Human output groups consecutive changes under `You` or `~alias` and the why, one line each with the action, title and id, then `Access changed: re-read before continuing.` when `refresh` is `required` and `History gap: older changes were pruned.` on a `historyGap`. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. Task history lives here.
+`changes` returns up to 100 events (default 50), each with its `why`, `actor.alias`, `mine`, `subject { type, id, title }` (an artifact's id; `title` null when the item is gone or out of reach) and, on your own account's events, the `agent` key name, plus a `deliveryToken`, `hasMore`, `historyGap`, and `refresh`. Human output groups consecutive changes under `You` or `~alias` and the why, one line each with the action, title and id, then `Access changed: re-read before continuing.` when `refresh` is `required` and `History gap: older changes were pruned.` on a `historyGap`. Pass the outstanding token to `changes` to replay a page; `ack` advances your position through it. While a page is unacknowledged, `changes` without its token is refused `WORKSPACE_PAGE_UNACKNOWLEDGED` (the hint names both commands); an unacknowledged page lapses after 10 minutes. Options: `--limit <n>` (changes per page), `--delivery-token <token>` (re-read the page this token was delivered with). Task history lives here.
 
 ### Workspace flags on other commands
 
@@ -181,7 +181,7 @@ rip folder update <folder-id> --history <setting> [--expected-workspace-revision
 rip folder rename|delete <folder-id> … [--expected-workspace-revision <n>]
 rip table append <table-id> --data … [--expected-table-revision <n>]
 rip table update <row-id> --data … --expected-revision <row-rev> [--expected-table-revision <n>]
-rip table delete --row-ids <id,id> [--expected-revisions '{"<row-id>": <rev>}'] [--expected-table-revision <n>]
+rip table delete <row-id> <row-id> [--expected-revisions '{"<row-id>": <rev>}'] [--expected-table-revision <n>]
 rip task add "<title>" --workspace-id <ws>   ·   rip task list --workspace-id <ws>
 rip task update <task-id> --expected-revision <n> [--title --body --assignee --reviewer]
 rip task update <task-id> --position top|bottom | --before|--after <task-id>   # a move: no revision
@@ -208,6 +208,8 @@ rip artifact publish --type table --title "Research" --strict \
   --schema '[{"name":"company","type":"text"},{"name":"signal","type":"text"}]'
 rip artifact publish report.md --type markdown --title "Report" --workspace-id <ws> --why "<the goal>"
 ```
+
+`--type table` is the same operation as [`rip table create`](#rip-table-create-title), which is the command to reach for when creating a table.
 
 Required: `--type`. Options: `--title`, `--content`, `--alias` (per-owner unique), `--parent`, `--context`, `--refs`, `--schema <json>`, `--headers`, `--from-csv`, `--team <slugs>` (shares with each; the first scopes a `--folder` slug), `--folder <id-or-slug>` (a folder id, or a slug in `--workspace-id`, else the first `--team`, else personal; a workspace folder puts it in that workspace), `--metadata <json>` (not on tables), `--public-asset`, `--visibility <private|link|public>` (default `link`), `--strict` (a table from `--schema` only), `--workspace-id <id>`, `--why <text>`, `--dry-run`.
 
@@ -412,7 +414,26 @@ rip artifact team remove my-report acme-team
 
 ## Table commands
 
-Create a table with `rip artifact publish --type table` (with `--schema` or `--from-csv`), then manage rows here. `append` and `rows` name the table by UUID, alias or page URL; `update` and `delete` name the rows by their own ids (a row id names its table).
+Create a table with `rip table create`, then manage its rows with the other commands here. `append` and `rows` name the table by UUID, alias or page URL; `update` and `delete` name the rows by their own ids (a row id names its table).
+
+### `rip table create [title]`
+
+Create a table from a column schema or a CSV file (`POST /v0/artifacts` with `type: table`; `rip artifact publish --type table` is the same operation).
+
+```bash
+rip table create "Issues" --strict \
+  --schema '[{"name":"slug","type":"text","unique":true},{"name":"severity","type":"enum","values":["low","medium","high"]}]'
+rip table create "Research" --schema-file schema.json --workspace-id launch --why "Track the launch research"
+rip table create "Leads" --from-csv leads.csv --headers
+rip table create "Leads" --from-csv rows.csv --schema-file schema.json
+```
+
+One of `--schema <json>`, `--schema-file <path>` or `--from-csv <file>` is required (`--schema` and `--schema-file` do not go together); without one the command is refused before any request (`INVALID_ARGS`). The title defaults to "Untitled Table", or to the CSV file's name with `--from-csv`. Options: `--headers`, `--strict`, `--description <text>`, `--alias <alias>`, `--folder <id-or-slug>`, `--team <slugs>`, `--visibility <private|link|public>` (default `link`), `--workspace-id <id>`, `--why <text>`, `--dry-run`.
+
+- **Columns.** A column is `{"name","type"}` with type `text`, `number`, `date`, `boolean`, `url` or `enum` (an enum lists its `values`, and their order is the column's order for sorting and range filters). One column may be `"unique": true`, the key `--upsert` matches on.
+- **From a CSV.** Name the columns one way: `--headers` (the CSV's first line names them, all `text`), or a schema (`--schema` or `--schema-file`) used instead of `--headers`, and every CSV line is then a row. Both together are refused (`INVALID_ARGS`). `--strict` does not go with `--from-csv`: a CSV-imported table is not strict.
+- **Strict tables.** `--strict` makes row writes reject unknown columns and values that don't match their declared type.
+- **In a workspace.** `--workspace-id` (or a workspace `--folder`) creates the table there and needs `--why`. A workspace table takes no `--visibility` or `--team`: every member reads it. To open one to anyone with its URL afterwards: `rip artifact patch <id> --visibility link`.
 
 ### `rip table append <uuid>`
 
@@ -441,6 +462,8 @@ rip table rows 550e8400-... --all --filter action=engage
 
 Options: `--limit <n>` (default 100, max 5000), `--after <rowId>`, `--before <rowId>`, `--sort-by <column>` (or `createdAt` / `updatedAt` / `id`), `--sort-order <asc|desc>`, `--filter <key=value>` (repeatable; operators `eq lt lte gt gte ne in contains starts`), `--fields <columns>`, `--include-total` (sends `includeTotal=true`), `--all`. The CLI sends `sortBy`, `sortOrder`, `includeTotal` and `filters.<column>`. A filter or sort naming a column the table doesn't have is an error; a `--fields` column it doesn't have is left out and listed (`missingFields`).
 
+Comparisons use the column's declared type. An enum column sorts and range-compares (`lt`, `lte`, `gt`, `gte`) in its declared order, so with values `["low","medium","high"]`, `--filter 'severity[gte]=medium'` returns medium and high; the other operators compare its text. A range value the column does not declare is 400 `INVALID_FILTER`, and the CLI prints the column's `Declared values:`.
+
 The first line says whether the read is whole: `100 rows shown, more remain (--after <id>)` when more rows follow the page, `100 of 2,345 rows` with `--include-total` (plus `, more remain (--after <id>)` when they do), `12 rows` (`1 row`) when no more rows follow (after `--after`, the rows before it are not counted); `No rows.` when none match. The closing `More rows available. Use --after <id>` line stays.
 
 `--all` reads every page: 5,000 rows a call, following `nextCursor` with the same filters, sort and fields, and `includeTotal` on the first page only. It stops at 10,000 rows; then the first line says more remain and names the 10,000th row's id to continue from with `--after`, sent with the same filters and sort. `--after` starts the walk from that row; `--limit` and `--before` beside `--all` are refused before any call (`INVALID_ARGS`). A cursor the server answers twice stops the walk (`ROWS_CURSOR_REPEATED`). `--json` prints `{ rows, nextCursor, tableRevision, total? }` (a page's shape without `prevCursor`), with `nextCursor` set only when the cap stopped the walk and `tableRevision` the first page's: guard the next write with it, so a change made during the walk refuses that write. Human output prints `Table revision: N` under the first line, on one page or `--all`.
@@ -457,15 +480,16 @@ Required: `--data <json>`. Options: `--expected-revision <n>` (workspace rows), 
 
 On a keyed table, setting the key to a value another row holds is 409 `DUPLICATE_UNIQUE_VALUE` (naming the column, and the value unless the column is `sensitive`), and a key value that is an object or array, or longer than 1024 bytes, is 400 `INVALID_COLUMN_VALUE` naming the column. Nothing is written.
 
-### `rip table delete`
+### `rip table delete [rowIds...]`
 
 Delete rows by their own ids, all of one table (`DELETE /v0/rows`; rows of two tables are refused, `INVALID_FIELD`; an id that names no row you can read is skipped). Prints the count the server deleted (`deleted`), not the count of ids sent.
 
 ```bash
+rip table delete 660f9500-... 770a0600-...
 rip table delete --row-ids 660f9500-...,770a0600-...
 ```
 
-Required: `--row-ids <ids>`. Options: `--expected-revisions <json>` (workspace rows), `--expected-table-revision <n>`, `--why <text>`. The receipt carries `tableRevision` when a named row resolved the table; when none of the named rows exists any more it carries none, and the guard is not checked.
+Name the rows as arguments (each may be a comma list) or with `--row-ids <ids>`, not both; both together, or neither, is refused before any request (`INVALID_ARGS`). Options: `--expected-revisions <json>` (workspace rows), `--expected-table-revision <n>`, `--why <text>`. The receipt carries `tableRevision` when a named row resolved the table; when none of the named rows exists any more it carries none, and the guard is not checked.
 
 ## Folder commands
 
@@ -1155,9 +1179,9 @@ End this CLI's sign-in: revoke its key, then forget it on this machine. Acts on 
 
 Replace this agent's key and save the new one. Every other key on the account keeps working. Browsers this key's sign-in links signed in are signed out. Refused with `ENV_KEY_ROTATION` (no request made) while `TOKENRIP_API_KEY` is set: unset it to rotate a stored identity's key, or, for a key kept in a host's vault, make a new one with `rip auth keys create --name <name>` and revoke the old one.
 
-### `rip auth whoami`
+### `rip auth whoami` / `rip whoami`
 
-Your current identity and profile, including this key's name and which workspaces it may use (`Key: <name> · <access>`).
+One command under two names. Your current identity and profile, including this key's name and which workspaces it may use (`Key: <name> · <access>`).
 
 ### `rip auth update`
 

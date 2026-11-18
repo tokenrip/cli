@@ -5,7 +5,7 @@ import { requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
 import { formatArtifactCreated } from '../formatters.js';
-import { parseJsonOption, parseJsonObjectOption } from '../json.js';
+import { parseJsonObjectOption } from '../json.js';
 import { getFrontendUrl } from '../config.js';
 import { resolveTeam, resolveTeams } from '../teams.js';
 
@@ -26,7 +26,7 @@ export function addHomeFields(body: Record<string, unknown>, options: { team?: s
   }
 }
 
-function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; why?: string }): void {
+export function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; why?: string }): void {
   if (options.workspaceId) body.workspaceId = options.workspaceId;
   if (options.why !== undefined) body.why = options.why;
 }
@@ -37,7 +37,7 @@ function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceI
  * field publish never returned (Moa debrief §3.6). `aliasFallback` is the `--alias` we sent, used
  * when the backend response doesn't echo it.
  */
-function artifactCreatedPayload(
+export function artifactCreatedPayload(
   data: { id: string; url?: string; title?: string; type?: string; currentVersionId?: string; alias?: string; rawUrl?: string | null; publicUrl?: string; workspaceId?: string; workspaceRevision?: number },
   url: string,
   aliasFallback: string | undefined,
@@ -154,80 +154,16 @@ export async function publish(
     return;
   }
 
-  // Table → CSV import path: single-command creation of a table from a CSV file
-  if (options.type === 'table' && options.fromCsv) {
-    const absPath = path.resolve(filePath!);
-    if (!fs.existsSync(absPath)) {
-      throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
-    }
-    const content = fs.readFileSync(absPath, 'utf-8');
-    const title = options.title || path.basename(absPath, path.extname(absPath));
-
-    if (options.dryRun) {
-      outputSuccess({ dryRun: true, action: 'would create table from csv', title, rows: content.split('\n').length }, formatArtifactCreated);
-      return;
-    }
-
-    // A table with CSV content imports its rows (the server's one selector for CSV import).
-    const body: Record<string, unknown> = {
-      type: 'table',
-      content,
-      title,
-    };
-    if (options.headers) body.headers = true;
-    if (options.schema) body.schema = parseJsonOption(options.schema, '--schema');
-    if (options.alias) body.alias = options.alias;
-    if (options.parent) body.parentArtifactId = options.parent;
-    if (options.context) body.creatorContext = options.context;
-    if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    addHomeFields(body, options);
-    // No publicAsset, metadata or strict here: a table is never a public asset, keeps its schema
-    // in metadata, and a table imported from CSV is not strict (all refused above).
-    if (options.visibility) body.visibility = options.visibility;
-    addWorkspaceFields(body, options);
-
-    const { client, config } = requireAuthClient();
-    const { data } = await client.post('/v0/artifacts', body);
-    const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess(artifactCreatedPayload(data.data, url, options.alias), formatArtifactCreated);
-    return;
-  }
-
-  // Table schema-only path
+  // A table is created by the one function `rip table create` runs: the positional file is the CSV
+  // with --from-csv, else the schema file (unless --schema names the columns inline).
   if (options.type === 'table') {
-    let schema: unknown;
-    if (options.schema) {
-      schema = parseJsonOption(options.schema, '--schema');
-    } else {
-      const absPath = path.resolve(filePath!);
-      if (!fs.existsSync(absPath)) {
-        throw new CliError('FILE_NOT_FOUND', `File not found: ${absPath}`);
-      }
-      schema = parseJsonOption(fs.readFileSync(absPath, 'utf-8'), filePath!);
-    }
-
-    const title = options.title || 'Untitled Table';
-
-    if (options.dryRun) {
-      outputSuccess({ dryRun: true, action: 'would create table', title, schema }, formatArtifactCreated);
-      return;
-    }
-
-    const { client, config } = requireAuthClient();
-    const body: Record<string, unknown> = { type: 'table', title, schema };
-    if (options.alias) body.alias = options.alias;
-    if (options.parent) body.parentArtifactId = options.parent;
-    if (options.context) body.creatorContext = options.context;
-    if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
-    addHomeFields(body, options);
-    // Same as the CSV table path above — public assets are not valid on tables.
-    if (options.visibility) body.visibility = options.visibility;
-    if (options.strict) body.strict = true;
-    addWorkspaceFields(body, options);
-
-    const { data } = await client.post('/v0/artifacts', body);
-    const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
-    outputSuccess(artifactCreatedPayload(data.data, url, options.alias), formatArtifactCreated);
+    const { tableCreate } = await import('./table.js');
+    const { alias, parent, context, refs, team, folder, visibility, strict, workspaceId, why, headers, dryRun } = options;
+    const schema = options.schema || undefined;
+    await tableCreate(options.title, {
+      alias, parent, context, refs, team, folder, visibility, strict, workspaceId, why, headers, dryRun,
+      ...(options.fromCsv ? { fromCsv: filePath!, schema } : schema ? { schema } : { schemaFile: filePath! }),
+    });
     return;
   }
 

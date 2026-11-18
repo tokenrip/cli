@@ -82,7 +82,10 @@ export interface DomainErrorDetails {
   resetsAt?: string;
   /** Any refusal naming `field`: the place below it the rule broke (`schema[3].name`, `rows[3].data.sku`). */
   path?: string;
-  /** A row-query refusal: the columns valid for `field` (`sortBy` or `filters`), and whether the list was cut. */
+  /**
+   * A row-query refusal: the columns valid for `field` (`sortBy` or `filters`), and whether the list was cut.
+   * On `INVALID_FILTER`, an enum column's declared values (a range filter sent another).
+   */
   available?: string[];
   availableTruncated?: true;
   /** `INVALID_SCHEMA` on a CSV header: its 1-based column and which rule it broke. */
@@ -251,9 +254,11 @@ const SKILL_INVALID_REASONS: ReadonlySet<string> = new Set([
  * The refusals that say what is valid at the input they refuse (agent refusals plan M8): the contract's
  * `INVALID_FIELD`, the row-query codes and the CSV codes. Only these carry `available`, `column`,
  * `rule` and the CSV `reason`. `field` and `path` cross on any code ({@link namedFieldDetails}).
+ * `INVALID_FILTER` carries `available` only for a range filter on an enum column: the column's
+ * declared values, not column names.
  */
 export const INPUT_REFUSAL_CODES: ReadonlySet<string> = new Set([
-  'INVALID_FIELD', 'INVALID_SORT_COLUMN', 'INVALID_FILTER_COLUMN', 'INVALID_SCHEMA', 'INVALID_CSV',
+  'INVALID_FIELD', 'INVALID_SORT_COLUMN', 'INVALID_FILTER_COLUMN', 'INVALID_FILTER', 'INVALID_SCHEMA', 'INVALID_CSV',
 ]);
 /** The server's CSV header rules (`csvColumnRefusal`, apps/backend/src/api/service/csv-parser.ts). */
 const CSV_COLUMN_RULES: ReadonlySet<string> = new Set(['column_name', 'duplicate_column']);

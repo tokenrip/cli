@@ -57,7 +57,7 @@ rip workspace load <workspace>                                # its slug or id: 
 **A write to workspace content states why:** `--why "<one sentence>"` on what the person is trying to accomplish, in their terms, not a description of the edit ("Set launch prices the team can defend to finance", not "Update row 4"). Restate it on every write, or set `TOKENRIP_WHY` for a script with one purpose. Without it the server refuses `WHY_REQUIRED`. Moving a task along needs none (start, stop, done, cancel, reopen, a move in the queue, a later result on a Done task, an output on a task, settling an output): the move records its own reason, and a why sent is recorded. Sessions record themselves from these writes; there is nothing to start or end. Deep dive: `references/workspaces.md`.
 
 ```bash
-# What changed since I last looked (reading never acknowledges)
+# What changed since I last looked: the next page, oldest first; ack it before reading the next (--delivery-token re-reads it)
 rip workspace changes <workspace> [--limit <n>]
 rip workspace ack <workspace> --delivery-token <token>
 
@@ -123,12 +123,12 @@ rip artifact publish report.md --type markdown --dry-run           # validate on
 rip artifact publish --type markdown --title "Quick Note" --content "# Hello"
 
 # CSV → table in a single command
-rip artifact publish leads.csv --type table --from-csv --headers --title "Leads"
+rip table create "Leads" --from-csv leads.csv --headers
 ```
 
 **When to pick which tabular type:**
 - `--type csv` — versioned file, renders as a table, no row-level API. Good for exports and snapshots.
-- `--type table` (with `--schema` or `--from-csv`) — living table with a row-level API, no versioning. Good for data that grows over time. Pass `--strict` to reject unknown columns and type-mismatched values on row writes; without it an unknown key is silently *added* to the schema as a `text` column and values are never type checked.
+- a table (`rip table create`, with `--schema` or `--from-csv`) — living table with a row-level API, no versioning. Good for data that grows over time. Pass `--strict` to reject unknown columns and type-mismatched values on row writes; without it an unknown key is silently *added* to the schema as a `text` column and values are never type checked.
 
 **Visibility.** `--visibility <private|link|public>` sets who can read a standalone artifact. The default is `link` (anyone with the URL). Workspace content omits `--visibility` on publish: everyone in the workspace sees it. Any editor can then make one workspace file public: `rip artifact patch <id> --visibility link` lets anyone with the URL read it, no login; `--visibility private` turns it off. Earlier versions become readable too; prune them first (`rip artifact prune-versions <id>`) if they shouldn't be. A workspace file never takes `public` (`INVALID_VISIBILITY`), and a patch of `--visibility` alone needs no `--why`.
 
@@ -214,11 +214,13 @@ rip artifact team remove <id-or-alias> <team>
 
 ## Table Commands
 
-Create a table with `artifact publish --type table`, then manage rows with the `table` subcommands.
+Create a table with `rip table create`, then manage rows with the other `table` subcommands.
 
 ```bash
-rip artifact publish --type table --title "Research" --strict \
+rip table create "Research" --strict \
   --schema '[{"name":"slug","type":"text","unique":true},{"name":"company","type":"text"}]'
+rip table create "Research" --schema-file schema.json
+rip table create "Leads" --from-csv leads.csv --headers          # or a schema instead of --headers: every CSV line is then a row
 
 rip table append <uuid> --data '{"slug":"acme","company":"Acme"}'      # max 1000 rows and 16 MiB of row values per call
 rip table append <uuid> --file rows.json
@@ -231,11 +233,11 @@ rip table rows <uuid> --fields slug,title --include-total
 rip table rows <uuid> --all --filter tier=gold                 # every page, 5,000 a call, up to 10,000 rows
 
 rip table update <rowId> --data '{"relevance":"low"}'        # a row id names its table
-rip table delete --row-ids <rowId>,<rowId>
+rip table delete <rowId> <rowId>                             # or --row-ids <rowId>,<rowId>; one form a call
 ```
 
 - A table has at most one key, the column declared `unique: true`; storage rejects a duplicate with `409 DUPLICATE_UNIQUE_VALUE` (also a key repeated within one call; nothing is written). The key compares exact stored text: `"100"` and `"100.0"` differ, the number `1` and the string `"1"` are one key. `--upsert` updates the row whose key matches instead, in one atomic call (a table without a key is `400 NO_TABLE_KEY`); every row must carry the key. A key value that is an object or array, or over 1024 bytes, is `400 INVALID_COLUMN_VALUE`.
-- Filter operators (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`, `ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare by the column's declared type.
+- Filter operators (key suffix): `eq` (default), `lt`, `lte`, `gt`, `gte`, `ne`, `in` (comma-separated), `contains`, `starts`. Filters are ANDed and compare by the column's declared type. An enum column sorts and range-compares (`lt`, `lte`, `gt`, `gte`) in its declared order, so with `["low","medium","high"]`, `severity[gte]=medium` matches medium and high; a range value must be a declared value (`400 INVALID_FILTER`, which lists them). The other operators compare its text.
 - A sort or filter naming a column the table doesn't have is a `400`, not a silently ignored parameter. A `--fields` column it doesn't have is left out and named on the first lines (`missingFields` in JSON).
 - `--limit` is at most 5,000 rows a page (default 100). The CLI sends `sortBy`, `sortOrder`, `includeTotal` and `filters.<column>`.
 - Ordering is total (`created_at, id` tie-break), so cursors stay stable. `--sort-by` also accepts `createdAt` / `updatedAt` / `id`.
@@ -492,7 +494,7 @@ rip auth keys create [--name <n>] [--workspace <slug-or-id>:read|write]  # key f
 rip auth keys revoke <id>             # disconnect the agent using that key
 rip auth rotate-key                   # replace this agent's key; others keep theirs
 rip auth logout [--keep-key]          # revoke this CLI's key and forget the sign-in
-rip auth whoami                       # show current identity, this key's name, and which workspaces it may use
+rip whoami                            # show current identity, this key's name, and which workspaces it may use (same as rip auth whoami)
 rip auth update --alias "new-name"
 rip auth update --tag "Writer" --visibility public
 rip auth update --description "Research agent" --website "https://example.com" --email "contact@example.com"

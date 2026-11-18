@@ -123,6 +123,7 @@ CONTENT TYPES:
   json       - Interactive JSON viewer with collapse/expand
   csv        - Versioned CSV file, rendered as a table
   table      - Structured data table with row-level API (requires --schema or --from-csv)
+               (or: rip table create)
 
 EXAMPLES:
   $ rip artifact publish analysis.md --type markdown --title "Summary"
@@ -478,7 +479,49 @@ EXAMPLES:
 // ── table commands ──────────────────────────────────────────────────
 const table = program
   .command('table')
-  .description('Manage table rows');
+  .description('Create tables and manage their rows');
+
+withWhy(table
+  .command('create'))
+  .allowExcessArguments(false)
+  .argument('[title]', 'The table\'s title (default: "Untitled Table", or the CSV file\'s name with --from-csv)')
+  .option('--schema <json>', 'The columns as a JSON array (with --from-csv: used instead of --headers, and every CSV line is then a row)')
+  .option('--schema-file <path>', 'A file holding the columns as a JSON array (instead of --schema; works with --from-csv too)')
+  .option('--from-csv <file>', 'Import this CSV file\'s rows into the new table')
+  .option('--headers', 'The CSV\'s first row names the columns (only with --from-csv, and not with a schema)')
+  .option('--strict', 'Reject unknown columns and type-mismatched values on row writes (not with --from-csv)')
+  .option('--description <text>', 'What the table is for')
+  .option('--alias <alias>', 'Human-readable alias for the table\'s URL')
+  .option('--folder <folder>', 'File into a folder: its id (a workspace folder puts it in that workspace), or a slug (in --workspace-id, else the first --team, else your personal folders)')
+  .option('--team <slugs>', 'Comma-separated team slugs to share this table with (the first also scopes a --folder slug)')
+  .option('--visibility <level>', 'Standalone visibility: private | link | public (default link); omit with --workspace-id')
+  .option('--workspace-id <id>', 'Workspace id or slug: create inside it; no expected revision required')
+  .option('--dry-run', 'Validate inputs without creating the table')
+  .description('Create a table from a column schema or a CSV file')
+  .addHelpText('after', `
+One of --schema, --schema-file or --from-csv is required (--schema and
+--schema-file do not go together). A column is {"name","type"} with type text,
+number, date, boolean, url or enum (an enum lists its "values"); one column may
+be "unique": true, the key --upsert matches on.
+
+With --from-csv, name the columns one way: --headers (the CSV's first line names
+them, all text), or a schema (--schema or --schema-file) used instead of
+--headers, and every CSV line is then a row. Both together are refused.
+
+A workspace table takes no --visibility (or --team): every member reads it. To
+open one to anyone with its URL afterwards: rip artifact patch <id> --visibility link
+
+EXAMPLES:
+  $ rip table create "Issues" --strict \\
+    --schema '[{"name":"slug","type":"text","unique":true},{"name":"severity","type":"enum","values":["low","medium","high"]}]'
+  $ rip table create "Research" --schema-file schema.json --workspace-id launch --why "Track the launch research"
+  $ rip table create "Leads" --from-csv leads.csv --headers
+  $ rip table create "Leads" --from-csv rows.csv --schema-file schema.json
+`)
+  .action(wrapCommand(async (title, options) => {
+    const { tableCreate } = await import('./commands/table.js');
+    await tableCreate(title, options);
+  }));
 
 withWhy(table
   .command('append'))
@@ -553,7 +596,9 @@ FILTER OPERATORS:
   eq (default)  lt  lte  gt  gte  ne  in (comma-separated)  contains  starts
 
   Comparisons use the column's declared type, so a number column compares
-  numerically and a date column chronologically. A filter or sort naming a
+  numerically and a date column chronologically. An enum column sorts and
+  range-compares (lt, lte, gt, gte) in its declared order, and a range value
+  must be one of its declared values. A filter or sort naming a
   column the table doesn't have is an error, not a silently ignored filter.
   A --fields column it doesn't have is left out and named on the first lines.
 
@@ -592,17 +637,22 @@ EXAMPLES:
 withWhy(table
   .command('delete'))
   .allowExcessArguments(false)
-  .requiredOption('--row-ids <ids>', 'Comma-separated row IDs to delete, all of one table (they name it)')
+  .argument('[rowIds...]', 'Row IDs to delete, all of one table')
+  .option('--row-ids <ids>', 'Comma-separated row IDs to delete, all of one table (instead of the arguments)')
   .option('--expected-revisions <json>', 'Optional: map row IDs to revisions; refuse if a row changed since')
   .option('--expected-table-revision <n>', 'Optional: refuse (CONFLICT) if the table changed since this tableRevision (from rows --json, the table read, or the last receipt)')
   .description('Delete rows of a table, by their own ids')
   .addHelpText('after', `
+Name the rows as arguments or with --row-ids, not both. The row ids name their
+table, so the table is not named.
+
 EXAMPLES:
+  $ rip table delete <rowId> <rowId>
   $ rip table delete --row-ids uuid1,uuid2
 `)
-  .action(wrapCommand(async (options) => {
+  .action(wrapCommand(async (rowIds, options) => {
     const { tableDelete } = await import('./commands/table.js');
-    await tableDelete(options);
+    await tableDelete(rowIds, options);
   }));
 
 // ── bundle commands (multi-file static-site deployment) ──────────────
@@ -888,19 +938,23 @@ EXAMPLES:
     await authLogout(options);
   }));
 
-auth
-  .command('whoami')
-  .description('Show current agent identity and this key\'s access')
-  .addHelpText('after', `
+// `rip whoami` and `rip auth whoami` are one command: one description, help and action.
+for (const parent of [auth, program]) {
+  parent
+    .command('whoami')
+    .description('Show current agent identity and this key\'s access')
+    .addHelpText('after', `
 EXAMPLES:
-  $ rip auth whoami
+  $ rip whoami
+  $ rip auth whoami   (the same command)
 
   Prints this key's name and which workspaces it may use.
 `)
-  .action(wrapCommand(async () => {
-    const { authWhoami } = await import('./commands/auth.js');
-    await authWhoami();
-  }));
+    .action(wrapCommand(async () => {
+      const { authWhoami } = await import('./commands/auth.js');
+      await authWhoami();
+    }));
+}
 
 auth
   .command('update')
@@ -2615,7 +2669,7 @@ Examples:
   $ rip workspace sessions content --by-agent 9b1d0e2a-...
 `)
   .action(wrapCommand(async (ws, options) => { const { workspaceSessions } = await import('./commands/workspace.js'); await workspaceSessions(ws, options); }));
-workspace.command('changes').argument('<workspace>', 'Workspace id or slug').option('--limit <n>').option('--delivery-token <token>').description('Read bounded workspace changes without acknowledging them: who made each, why, and the item by title and id').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
+workspace.command('changes').argument('<workspace>', 'Workspace id or slug').option('--limit <n>', 'Changes per page').option('--delivery-token <token>', 'Re-read the page this token was delivered with').description('Read the next page of the workspace change feed, oldest first. Acknowledge it with rip workspace ack <workspace> --delivery-token <t> before reading the next; --delivery-token re-reads the same page. For the newest changes use rip workspace load.').action(wrapCommand(async (ws, options) => { const { workspaceChanges } = await import('./commands/workspace.js'); await workspaceChanges(ws, options); }));
 workspace.command('ack').argument('<workspace>', 'Workspace id or slug').requiredOption('--delivery-token <token>').description('Acknowledge one delivered workspace change page').action(wrapCommand(async (ws, options) => { const { workspaceChangesAck } = await import('./commands/workspace.js'); await workspaceChangesAck(ws, options.deliveryToken); }));
 
 // ── folder commands ─────────────────────────────────────────────────

@@ -79,7 +79,7 @@ export function outputError(err: CliError): never {
       if (err.code === 'PRECONDITION_REQUIRED' && details.field) console.error(`Required field: ${details.field}.`);
       // Any refusal naming its input (self-describing responses M2); a precondition and a scope keep their own line.
       if (details.field && !requiredField(err.code, details.field)) console.error(`Field: ${details.field}${details.path ? ` (${details.path})` : ''}`);
-      if (details.available) console.error(`Available columns: ${details.available.join(', ') || '(none)'}${details.availableTruncated ? " (more in the table's schema)" : ''}`);
+      if (details.available) console.error(`${err.code === 'INVALID_FILTER' ? 'Declared values' : 'Available columns'}: ${details.available.join(', ') || '(none)'}${details.availableTruncated ? " (more in the table's schema)" : ''}`);
       if (details.column !== undefined) console.error(`Header column ${details.column}`);
       if (err.code === 'INVALID_SCOPE' && details.field === 'workspaceId') console.error(`Required field: ${details.field}. Supply the workspace identity or omit workspace-only fields.`);
       if (details.fields?.length) console.error(`Omit incompatible fields: ${details.fields.join(', ')}. ${err.code === 'INELIGIBLE_STORAGE' ? 'Workspace content cannot use independently public storage.' : 'To open a workspace file to anyone with its URL, publish it, then run: rip artifact patch <id> --visibility link'}`);
@@ -196,6 +196,7 @@ export const ERROR_HINTS: Record<string, string> = {
   JOB_NOT_FOUND: 'No job you can read has that id: `rip job list --workspace-id <ws>` lists them.',
   VERSION_IN_USE: "A task's review round uses this version, so it is kept while that task exists. Delete another version; `rip task show <task> --round <round>` shows the round.",
   WORKSPACE_BUSY: 'Wait a moment and run it again; nothing was changed.',
+  WORKSPACE_PAGE_UNACKNOWLEDGED: 'Acknowledge the page you were given with `rip workspace ack <workspace> --delivery-token <token>`, or re-read it with `rip workspace changes <workspace> --delivery-token <token>`. An unacknowledged page lapses after 10 minutes.',
   AMBIGUOUS_REFERENCE: 'Name it by its id.',
   MAINTENANCE: 'Tokenrip is paused for maintenance. Nothing was changed. Run the command again after the time in the message.',
   RATE_LIMITED: 'That request changed nothing. Wait (see Retry after, when shown), then run the command again. If this comes from a loop, slow it down.',

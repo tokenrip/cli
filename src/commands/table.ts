@@ -3,10 +3,108 @@ import path from 'node:path';
 import { optionalAuthClient, requireAuthClient } from '../auth-client.js';
 import { CliError } from '../errors.js';
 import { outputSuccess } from '../output.js';
-import { formatTableRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
-import { parseRevision } from '../input.js';
-import { parseJsonObjectArrayOption, parseJsonObjectOption } from '../json.js';
+import { getFrontendUrl } from '../config.js';
+import { formatArtifactCreated, formatTableRows, formatRowsAppended, formatRowUpdated, formatRowsDeleted } from '../formatters.js';
+import { assertWorkspaceCreationScope, parseRevision } from '../input.js';
+import { parseJsonObjectArrayOption, parseJsonObjectOption, parseJsonOption } from '../json.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
+import { addHomeFields, addWorkspaceFields, artifactCreatedPayload } from './publish.js';
+
+/**
+ * `rip table create`, and `rip artifact publish --type table`: one `POST /v0/artifacts` with
+ * `type: 'table'`. The columns come from `--schema` or `--schema-file`; `--from-csv` sends the file
+ * as the table's `content`, which imports its rows (a schema then types the columns). `parent`,
+ * `context` and `refs` are publish's lineage flags; `table create` has none.
+ */
+export async function tableCreate(
+  title: string | undefined,
+  options: {
+    schema?: string;
+    schemaFile?: string;
+    fromCsv?: string;
+    headers?: boolean;
+    strict?: boolean;
+    description?: string;
+    alias?: string;
+    parent?: string;
+    context?: string;
+    refs?: string;
+    team?: string;
+    folder?: string;
+    visibility?: string;
+    workspaceId?: string;
+    why?: string;
+    dryRun?: boolean;
+  },
+): Promise<void> {
+  assertWorkspaceCreationScope(options);
+  if (options.schema === undefined && options.schemaFile === undefined && options.fromCsv === undefined) {
+    throw new CliError('INVALID_ARGS', 'A table needs its columns: provide --schema <json>, --schema-file <path> or --from-csv <file>.');
+  }
+  if (options.schema !== undefined && options.schemaFile !== undefined) {
+    throw new CliError('INVALID_ARGS', 'Provide either --schema or --schema-file, not both.');
+  }
+  if (options.fromCsv !== undefined && options.strict) {
+    throw new CliError('INVALID_ARGS', 'A table imported from CSV is not strict: --strict applies to a table created from --schema.');
+  }
+  if (options.headers && options.fromCsv === undefined) {
+    throw new CliError('INVALID_ARGS', '--headers applies to CSV imported into a table (--from-csv).');
+  }
+  // The server refuses the pair (SCHEMA_AND_HEADERS_CONFLICT): with a schema every CSV line is data.
+  if (options.headers && (options.schema !== undefined || options.schemaFile !== undefined)) {
+    throw new CliError('INVALID_ARGS', 'Use one with --from-csv: --headers (the first line names the columns) or a schema, --schema or --schema-file (every line is a row).');
+  }
+
+  let schema: unknown;
+  if (options.schema !== undefined) {
+    schema = parseJsonOption(options.schema, '--schema');
+  } else if (options.schemaFile !== undefined) {
+    const schemaPath = path.resolve(options.schemaFile);
+    if (!fs.existsSync(schemaPath)) throw new CliError('FILE_NOT_FOUND', `File not found: ${schemaPath}`);
+    schema = parseJsonOption(fs.readFileSync(schemaPath, 'utf-8'), options.schemaFile);
+  }
+
+  const body: Record<string, unknown> = { type: 'table' };
+  if (options.fromCsv !== undefined) {
+    const csvPath = path.resolve(options.fromCsv);
+    if (!fs.existsSync(csvPath)) throw new CliError('FILE_NOT_FOUND', `File not found: ${csvPath}`);
+    const content = fs.readFileSync(csvPath, 'utf-8');
+    const csvTitle = title || path.basename(csvPath, path.extname(csvPath));
+    if (options.dryRun) {
+      outputSuccess({ dryRun: true, action: 'would create table from csv', title: csvTitle, rows: content.split('\n').length }, formatArtifactCreated);
+      return;
+    }
+    // A table with CSV content imports its rows (the server's one selector for CSV import).
+    body.content = content;
+    body.title = csvTitle;
+    if (options.headers) body.headers = true;
+    if (schema !== undefined) body.schema = schema;
+  } else {
+    const schemaTitle = title || 'Untitled Table';
+    if (options.dryRun) {
+      outputSuccess({ dryRun: true, action: 'would create table', title: schemaTitle, schema }, formatArtifactCreated);
+      return;
+    }
+    body.title = schemaTitle;
+    body.schema = schema;
+  }
+  // An empty description is not sent: the server would store the empty string.
+  if (options.description) body.description = options.description;
+  if (options.alias) body.alias = options.alias;
+  if (options.parent) body.parentArtifactId = options.parent;
+  if (options.context) body.creatorContext = options.context;
+  if (options.refs) body.inputReferences = options.refs.split(',').map((r) => r.trim());
+  addHomeFields(body, options);
+  // No publicAsset or metadata: a table is never a public asset and keeps its schema in metadata.
+  if (options.visibility) body.visibility = options.visibility;
+  if (options.strict) body.strict = true;
+  addWorkspaceFields(body, options);
+
+  const { client, config } = requireAuthClient();
+  const { data } = await client.post('/v0/artifacts', body);
+  const url = data.data.url || `${getFrontendUrl(config)}/s/${data.data.id}`;
+  outputSuccess(artifactCreatedPayload(data.data, url, options.alias), formatArtifactCreated);
+}
 
 export async function tableAppend(
   identifier: string,
@@ -148,11 +246,23 @@ export async function tableUpdate(
   outputSuccess(data.data, formatRowUpdated);
 }
 
-/** `DELETE /v0/rows`: rows of one table by their own ids. */
+/**
+ * `DELETE /v0/rows`: rows of one table by their own ids, named as arguments (each may be a comma
+ * list) or with `--row-ids`, one form a call. Both together is also the retired
+ * `delete <table> --row-ids …`, so that refusal says the table is not named.
+ */
 export async function tableDelete(
-  options: { rowIds: string; expectedRevisions?: string; expectedTableRevision?: string; why?: string },
+  rowIds: string[],
+  options: { rowIds?: string; expectedRevisions?: string; expectedTableRevision?: string; why?: string },
 ): Promise<void> {
-  const ids = options.rowIds.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (rowIds.length > 0 && options.rowIds !== undefined) {
+    throw new CliError('INVALID_ARGS', 'Name the rows as arguments or with --row-ids, not both. A row id names its table, so the table is not named: rip table delete <rowId> <rowId>');
+  }
+  const ids = (options.rowIds !== undefined ? [options.rowIds] : rowIds)
+    .flatMap((named) => named.split(',')).map((s) => s.trim()).filter((s) => s.length > 0);
+  if (ids.length === 0) {
+    throw new CliError('INVALID_ARGS', 'Name the rows to delete: rip table delete <rowId> <rowId> (or --row-ids <id,id>)');
+  }
   const expectedTableRevision = options.expectedTableRevision === undefined ? undefined : tableRevisionOption(options.expectedTableRevision);
   const { client } = requireAuthClient();
   let expectedRevisions: Record<string, number> | undefined;
