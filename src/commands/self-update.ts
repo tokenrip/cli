@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveConfig, CONFIG_DIR } from '../config.js';
-import { fetchManifest, getCurrentVersion } from '../update-check.js';
+import { fetchManifest, getCurrentVersion, type UpdateManifest } from '../update-check.js';
 import { outputSuccess } from '../output.js';
 import { formatSelfUpdate } from '../formatters.js';
 
@@ -48,6 +48,44 @@ async function saveSkillFile(skillUrl: string): Promise<{ path: string; changed:
   } catch {
     return null;
   }
+}
+
+/** The manifest's changelog address, or null when it names none. A usable string is returned unchanged. */
+export function changelogUrlOf(manifest: UpdateManifest): string | null {
+  const url = manifest.changelog_url;
+  if (typeof url !== 'string' || url.trim() === '') return null;
+  return url;
+}
+
+export function updatedResult(input: {
+  from: string;
+  to: string;
+  manifest: UpdateManifest;
+  skill: { path: string; changed: boolean } | null;
+}): {
+  status: 'updated';
+  from: string;
+  to: string;
+  skill_url: string;
+  skill_file_path: string | null;
+  skill_changed: boolean;
+  message: string;
+  changelog_url: string | null;
+} {
+  const { from, to, manifest, skill } = input;
+  const skillNote = skill
+    ? `Skill file ${skill.changed ? 'refreshed' : 'already current'}: ${skill.path}`
+    : `Reload your skill: npx skills add tokenrip/cli`;
+  return {
+    status: 'updated',
+    from,
+    to,
+    skill_url: manifest.skill_url,
+    skill_file_path: skill ? skill.path : null,
+    skill_changed: skill ? skill.changed : false,
+    message: manifest.message ?? `Updated @tokenrip/cli ${from} → ${to}. ${skillNote}.`,
+    changelog_url: changelogUrlOf(manifest),
+  };
 }
 
 export async function selfUpdate(): Promise<void> {
@@ -105,17 +143,10 @@ export async function selfUpdate(): Promise<void> {
 
   const skill = await saveSkillFile(manifest.skill_url);
 
-  const skillNote = skill
-    ? `Skill file ${skill.changed ? 'refreshed' : 'already current'}: ${skill.path}`
-    : `Reload your skill: npx skills add tokenrip/cli`;
-
-  outputSuccess({
-    status: 'updated',
+  outputSuccess(updatedResult({
     from: currentVersion,
     to: targetVersion,
-    skill_url: manifest.skill_url,
-    skill_file_path: skill ? skill.path : null,
-    skill_changed: skill ? skill.changed : false,
-    message: manifest.message ?? `Updated @tokenrip/cli ${currentVersion} → ${targetVersion}. ${skillNote}.`,
-  }, formatSelfUpdate);
+    manifest,
+    skill,
+  }), formatSelfUpdate);
 }

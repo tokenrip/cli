@@ -275,8 +275,9 @@ rip task propose <id> --draft-file a.md --draft-artifact <id> --then post   # te
 rip task show <id>                                   # who, the latest round (a send back's comment), Approved text and files, links, timeline
 rip task timeline <id>                               # every round, message in its thread and step
 rip output record --workspace-id <ws> --task <id> --kind x.reply --ref https://… --why "<the goal>"   # what went out
+rip output record --workspace-id ops --kind deploy --target production --ref 2ecbae2283bc --job site-deploy --text "16 commits; smoke OK" --why "<the goal>"   # no task
 rip task done <id> --result-text "4 likes"
-rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
+rip task report --workspace-id <ws> --title "Audited the pricing table" --result-text "3 prices corrected"
 rip task report <id> --result-text "12 likes"        # a later result on a Done task
 rip task list --workspace-id <ws> --reviewer me      # reviews addressed to you
 rip task decide <id> --approve --expected-revision <n> [--comment "…"] [--then <step> | --no-then] [--then-assignee <who> | --no-then-assignee] [--edited-draft-file f]

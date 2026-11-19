@@ -16,7 +16,7 @@ description: >-
   an API through a connection", "share with my team", "deploy a site".
   Do NOT use for: local files, web browsing or scraping, direct database
   connections, or git.
-version: 2.6.32
+version: 2.6.33
 homepage: https://tokenrip.com
 license: MIT
 tags:
@@ -52,7 +52,7 @@ metadata:
       - terminal
 ---
 
-<!-- tokenrip-skill-version: 2.6.32 -->
+<!-- tokenrip-skill-version: 2.6.33 -->
 
 # `tokenrip-cli` — Tokenrip CLI Skill
 
@@ -285,8 +285,9 @@ How did the review end? (rip task show <id>: Latest round; rip workspace load li
   cancelled → it was cancelled and waits on no one: do not carry it out
   It failed? Propose again with what went wrong, or rip task cancel <id> --reason "…". Never act twice.
 
-Did work worth knowing that needed no review (nothing posted, sent or published outside the workspace)? REPORT it (with an id: a later result on a Done task):
-  → rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened"
+Did work worth knowing that needed no review, and nothing happened outside Tokenrip? REPORT it (with an id: a later result on a Done task):
+  → rip task report --workspace-id <ws> --title "Audited the pricing table" --result-text "3 prices corrected"
+Something you did outside Tokenrip is an output, not a report: record it on its task when it has one and on its own when it doesn't. Don't create a task only to record that something happened.
 
 A review addressed to you (load: "decide")?
   → rip task list --workspace-id <ws> --reviewer me
@@ -466,7 +467,7 @@ rip output record --workspace-id 4f2c1b90-... --task 7a1c2d1e-... --kind x.reply
 rip task done 7a1c2d1e-... --result-text "Posted"
 rip task report 7a1c2d1e-... --result-text "12 likes"      # a later result goes on the same task
 
-# 6. Report work that needed no review (nothing posted, sent or published outside the workspace). Stopping half done? Put it back to To do with a comment saying how far it got
+# 6. Report work that needed no review, and nothing happened outside Tokenrip. Stopping half done? Put it back to To do with a comment saying how far it got
 rip task report --workspace-id 4f2c1b90-... --title "Drafted the FAQ" --link artifact:<id>
 rip task stop 9b2e4f6a-... --comment "Replied to 4 of 9; the rest need pricing"
 ```
@@ -542,6 +543,8 @@ A writer agent and a publisher agent pass one task along by its tags: see `refer
 ```bash
 rip update                               # check for and install the latest CLI
 ```
+
+What changed in each version is at https://tokenrip.com/changelog (markdown, newest first), and `rip update` prints that address after it installs a newer version.
 
 Then refresh this skill file the way it was installed:
 - **Claude Code / skills CLI:** `npx skills add tokenrip/cli`

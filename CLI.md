@@ -641,9 +641,11 @@ A new proposal needs `--title <title>` and `--workspace-id <id>` (or `--parent-i
 Report work you already did that needed no approval, or add a later result to a Done task.
 
 ```bash
-rip task report --workspace-id 7a1c2d1e-… --title "Sent the weekly digest" --result-text "38% opened" --link artifact:a1b2c3d4-…
+rip task report --workspace-id 7a1c2d1e-… --title "Audited the pricing table" --result-text "3 prices corrected" --link artifact:a1b2c3d4-…
 rip task report 4f2c1b90-… --result-text "12 likes"
 ```
+
+Something you did outside Tokenrip is an output, not a report: record it on its task when it has one and on its own when it doesn't. Don't create a task only to record that something happened.
 
 A new report needs `--title` and `--workspace-id` (or `--parent-id` alone); it is born Done, created and completed by you, and takes `--result-text` (at most 64,000 characters: a line or a whole report), `--link` (result links, repeatable; a `url:` one is recorded as an output, as on [`rip task done`](#rip-task-done-id)), `--type`, `--label` (repeatable), `--job <name>`, `--body` and `--why`. With an `<id>` it takes only `--result-text` (replacing the old text) and `--link` (added), on a Done task (`TASK_NOT_DONE` otherwise).
 
@@ -700,10 +702,11 @@ rip job list --workspace-id content [--archived]
 
 ## Output commands
 
-An **output** records one thing an agent sent, posted, published or delivered outside Tokenrip (an X post, an email reply), on a task or on its own. On a task it takes the task's job and labels, and the task's approved round as its approval. Agents record outputs; people read them. Guide: [`references/tasks.md`](./references/tasks.md#outputs).
+An **output** records one thing an agent did outside Tokenrip: something sent, posted or published (an X post, an email reply, a client report), or an operation carried out (a deploy, a merge, a migration run), on a task or on its own. On a task it takes the task's job and labels, and the task's approved round as its approval. Agents record outputs; people read them. Guide: [`references/tasks.md`](./references/tasks.md#outputs).
 
 ```bash
 rip output record --workspace-id content --kind x.post --target x:@acme --ref https://x.com/acme/status/1 --task 7a1c2d1e-…
+rip output record --workspace-id ops --kind deploy --target production --ref 2ecbae2283bc --job site-deploy --text "16 commits; smoke OK"   # no task
 rip output record --workspace-id content --kind email.reply --key msg-123 --status sending     # claim, then send
 rip output update 01a1adf7-… --status sent --ref "<message-id>"                                  # or --status failed
 rip output list --workspace-id content --job founder-posts --status sent
@@ -1291,7 +1294,7 @@ rip config show                                  # API URL, key status, config p
 
 ### `rip update` (alias of `rip self-update`)
 
-Check for a newer CLI and install it via npm, then print how to refresh the skill file. When a newer version exists, every command prints on stderr (the published version is checked at most once a day): "rip X is available (you have Y): run `rip update`, then reload the tokenrip skill."
+Check for a newer CLI and install it via npm, then print how to refresh the skill file. The output ends its first lines with where to read what changed. When a newer version exists, every command prints on stderr (the published version is checked at most once a day): "rip X is available (you have Y): run `rip update`, then reload the tokenrip skill."
 
 ## Provenance tracking
 

@@ -2148,10 +2148,10 @@ withWhy(task
   .option('--job <name>', 'A new report: the job it was part of (a live job\'s name)')
   .option('--body <markdown>', 'A new report: details')
   .allowExcessArguments(false)
-  .description('Report work you already did that needed no approval (born Done), or add a later result to a Done task')
+  .description('Report work you already did that needed no approval (born Done), or add a later result to a Done task. Something done outside Tokenrip is an output: rip output record')
   .addHelpText('after', `
 EXAMPLES:
-  $ rip task report --workspace-id 4f2c1b90-... --title "Sent the weekly digest" --result-text "38% opened" --link artifact:<digest-id>
+  $ rip task report --workspace-id 4f2c1b90-... --title "Audited the pricing table" --result-text "3 prices corrected" --link artifact:<digest-id>
   $ rip task report 7a1c2d1e-... --result-text "12 likes"
 `)
   .action(wrapCommand(async (id, options) => {
@@ -2308,26 +2308,27 @@ job
 // ── output commands ──────────────────────────────────────────────────
 const output = program
   .command('output')
-  .description('Outputs: what an agent sent, posted or published outside Tokenrip, recorded with or without a task');
+  .description('Outputs: what an agent did outside Tokenrip (sent, posted, published, deployed), recorded with or without a task');
 
 withWhy(output
   .command('record'), 'optional on a task')
   .requiredOption('--workspace-id <id>', 'Workspace id or slug')
-  .requiredOption('--kind <kind>', 'What it was: a free tag that allows dots (x.post, email.reply, li.comment)')
-  .option('--target <target>', 'Who or what received it (x:@bob, bob@acme.com, a URL)')
-  .option('--ref <ref>', 'The outside reference: the post\'s URL, a message id')
-  .option('--text <text>', 'What was said')
+  .requiredOption('--kind <kind>', 'What it was: a free tag that allows dots (x.post, email.reply, li.comment, deploy)')
+  .option('--target <target>', 'Who or what received it, or where it was done (x:@bob, bob@acme.com, a channel, a URL, production)')
+  .option('--ref <ref>', 'The outside reference: the post\'s URL, a message id, a build or commit id')
+  .option('--text <text>', 'What was said or done')
   .option('--file <artifact[@version]>', 'The file it was made from: an artifact id or page URL, @ a version number or id (else the current one)')
   .option('--task <id>', 'The task it served: its job and labels follow, and its approved round is the approval')
   .option('--job <name>', 'The job it served (a live job\'s name; defaults to the task\'s)')
   .option('--label <labels>', 'A label (repeatable, or a comma list; defaults to the task\'s)', collectLink)
-  .option('--status <status>', 'sent (the default), or sending to claim it before you send (with --key)')
+  .option('--status <status>', 'sent (the default), or sending to claim it before you send or start (with --key)')
   .option('--key <key>', 'Your once-only key: while an output not failed holds it here, another record with it is refused OUTPUT_EXISTS')
   .allowExcessArguments(false)
-  .description('Record something you sent, posted or published, in one call')
+  .description('Record one thing you did outside Tokenrip (a post, an email, a deploy), in one call')
   .addHelpText('after', `
 EXAMPLES:
   $ rip output record --workspace-id content --kind x.post --ref https://x.com/acme/status/1 --task 7a1c2d1e-...
+  $ rip output record --workspace-id ops --kind deploy --target production --ref 2ecbae2283bc --job site-deploy --text "16 commits; smoke OK"   # no task
   # Once only: claim, send, then settle
   $ rip output record --workspace-id content --kind email.reply --key msg-123 --status sending
   $ rip output update 01a1adf7-... --status sent --ref "<message-id>"
@@ -2341,8 +2342,8 @@ withOptionalWhy(output
   .command('update'))
   .argument('<id>', 'Output id (from rip output record or rip output list)')
   .requiredOption('--status <status>', 'sent once it went out, or failed when you know it did not (its key is free again; if you cannot tell, leave it sending)')
-  .option('--ref <ref>', 'The outside reference once sent: the post\'s URL, a message id')
-  .option('--text <text>', 'What was said, if it changed')
+  .option('--ref <ref>', 'The outside reference once sent: the post\'s URL, a message id, a build or commit id')
+  .option('--text <text>', 'What was said or done')
   .allowExcessArguments(false)
   .description('Settle an output you claimed with --status sending: sent or failed')
   .action(wrapCommand(async (id, options) => {

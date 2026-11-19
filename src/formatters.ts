@@ -893,6 +893,9 @@ export const formatSelfUpdate: Formatter = (data) => {
 
   // updated
   const lines = [`Updated @tokenrip/cli ${data.from} → ${data.to}`];
+  if (typeof data.changelog_url === 'string' && data.changelog_url.length > 0) {
+    lines.push(`What changed: ${data.changelog_url}`);
+  }
 
   if (data.skill_file_path) {
     const label = data.skill_changed ? 'Skill file refreshed' : 'Skill file current';

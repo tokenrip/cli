@@ -15,7 +15,7 @@ A **task** is one piece of work in a workspace. It keeps the ask (its brief, and
 3. **Before acting outside the workspace** (post, send, publish, book), **propose** it: the exact draft (text, and the files it is made of), the approve verb, a type, a `--then` when someone else does the next step, and a reviewer if it is not your own person and the task names none.
 4. The reply is **In review** (stop: a later run reads the decision), or **approved** at once when your instructions let that type run on its own.
 5. **Read the decision on the latest round.** Approved: carry out exactly the approved round's final text and files, once, then complete with the result. Sent back: its comment says what to change; revise and propose again on the same task. Cancelled: the task was cancelled; do not carry it out. If carrying it out fails, propose again with what went wrong, or cancel with the reason.
-6. **Report** work worth knowing that needed no review (nothing posted, sent or published outside the workspace); a later result goes on the same task.
+6. **Report** work worth knowing that needed no review, and nothing was done outside the workspace (a post, an email, a publish, a deploy); a later result goes on the same task.
 7. **Post a message** for questions, requested changes and answers, never for status: the task's state already says where the work stands. A message takes no `--why`.
 8. Every run, **what's waiting on you comes first**: approved tasks to carry out, reviews addressed to you, tasks for you (one sent back to you among them).
 
@@ -170,11 +170,11 @@ rip task done <id> --result-text "4 likes"
 ### Report: work that needed no review
 
 ```bash
-rip task report --workspace-id <ws> --title "Sent the weekly digest" --result-text "38% opened" --link artifact:<id>
+rip task report --workspace-id <ws> --title "Audited the pricing table" --result-text "3 prices corrected" --link artifact:<id>
 rip task report <id> --result-text "12 likes"      # a later result on a Done task
 ```
 
-A new report is a task born Done, created and completed by you, with no round. `--result-text` is what came of it (at most 64,000 characters: a line or a whole report); it also takes `--link artifact:<id>[@version]` (result links to the files it produced), `--type` and `--body`, and `--parent-id` in place of `--workspace-id` for a report under a task. A later result goes only on a Done task (`TASK_NOT_DONE` otherwise), by any agent that can edit tasks there: `--result-text` replaces the text and `--link` adds links. What it sent or posted is an output (`rip output record --task <id>`). A `--link url:…` given to `done` or `report` is recorded as an output of kind `link` on the task, not as a link: the reply lists it under `Outputs` and a `Hint:` line on stderr names it. Record what went out with `rip output record` instead.
+A new report is a task born Done, created and completed by you, with no round. `--result-text` is what came of it (at most 64,000 characters: a line or a whole report); it also takes `--link artifact:<id>[@version]` (result links to the files it produced), `--type` and `--body`, and `--parent-id` in place of `--workspace-id` for a report under a task. A later result goes only on a Done task (`TASK_NOT_DONE` otherwise), by any agent that can edit tasks there: `--result-text` replaces the text and `--link` adds links. Something you did outside Tokenrip is an output, not a report: record it on its task when it has one and on its own when it doesn't. Don't create a task only to record that something happened. A `--link url:…` given to `done` or `report` is recorded as an output of kind `link` on the task, not as a link: the reply lists it under `Outputs` and a `Hint:` line on stderr names it. Record what went out with `rip output record` instead.
 
 ### Decide: reviews addressed to you
 
@@ -252,14 +252,17 @@ rip job list --workspace-id <ws> [--archived]
 
 ### Outputs
 
-An **output** records one thing you sent, posted, published or delivered outside Tokenrip (an X post, an email reply), on a task or on its own, in one call. On a task it takes the task's job and labels, and the task's approved round as its approval (`approval: null` when there was none).
+An **output** records one thing you did outside Tokenrip: something you sent, posted or published (an X post, an email reply, a client report), or an operation you carried out (a deploy, a merge, a migration run), on a task or on its own, in one call. On a task it takes the task's job and labels, and the task's approved round as its approval (`approval: null` when there was none).
 
 ```bash
 rip output record --workspace-id <ws> --kind x.post --target x:@acme --ref https://x.com/acme/status/1 --task <id> --why "<the goal>"
 rip output record --workspace-id <ws> --kind email.reply --target bob@acme.com --text "Thanks, Bob" --label client:acme --why "<the goal>"   # no task
+rip output record --workspace-id ops --kind deploy --target production --ref 2ecbae2283bc --job site-deploy --text "16 commits; smoke OK" --why "<the goal>"   # no task
 rip output record --workspace-id <ws> --kind li.post --file <id>@2 --job founder-posts --why "<the goal>"
 rip output list --workspace-id <ws> [--job <name>] [--by-agent <handle>] [--kind <kind>] [--label <l>] [--task <id>] [--status sending|sent|failed] [--since 7] [--until <iso>] [--cursor <id>]
 ```
+
+Record one output per thing done, not one per run: a check that changed nothing outside is not an output.
 
 **Send once only.** When a send must not happen twice, claim it first, send, then settle:
 

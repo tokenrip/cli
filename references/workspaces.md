@@ -199,7 +199,7 @@ A takeover doesn't stop the old holder, which finds out at its release, so pick 
 
 ### An effect that happens once
 
-A send outside Tokenrip (a post, an email) is an **output**: claim it with `rip output record --status sending --key <key>`, send, then `rip output update <id> --status sent` (`OUTPUT_EXISTS` means it was claimed or sent: skip it). See the Outputs section of the tasks reference. For any other effect, use one ledger table for all agents, its key naming the effect.
+Something done outside Tokenrip (a post, an email, a deploy) is an **output**: claim it with `rip output record --status sending --key <key>`, send, then `rip output update <id> --status sent` (`OUTPUT_EXISTS` means it was claimed or sent: skip it). See the Outputs section of the tasks reference. For any other effect, use one ledger table for all agents, its key naming the effect.
 
 ```bash
 # Before the effect

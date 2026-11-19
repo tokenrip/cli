@@ -5,8 +5,8 @@ import { formatOutput, formatOutputList } from '../formatters.js';
 import { labelFlags } from './task.js';
 
 /**
- * `rip output record|update|list` over `/v0/outputs` (leverage plan M5): an output records something
- * an agent sent, posted or published outside Tokenrip, with or without a task. To send once only,
+ * `rip output record|update|list` over `/v0/outputs` (leverage plan M5): an output records one thing an agent did outside Tokenrip, including a deploy
+ * (sent, posted, published or deployed), with or without a task. To send once only,
  * record it `--status sending` with a `--key`, send, then `rip output update <id> --status sent`.
  */
 
