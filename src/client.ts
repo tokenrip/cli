@@ -180,6 +180,64 @@ function limitWaitLine(code: string, limit: unknown, seconds: number): string {
   return `${what} — waiting ${seconds} s, then retrying.`;
 }
 
+/**
+ * The command's why (`--why` / `TOKENRIP_WHY`): module state, set once per command by the CLI's
+ * `preAction` hook. Every request any API client makes while it is set carries it (CLI default
+ * agent design §5.6); undefined sends none. A library caller (the exported command functions take
+ * no why) sets it with `setRequestWhy(why)` before a call and resets it with `setRequestWhy(undefined)`.
+ */
+let requestWhy: string | undefined;
+
+/** Set the why every request carries from now on, or clear it with `undefined`. */
+export function setRequestWhy(why: string | undefined): void {
+  requestWhy = why;
+}
+
+/** The `form-data` bodies this layer already gave a why: a form cannot be read back. */
+const formsWithWhy = new WeakSet<object>();
+
+/** A `form-data` body (the package's own form, which `getHeaders` tells apart from a native FormData). */
+function isFormDataBody(data: unknown): data is { append(name: string, value: string): void } {
+  if (!data || typeof data !== 'object') return false;
+  const form = data as { append?: unknown; getHeaders?: unknown };
+  return typeof form.append === 'function' && typeof form.getHeaders === 'function';
+}
+
+function isPlainObject(data: unknown): data is Record<string, unknown> {
+  if (!data || typeof data !== 'object') return false;
+  const proto = Object.getPrototypeOf(data);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Put the why where the route reads it: a GET's or HEAD's query, a JSON object body, a `form-data`
+ * field, or a body of its own on a DELETE, POST, PUT or PATCH that has none. A why already in the
+ * query or the JSON body is kept. A `form-data` body cannot be read back, so this layer appends one
+ * once per form; a form the caller already gave a why would get a second. Any other body (a string,
+ * a Buffer, an array, a stream) goes as it is. Idempotent, so a resent request, which passes here
+ * again, carries it once.
+ */
+function attachWhy(config: InternalAxiosRequestConfig, why: string): void {
+  const method = (config.method ?? 'get').toLowerCase();
+  if (method === 'get' || method === 'head') {
+    const params = config.params;
+    if (params instanceof URLSearchParams) {
+      if (!params.has('why')) { const next = new URLSearchParams(params); next.set('why', why); config.params = next; }
+    } else if (params == null || isPlainObject(params)) {
+      if (params?.why === undefined) config.params = { ...params, why };
+    }
+    return;
+  }
+  const data = config.data;
+  if (isFormDataBody(data)) {
+    if (!formsWithWhy.has(data)) { data.append('why', why); formsWithWhy.add(data); }
+  } else if (isPlainObject(data)) {
+    if (data.why === undefined) config.data = { ...data, why };
+  } else if (data == null) {
+    if (['delete', 'post', 'put', 'patch'].includes(method)) config.data = { why };
+  }
+}
+
 export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   const baseUrl = config.baseUrl || 'https://api.tokenrip.com';
   const headers: Record<string, string> = {};
@@ -207,8 +265,9 @@ export function createHttpClient(config: ClientConfig = {}): AxiosInstance {
   };
   const resends = new WeakMap<InternalAxiosRequestConfig, Resend>();
   client.interceptors.request.use(config => {
+    if (requestWhy !== undefined) attachWhy(config, requestWhy);
     // Snapshot the request before this client wraps its transforms, adapter, agents and cancel
-    // token, so a resend starts from the caller's request with fresh bookkeeping.
+    // token, so a resend starts from the caller's request (its why included) with fresh bookkeeping.
     const tagged = config as { [RESEND_TALLY]?: ResendTally };
     const carried = tagged[RESEND_TALLY];
     delete tagged[RESEND_TALLY];

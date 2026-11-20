@@ -16,7 +16,6 @@ interface UpdateOptions {
   keepPrevious?: boolean;
   find?: string[];
   replace?: string[];
-  why?: string;
   dryRun?: boolean;
 }
 
@@ -63,7 +62,6 @@ export async function update(identifier: string, filePath: string | undefined, o
   if (options.context) fields.creatorContext = options.context;
   if (options.expectedVersionId) fields.expectedVersionId = options.expectedVersionId;
   if (options.keepPrevious) fields.keepPrevious = true;
-  if (options.why !== undefined) fields.why = options.why;
 
   let result: Record<string, unknown>;
   if (absPath === undefined) {
@@ -99,7 +97,6 @@ export async function update(identifier: string, filePath: string | undefined, o
     if (options.title !== undefined) patchBody.title = options.title;
     if (options.alias !== undefined) patchBody.alias = options.alias;
     if (typeof result.workspaceRevision === 'number') patchBody.expectedWorkspaceRevision = result.workspaceRevision;
-    if (options.why !== undefined) patchBody.why = options.why;
     const { data: patched } = await client.patch(`/v0/artifacts/${uuid}`, patchBody);
     result = { ...result, title: patched.data.title ?? result.title, alias: patched.data.alias };
   }

@@ -1,6 +1,6 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { formatTrashed } from '../formatters.js';
+import { formatFolder, formatFolderList, formatTrashed } from '../formatters.js';
 import { assertWorkspaceCreationScope, historyField, parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
 import { resolveTeam } from '../teams.js';
@@ -25,44 +25,37 @@ function optionalRevision(value: string | undefined): { expectedWorkspaceRevisio
   return value === undefined ? {} : { expectedWorkspaceRevision: parseNonNegativeInteger(value, '--expected-workspace-revision') };
 }
 
-function optionalWhy(why: string | undefined): { why?: string } {
-  return why === undefined ? {} : { why };
-}
-
 const folderPath = (folder: string) => `/v0/folders/${encodeURIComponent(folder)}`;
 
 /** `rip folder create`: a personal folder, a team's (`--team`) or a workspace's (`--workspace-id`). */
-export async function folderCreate(slug: string, options: FolderScope & { why?: string }): Promise<void> {
+export async function folderCreate(slug: string, options: FolderScope): Promise<void> {
   assertWorkspaceCreationScope(options);
   const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/folders', {
-    slug, ...scopeOf(options),
-    ...optionalWhy(options.why),
-  });
-  outputSuccess(data.data);
+  const { data } = await client.post('/v0/folders', { slug, ...scopeOf(options) });
+  outputSuccess(data.data, formatFolder);
 }
 
 /** `rip folder list`: your personal folders, a team's, or the ones you can see in a workspace. */
 export async function folderList(options: FolderScope): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get('/v0/folders', { params: scopeOf(options) });
-  outputSuccess(data.data);
+  outputSuccess(data.data, formatFolderList);
 }
 
 /** `rip folder show <folder>`: by id (any kind), or by slug in its scope. */
 export async function folderShow(folder: string, options: FolderScope): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.get(folderPath(folder), { params: scopeOf(options) });
-  outputSuccess(data.data);
+  outputSuccess(data.data, formatFolder);
 }
 
 /** Move a folder, and the artifacts in it, to the trash; restorable for 30 days. Inputs go in the body. */
 export async function folderDelete(
   folder: string,
-  options: FolderScope & { expectedWorkspaceRevision?: string; why?: string },
+  options: FolderScope & { expectedWorkspaceRevision?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
-  const body = { ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why) };
+  const body = { ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision) };
   const { data } = await client.delete(folderPath(folder), Object.keys(body).length ? { data: body } : {});
   outputSuccess(data.data, formatTrashed);
 }
@@ -71,40 +64,40 @@ export async function folderDelete(
 export async function folderRename(
   folder: string,
   newSlug: string,
-  options: FolderScope & { expectedWorkspaceRevision?: string; why?: string },
+  options: FolderScope & { expectedWorkspaceRevision?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.patch(folderPath(folder), {
-    newSlug, ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
+    newSlug, ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision),
   });
-  outputSuccess(data.data);
+  outputSuccess(data.data, formatFolder);
 }
 
 /** `rip folder update <folder> --history`: any folder's history setting (`inherit` clears it). */
 export async function folderUpdate(
   folder: string,
-  options: FolderScope & { history?: string; expectedWorkspaceRevision?: string; why?: string },
+  options: FolderScope & { history?: string; expectedWorkspaceRevision?: string },
 ): Promise<void> {
   const body = {
     ...historyField(options.history),
-    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
+    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision),
   };
   if (options.history === undefined) {
     throw new CliError('INVALID_ARGS', 'Provide --history.');
   }
   const { client } = requireAuthClient();
   const { data } = await client.patch(folderPath(folder), body);
-  outputSuccess(data.data);
+  outputSuccess(data.data, formatFolder);
 }
 
 /** `rip folder empty <folder>`: the live files in a workspace folder to the trash. The folder stays. */
 export async function folderEmpty(
   folder: string,
-  options: { workspaceId?: string; expectedWorkspaceRevision?: string; why?: string },
+  options: { workspaceId?: string; expectedWorkspaceRevision?: string },
 ): Promise<void> {
   const { client } = requireAuthClient();
   const { data } = await client.post(`${folderPath(folder)}/empty`, {
-    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision), ...optionalWhy(options.why),
+    ...scopeOf(options), ...optionalRevision(options.expectedWorkspaceRevision),
   });
   outputSuccess(data.data);
 }
@@ -114,7 +107,7 @@ export async function folderEmpty(
  * in `--team`, else your personal folders) or unfile it (`--unfiled`, `folder: null`). The server
  * resolves the folder; a move always names its destination.
  */
-export async function artifactMove(identifier: string, options: { folder?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevision?: string; why?: string }): Promise<void> {
+export async function artifactMove(identifier: string, options: { folder?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevision?: string }): Promise<void> {
   if (options.unfiled && options.folder) throw new CliError('INVALID_ARGS', 'Provide --folder or --unfiled, not both');
   if (!options.unfiled && !options.folder) throw new CliError('MISSING_FIELD', 'Provide --folder <id-or-slug> or --unfiled');
   if (options.unfiled && options.team) throw new CliError('INVALID_ARGS', '--team scopes a folder slug: leave it out with --unfiled');
@@ -124,7 +117,6 @@ export async function artifactMove(identifier: string, options: { folder?: strin
     folder: options.unfiled ? null : options.folder!,
     ...(options.team ? { team: resolveTeam(options.team) } : {}),
     ...optionalRevision(options.expectedWorkspaceRevision),
-    ...(options.why !== undefined ? { why: options.why } : {}),
   };
   const { data } = await client.patch(`/v0/artifacts/${id}`, body);
   outputSuccess(options.unfiled ? { id: data.data.id ?? id, folder_id: null } : data.data);

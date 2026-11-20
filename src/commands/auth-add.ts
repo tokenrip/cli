@@ -5,10 +5,13 @@ import { CliError } from '../errors.js';
 import { formatAuthAdded } from '../formatters.js';
 import {
   assertSignInNameFree,
+  defaultSignInKey,
   loadIdentities,
   nameUnnamedSiblings,
   resolveCurrentIdentity,
   saveIdentities,
+  settleDefault,
+  defaultLabelOf,
   signInKey,
   signInLabel,
   signInsForAccount,
@@ -25,7 +28,8 @@ type CreatedKey = { id: string; name: string; api_key: string };
  * 2026-11-13-shared-computer-sign-ins §5): from the selected sign-in, create a key named `name` on
  * the same account (`POST /v0/auth/keys`; the server refuses a run key or a limited key, applies
  * its hourly cap and emails the person that an agent connected) and save it here as sign-in `name`,
- * keypair-less like an email sign-in, without making it current.
+ * keypair-less like an email sign-in. It never becomes the computer's default (`settleDefault`:
+ * the store holds the caller); the receipt names the default (`default_sign_in`, null when none).
  *
  * The name must be free on this computer (any account), so `rip --agent <name>` names one sign-in.
  * Since the account now has several sign-ins here, an unnamed one of the account (stored before
@@ -60,9 +64,9 @@ export async function authAdd(name: string): Promise<void> {
   const { data } = await client.post('/v0/auth/keys', { name });
   const created = data.data as CreatedKey;
 
-  let addedBy: string;
+  let saved: { addedBy: string; defaultSignIn: string | null };
   try {
-    addedBy = saveAdded(caller, name, created.api_key, nameSiblings);
+    saved = saveAdded(caller, name, created.api_key, nameSiblings);
   } catch (error) {
     const own = await retireKey(apiUrl, created.api_key);
     const revoked = own.status === 'revoked' || own.status === 'already_invalid';
@@ -80,8 +84,9 @@ export async function authAdd(name: string): Promise<void> {
       account_id: caller.accountId,
       ...(email === undefined ? {} : { email }),
       key_id: created.id,
-      added_by: addedBy,
+      added_by: saved.addedBy,
       run_as: `rip --agent ${name}`,
+      default_sign_in: saved.defaultSignIn,
     },
     formatAuthAdded,
   );
@@ -90,28 +95,33 @@ export async function authAdd(name: string): Promise<void> {
 /**
  * One read and one write of the store: `name` checked again, the account's unnamed sign-ins named,
  * the new sign-in added. It throws only when nothing was saved (the caller then revokes the new
- * key). The current pointer moves only with a renamed sign-in. Returns how the calling sign-in is
- * now shown.
+ * key). The current pointer moves with a renamed sign-in, and a default that was only the only
+ * sign-in is written to it (`settleDefault`). Returns how the calling sign-in is now shown, and the
+ * default.
  */
 function saveAdded(
   caller: StoredIdentity,
   name: string,
   apiKey: string,
   nameSiblings: Array<{ key: string; apiKey: string; serverName: string }>,
-): string {
+): { addedBy: string; defaultSignIn: string | null } {
   const store = loadIdentities();
   const config = loadConfig();
   const pointer = [config.currentAccount, config.currentAgent];
   assertSignInNameFree(store, name);
   const given = [name];
+  const storeWasEmpty = Object.keys(store).length === 0;
   nameUnnamedSiblings(store, config, caller.accountId, nameSiblings, given);
+  const before = defaultSignInKey(store, config);
   store[name] = { accountId: caller.accountId, publicKey: accountIdToPublicKey(caller.accountId), secretKey: '', apiKey, name };
   saveIdentities(store);
-  // Saved: from here nothing is revoked. A pointer left on the old store key (an account id)
-  // still finds the renamed sign-in by its account, so its write is best-effort.
+  settleDefault(config, { storeWasEmpty, before, key: name });
+  // Saved: from here nothing is revoked, so the pointer's write is best-effort. If it fails, a
+  // pointer left on the old store key (an account id) now matches several sign-ins, which reads as
+  // no default until `rip account use`.
   if (pointer[0] !== config.currentAccount || pointer[1] !== config.currentAgent) {
     try { saveConfig(config); } catch { /* see above */ }
   }
   const now = Object.values(store).find((entry) => entry.accountId === caller.accountId && entry.apiKey === caller.apiKey);
-  return signInLabel(now ?? caller);
+  return { addedBy: signInLabel(now ?? caller), defaultSignIn: defaultLabelOf(store, config) };
 }

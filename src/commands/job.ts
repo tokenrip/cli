@@ -37,7 +37,6 @@ export interface JobCreateOptions extends JobAgentOptions {
   description?: string;
   /** A JSON array, or `@<file>` holding one. */
   definitions?: string;
-  why?: string;
 }
 
 export interface JobUpdateOptions extends JobAgentOptions {
@@ -53,15 +52,10 @@ export interface JobUpdateOptions extends JobAgentOptions {
   agents?: boolean;
   archive?: boolean;
   restore?: boolean;
-  why?: string;
 }
 
 function invalid(message: string): CliError {
   return new CliError('INVALID_ARGUMENT', message);
-}
-
-function attribution(options: { why?: string }): Record<string, string> {
-  return options.why !== undefined ? { why: options.why } : {};
 }
 
 /** One `--job-agent`: the handle (bare or `agent:<handle>`, sent as given), then an optional `:<role>`. */
@@ -126,7 +120,7 @@ export async function jobCreate(options: JobCreateOptions): Promise<void> {
   if (agents) body.agents = agents;
   if (definitions) body.definitions = definitions;
   const { client } = requireAuthClient();
-  const { data } = await client.post(jobPath(), { ...body, ...attribution(options) });
+  const { data } = await client.post(jobPath(), body);
   outputSuccess(data.data, formatJob);
 }
 
@@ -145,13 +139,13 @@ export async function jobUpdate(id: string, options: JobUpdateOptions): Promise<
   if (options.archive) body.archived = true;
   if (options.restore) body.archived = false;
   const { client } = requireAuthClient();
-  const { data } = await client.patch(jobPath(id), { ...body, ...attribution(options) });
+  const { data } = await client.patch(jobPath(id), body);
   outputSuccess(data.data, formatJob);
 }
 
 /** `rip job delete <id>`: the job is removed. Its tasks stay and no longer belong to it. */
-export async function jobDelete(id: string, options: { expectedRevision: string; why?: string }): Promise<void> {
-  const body = { expectedRevision: parseRevision(options.expectedRevision, 'rip job show <id>'), ...attribution(options) };
+export async function jobDelete(id: string, options: { expectedRevision: string }): Promise<void> {
+  const body = { expectedRevision: parseRevision(options.expectedRevision, 'rip job show <id>') };
   const { client } = requireAuthClient();
   const { data } = await client.delete(jobPath(id), { data: body });
   outputSuccess(data.data, (receipt) => `Job deleted. ${receipt.tasks} tasks no longer belong to it.`);

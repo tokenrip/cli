@@ -23,7 +23,7 @@ export interface TokenripConfig {
 }
 
 /** The config schema version this CLI writes; `migrations.ts` upgrades older files to it. */
-export const CURRENT_CONFIG_VERSION = 3;
+export const CURRENT_CONFIG_VERSION = 4;
 
 /** A fresh install starts at the current version: nothing to migrate, nothing to warn about. */
 function defaultConfig(): TokenripConfig {

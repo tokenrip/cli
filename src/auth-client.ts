@@ -38,12 +38,20 @@ export function requireAuthClient(): AuthContext {
  * key, else the one `rip config set-key` saved, else none (public access). The sign-in comes before
  * the saved key because signing in never replaces it: a stale saved key would otherwise be refused
  * (the server checks every key it is sent) with advice to sign in that could not help.
+ *
+ * Only "no sign-in here at all" (`NO_IDENTITY`) falls through to the saved key or public access.
+ * Every other identity error (an `--agent` naming no sign-in, several sign-ins and no default) is
+ * thrown, so a read fails as `rip whoami` would rather than go out unsigned.
  */
 export function optionalAuthClient(): { client: AxiosInstance; apiUrl: string } {
   const config = loadConfig();
   let apiKey: string | undefined = process.env.TOKENRIP_API_KEY;
   if (!apiKey) {
-    try { apiKey = resolveCurrentIdentity().apiKey; } catch { /* no identity: the saved key, or public */ }
+    try {
+      apiKey = resolveCurrentIdentity().apiKey;
+    } catch (error) {
+      if (!(error instanceof CliError) || error.code !== 'NO_IDENTITY') throw error;
+    }
   }
   apiKey ||= config.apiKey;
   const apiUrl = getApiUrl(config);

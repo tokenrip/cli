@@ -7,8 +7,8 @@ import {
   defaultSignInKey,
   resolveSignIn,
   resolveCurrentIdentity,
+  settleDefault,
   signInKey,
-  signInsForAccount,
   requireLocalKeypair,
   saveIdentities,
   type StoredIdentity,
@@ -22,17 +22,12 @@ import { CliError } from '../errors.js';
 import { encryptIdentityForAgent, decryptIdentityFromAgent } from '../agent-crypto.js';
 
 /**
- * Decide whether a newly-created keypair identity should become the active one.
- * It only auto-activates when there's no other choice (first identity or no
- * `currentAccount` set), or when the caller asks, so the operator isn't
- * silently switched out from under in-progress work.
+ * Decide whether a newly-created keypair identity should become the default.
+ * It only does when it is the first identity here, or when the caller asks,
+ * so no agent already here is silently switched out from under its work.
  */
-export function shouldActivateNewIdentity(opts: {
-  activateRequested: boolean;
-  identityCount: number;
-  hasCurrentAccount: boolean;
-}): boolean {
-  return opts.activateRequested || opts.identityCount === 1 || !opts.hasCurrentAccount;
+export function shouldActivateNewIdentity(opts: { activateRequested: boolean; storeWasEmpty: boolean }): boolean {
+  return opts.activateRequested || opts.storeWasEmpty;
 }
 
 export async function accountCreate(options: { alias?: string; activate?: boolean }): Promise<void> {
@@ -56,20 +51,16 @@ export async function accountCreate(options: { alias?: string; activate?: boolea
   };
   if (options.alias) identity.alias = options.alias;
 
+  const storeBefore = loadIdentities();
+  const storeWasEmpty = Object.keys(storeBefore).length === 0;
+  const before = defaultSignInKey(storeBefore, config);
   addIdentity(identity);
 
   const previousAccountId = config.currentAccount;
-  const store = loadIdentities();
-  const active = shouldActivateNewIdentity({
-    activateRequested: options.activate === true,
-    identityCount: Object.keys(store).length,
-    hasCurrentAccount: !!config.currentAccount,
-  });
-
-  if (active) {
-    config.currentAccount = accountId;
-    saveConfig(config);
-  }
+  const active = shouldActivateNewIdentity({ activateRequested: options.activate === true, storeWasEmpty });
+  // An explicit --activate makes it the default as an empty store would; otherwise `settleDefault`.
+  settleDefault(config, { storeWasEmpty: active, before, key: accountId });
+  saveConfig(config);
 
   outputSuccess({
     accountId,
@@ -84,15 +75,23 @@ export async function accountCreate(options: { alias?: string; activate?: boolea
   });
 }
 
-export function accountList(): Array<{ name?: string; accountId: string; alias?: string; current: boolean }> {
+/**
+ * The sign-ins here. `current` marks the default, the one plain `rip` acts as; `defaultMissing`
+ * says there are several and none is the default, so plain `rip` refuses.
+ */
+export function accountList(): {
+  accounts: Array<{ name?: string; accountId: string; alias?: string; current: boolean }>;
+  defaultMissing?: true;
+} {
   const store = loadIdentities();
   const current = defaultSignInKey(store);
-  return Object.entries(store).map(([key, id]) => ({
+  const accounts = Object.entries(store).map(([key, id]) => ({
     name: id.name,
     accountId: id.accountId,
     alias: id.alias,
     current: key === current,
   }));
+  return { accounts, ...(current === null && accounts.length > 1 ? { defaultMissing: true as const } : {}) };
 }
 
 /** The store key `target` (a name, account id or alias) names, or `IDENTITY_NOT_FOUND`. */
@@ -117,15 +116,11 @@ export function accountUse(target: string): void {
   saveConfig(config);
   const identity = store[key];
   const label = identity.name || identity.alias || identity.accountId;
-  // With several sign-ins on the account the pointer is not used: each agent names itself.
-  const siblings = signInsForAccount(store, identity.accountId).length > 1;
   outputSuccess({
     accountId: identity.accountId,
     alias: identity.alias ?? null,
     ...(identity.name ? { name: identity.name } : {}),
-    message: siblings
-      ? `Switched to ${label}. Several agents use this account on this computer, so commands still need \`rip --agent <your name> …\`.`
-      : `Switched to ${label}`,
+    message: `Switched to ${label}: plain \`rip\` now acts as ${label}.`,
   });
 }
 
@@ -157,7 +152,13 @@ export async function accountImport(file: string): Promise<void> {
   }
 
   const identity = decryptIdentityFromAgent(blob, current.secretKey);
+  const config = loadConfig();
+  const storeBefore = loadIdentities();
+  const before = defaultSignInKey(storeBefore, config);
   addIdentity(identity);
+  // The imported sign-in becomes the default only on an empty store (`settleDefault`).
+  settleDefault(config, { storeWasEmpty: Object.keys(storeBefore).length === 0, before, key: signInKey(identity) });
+  saveConfig(config);
   outputSuccess({
     accountId: identity.accountId,
     alias: identity.alias ?? null,

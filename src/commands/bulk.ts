@@ -10,7 +10,7 @@ type BulkAction = (typeof VALID_ACTIONS)[number];
 
 export async function artifactBulk(
   action: string,
-  options: { ids?: string; folder?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevisions?: string; why?: string },
+  options: { ids?: string; folder?: string; team?: string; unfiled?: boolean; expectedWorkspaceRevisions?: string },
 ): Promise<void> {
   if (!VALID_ACTIONS.includes(action as BulkAction)) {
     throw new CliError(
@@ -32,7 +32,7 @@ export async function artifactBulk(
 
   const { client } = requireAuthClient();
 
-  const body: { action: BulkAction; ids: string[]; folder?: string | null; team?: string; expectedWorkspaceRevisions?: Record<string, number>; why?: string } = {
+  const body: { action: BulkAction; ids: string[]; folder?: string | null; team?: string; expectedWorkspaceRevisions?: Record<string, number> } = {
     action: action as BulkAction,
     ids: artifactIds,
   };
@@ -46,7 +46,6 @@ export async function artifactBulk(
     // Keyed as --ids names them: a URL key becomes its id, as the id itself does.
     body.expectedWorkspaceRevisions = Object.fromEntries(Object.entries(revisions).map(([key, value]) => [parseArtifactId(key.trim()), value as number]));
   }
-  if (options.why !== undefined) body.why = options.why;
 
   if (action === 'move') {
     if (options.unfiled && options.folder) {

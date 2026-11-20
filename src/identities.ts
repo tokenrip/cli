@@ -79,6 +79,11 @@ export function signInLabel(identity: StoredIdentity): string {
   return identity.name ?? '(no name)';
 }
 
+/** How a sign-in is named in a line about which sign-in plain `rip` acts as: its name, else its alias, else its account id. */
+export function signInSelector(identity: StoredIdentity): string {
+  return identity.name ?? identity.alias ?? identity.accountId;
+}
+
 /**
  * Save one sign-in, re-reading the file first so entries another agent wrote since this process
  * loaded it survive. A stored sign-in of the same account and name (any case) is replaced; a name
@@ -185,13 +190,17 @@ export interface SignInCommit {
 }
 
 export interface SignInCommitted {
-  /** The new sign-in's store key, now the current pointer. */
+  /** The new sign-in's store key. */
   key: string;
   name?: string;
   /** The sign-in replaced, whose old key the caller may revoke. */
   replaced?: StoredIdentity;
   /** How the account's other sign-ins here are shown. */
   siblings: string[];
+  /** Whether the new sign-in is the computer's default (what plain `rip` acts as). */
+  isDefault: boolean;
+  /** The default sign-in after the write (`signInSelector`); null when there is none. */
+  defaultLabel: string | null;
 }
 
 /**
@@ -226,11 +235,13 @@ export function nameUnnamedSiblings(
  * - A sign-in is replaced only while it is still the one in `replaces` (same account and key).
  *   Otherwise a login without `--name` adds a new name rather than replace another agent's.
  * - Each unnamed sibling still as it was is named (unique here) and the current pointer moves with
- *   it; then the pointer is set to the new sign-in.
+ *   it. The new sign-in becomes the default only when there was none, or when it replaces the
+ *   default (`settleDefault`): a login never moves a live default.
  */
 export function commitSignIn(commit: SignInCommit): SignInCommitted {
   const store = loadIdentities();
   const config = loadConfig();
+  const storeWasEmpty = Object.keys(store).length === 0;
   const unchanged = (entry: StoredIdentity | undefined, seen: { apiKey: string }): entry is StoredIdentity =>
     entry !== undefined && entry.accountId === commit.accountId && entry.apiKey === seen.apiKey;
 
@@ -249,6 +260,7 @@ export function commitSignIn(commit: SignInCommit): SignInCommitted {
   }
 
   nameUnnamedSiblings(store, config, commit.accountId, commit.nameSiblings ?? [], given);
+  const before = defaultSignInKey(store, config);
 
   const name = commit.name
     ?? (replaced ? replaced.name : uniqueSignInName(store, slugSignInName(commit.serverName ?? ''), given));
@@ -260,17 +272,54 @@ export function commitSignIn(commit: SignInCommit): SignInCommitted {
     apiKey: commit.apiKey,
     ...(name === undefined ? {} : { name }),
   };
-  if (replaced) delete store[signInKey(replaced)];
+  const replacedKey = replaced ? signInKey(replaced) : undefined;
+  if (replacedKey !== undefined) delete store[replacedKey];
   const key = signInKey(target);
   store[key] = target;
   saveIdentities(store);
-  config.currentAccount = key;
+  const isDefault = settleDefault(config, { storeWasEmpty, before, key, replacedKey });
   saveConfig(config);
 
   const siblings = signInsForAccount(store, commit.accountId)
     .filter((entry) => signInKey(entry) !== key)
     .map(signInLabel);
-  return { key, ...(name === undefined ? {} : { name }), ...(replaced ? { replaced } : {}), siblings };
+  return {
+    key,
+    ...(name === undefined ? {} : { name }),
+    ...(replaced ? { replaced } : {}),
+    siblings,
+    isDefault,
+    defaultLabel: defaultLabelOf(store, config),
+  };
+}
+
+/**
+ * Point the config at the default after sign-in `key` was added to the store (in place of
+ * `replacedKey`, when it replaced one). `storeWasEmpty` and `before` (the default,
+ * `defaultSignInKey`) come from the store as read before the write:
+ * - the store was empty, or `key` replaces the default: `key` becomes the default;
+ * - there was a default: it stays, written to the pointer (it may have been the default only as
+ *   the only sign-in here);
+ * - sign-ins existed and none was the default: there is still none, so plain `rip` keeps refusing
+ *   rather than act as the newcomer for every agent already here.
+ * Returns whether `key` is now the default. In place, on a config the caller then writes.
+ */
+export function settleDefault(
+  config: TokenripConfig,
+  opts: { storeWasEmpty: boolean; before: string | null; key: string; replacedKey?: string },
+): boolean {
+  const { storeWasEmpty, before, key, replacedKey } = opts;
+  const next = storeWasEmpty || (before !== null && before === replacedKey) ? key : before;
+  delete config.currentAgent;
+  if (next === null) delete config.currentAccount;
+  else config.currentAccount = next;
+  return next === key;
+}
+
+/** How the default sign-in the config points at is named (`signInSelector`); null when there is none. */
+export function defaultLabelOf(store: IdentityStore, config: TokenripConfig): string | null {
+  const key = liveDefaultKey(store, config);
+  return key === null ? null : signInSelector(store[key]);
 }
 
 /**
@@ -313,10 +362,10 @@ export function clearCurrentAccount(key: string): void {
 }
 
 /**
- * The store key of the one sign-in `target` names: a name (case-insensitive), else an account id,
- * else a local alias; null when nothing matches. Several matches refuse `AMBIGUOUS_IDENTITY`.
+ * The store keys of every sign-in `target` names, from the first of these that matches any: a
+ * name (case-insensitive), an account id, a local alias. Empty when nothing matches.
  */
-export function resolveSignIn(store: IdentityStore, target: string): string | null {
+export function signInMatches(store: IdentityStore, target: string): string[] {
   const entries = Object.entries(store);
   const lower = target.toLowerCase();
   for (const matches of [
@@ -324,10 +373,19 @@ export function resolveSignIn(store: IdentityStore, target: string): string | nu
     entries.filter(([, identity]) => identity.accountId === target),
     entries.filter(([, identity]) => identity.alias === target),
   ]) {
-    if (matches.length === 1) return matches[0][0];
-    if (matches.length > 1) throw ambiguous(matches.map(([, identity]) => identity));
+    if (matches.length > 0) return matches.map(([key]) => key);
   }
-  return null;
+  return [];
+}
+
+/**
+ * The store key of the one sign-in `target` names (`signInMatches`); null when nothing matches.
+ * Several matches refuse `AMBIGUOUS_IDENTITY`.
+ */
+export function resolveSignIn(store: IdentityStore, target: string): string | null {
+  const matches = signInMatches(store, target);
+  if (matches.length > 1) throw ambiguous(matches.map((key) => store[key]));
+  return matches[0] ?? null;
 }
 
 function ambiguous(signIns: StoredIdentity[]): CliError {
@@ -337,31 +395,30 @@ function ambiguous(signIns: StoredIdentity[]): CliError {
     .join(', ');
   return new CliError(
     'AMBIGUOUS_IDENTITY',
-    oneAccount
-      ? `Several agents use this account on this computer: ${names}. Run commands as \`rip --agent <your name> …\`.`
-      : `Several sign-ins on this computer match: ${names}. Run commands as \`rip --agent <your name> …\`.`,
+    `Several agents use this computer: ${names}. Run as \`rip --agent <your name> …\`, or make one the default for plain \`rip\`: \`rip account use <name>\`.`,
   );
 }
 
 /**
- * The sign-ins the config's current pointer names: its store key, or (an account id, from a config
- * written before names) every sign-in of that account.
+ * The store key of the computer's default sign-in as the config's pointer names it: its store key
+ * when stored, or (an account id, from a config written before names) the one sign-in of that
+ * account. Null when there is no pointer, it names no stored sign-in, or it names several.
  */
-function pointedKeys(store: IdentityStore): string[] {
-  const config = loadConfig();
+export function liveDefaultKey(store: IdentityStore, config: TokenripConfig): string | null {
   const pointer = config.currentAccount || config.currentAgent;
-  if (!pointer) return [];
-  if (Object.hasOwn(store, pointer)) return [pointer];
-  return Object.keys(store).filter((key) => store[key].accountId === pointer);
+  if (!pointer) return null;
+  if (Object.hasOwn(store, pointer)) return pointer;
+  const matches = Object.keys(store).filter((key) => store[key].accountId === pointer);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 /**
- * The store key of the sign-in a command without `--agent` uses: the current pointer, unless its
- * account has more than one sign-in here; else the only sign-in; else null.
+ * The store key of the sign-in plain `rip` (no `--agent`) acts as: the live default
+ * (`liveDefaultKey`), else the only sign-in here, else null.
  */
-export function defaultSignInKey(store: IdentityStore): string | null {
-  const [pointed] = pointedKeys(store);
-  if (pointed && signInsForAccount(store, store[pointed].accountId).length === 1) return pointed;
+export function defaultSignInKey(store: IdentityStore, config: TokenripConfig = loadConfig()): string | null {
+  const live = liveDefaultKey(store, config);
+  if (live) return live;
   const keys = Object.keys(store);
   return keys.length === 1 ? keys[0] : null;
 }
@@ -390,9 +447,11 @@ export function setAgentOverride(value: string | undefined): void {
 
 /**
  * The sign-in a command acts as: `--agent`, then `TOKENRIP_AGENT` (a name, account id or alias);
- * then the current sign-in unless its account has several here; then the only sign-in. Otherwise
- * it refuses `AMBIGUOUS_IDENTITY` rather than guess. (`TOKENRIP_API_KEY` bypasses all of this in
- * the auth client.)
+ * then the computer's default (`defaultSignInKey`: the pointer, else the only sign-in). An
+ * override that matches several sign-ins (an account id with several sign-ins here, from an old
+ * pinned stub) acts as the default when the default is among them. Otherwise it refuses
+ * `AMBIGUOUS_IDENTITY`, naming both fixes. (`TOKENRIP_API_KEY` bypasses all of this in the auth
+ * client.)
  */
 export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentity {
   const store = loadIdentities();
@@ -405,41 +464,26 @@ export function resolveCurrentIdentity(opts?: { agent?: string }): StoredIdentit
     );
   }
 
-  const override = opts?.agent || agentOverride;
+  const config = loadConfig();
+  const flag = opts?.agent || agentOverride;
+  const override = flag || process.env.TOKENRIP_AGENT;
   if (override) {
-    const key = resolveSignIn(store, override);
-    if (!key) {
+    const matches = signInMatches(store, override);
+    if (matches.length === 0) {
       throw new CliError(
         'IDENTITY_NOT_FOUND',
-        `No local identity matching "${override}". Run \`rip account list\` to see available accounts.`,
+        flag
+          ? `No local identity matching "${override}". Run \`rip account list\` to see available accounts.`
+          : `TOKENRIP_AGENT="${override}" does not match any local identity.`,
       );
     }
-    return store[key];
+    if (matches.length === 1) return store[matches[0]];
+    const live = liveDefaultKey(store, config);
+    if (live && matches.includes(live)) return store[live];
+    throw ambiguous(matches.map((key) => store[key]));
   }
 
-  const envAgent = process.env.TOKENRIP_AGENT;
-  if (envAgent) {
-    const key = resolveSignIn(store, envAgent);
-    if (!key) {
-      throw new CliError(
-        'IDENTITY_NOT_FOUND',
-        `TOKENRIP_AGENT="${envAgent}" does not match any local identity.`,
-      );
-    }
-    return store[key];
-  }
-
-  const key = defaultSignInKey(store);
+  const key = defaultSignInKey(store, config);
   if (key) return store[key];
-
-  // The pointer's account has several sign-ins, or every sign-in here is one account's.
-  const [pointed] = pointedKeys(store);
-  const accountId = pointed ? store[pointed].accountId : entries[0].accountId;
-  const siblings = signInsForAccount(store, accountId);
-  if (pointed || siblings.length === entries.length) throw ambiguous(siblings);
-
-  throw new CliError(
-    'AMBIGUOUS_IDENTITY',
-    'Multiple accounts configured. Use `rip account use <name>` to select one, or pass `--agent <name>`.',
-  );
+  throw ambiguous(entries);
 }

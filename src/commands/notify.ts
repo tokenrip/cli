@@ -10,7 +10,7 @@ import { formatMailbox, formatNoticeSettings } from '../formatters.js';
  * `POST /v0/notifications/mailbox/confirm`); mirrors: the dashboard's Settings and Agents pages, MCP
  * `notification_settings_get`, `notification_settings_set` and `notification_mailbox` (MCP sets and
  * removes the mailbox; the code is confirmed here or on the Agents page, never over MCP). Settings
- * are not workspace content, so none of these takes `--why`.
+ * are not workspace content, so none of these records a why (`--why` is accepted, not recorded).
  */
 
 /** `rip notify [--workspace-id <id>] [--for-person]` */

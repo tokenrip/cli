@@ -56,7 +56,6 @@ export interface TaskAddOptions {
   payload?: string;
   /** Files and pages the work uses: `artifact:<id>[@version]` or `url:<address>`, repeatable. */
   link?: string[];
-  why?: string;
 }
 
 export interface TaskUpdateOptions {
@@ -84,16 +83,6 @@ export interface TaskUpdateOptions {
   before?: string;
   /** Move it just after this task in the queue. */
   after?: string;
-  why?: string;
-}
-
-/** The task write field every verb shares: why. */
-export interface TaskWriteOptions {
-  why?: string;
-}
-
-function attribution(options: TaskWriteOptions): Record<string, string> {
-  return options.why !== undefined ? { why: options.why } : {};
 }
 
 function invalid(message: string): CliError {
@@ -191,7 +180,6 @@ export async function taskTimeline(id: string): Promise<void> {
 export async function taskAdd(title: string, options: TaskAddOptions): Promise<void> {
   const body: Record<string, unknown> = { title, ...home(options, 'A new task') };
   const { client } = requireAuthClient();
-  if (options.why !== undefined) body.why = options.why;
   // `me`, account ids, aliases and every `agent:` form pass through; the server resolves them.
   if (options.assignee) body.assignee = options.assignee;
   if (options.reviewer) body.reviewer = options.reviewer;
@@ -251,12 +239,11 @@ export async function taskUpdate(id: string, options: TaskUpdateOptions): Promis
   const removeLinks = parseLinkFlags(options.removeLink, '--remove-link', false);
   if (removeLinks.length) body.removeLinks = removeLinks;
   if (position !== undefined) body.position = position;
-  if (options.why !== undefined) body.why = options.why;
   const { data } = await client.patch(taskPath(id), body);
   outputSuccess(data.data, formatTask);
 }
 
-export interface TaskStartOptions extends TaskWriteOptions {
+export interface TaskStartOptions {
   leaseHours?: string;
   /** Start by tags in this workspace (id or slug), instead of a task by its id. */
   workspaceId?: string;
@@ -285,7 +272,7 @@ export async function taskStart(id: string | undefined, options: TaskStartOption
   const { client } = requireAuthClient();
   const lease = options.leaseHours !== undefined ? { leaseHours: Number(options.leaseHours) } : {};
   if (id !== undefined) {
-    const { data } = await client.post(taskPath(id, 'start'), { ...lease, ...attribution(options) });
+    const { data } = await client.post(taskPath(id, 'start'), lease);
     outputSuccess(data.data, formatTask);
     return;
   }
@@ -294,13 +281,13 @@ export async function taskStart(id: string | undefined, options: TaskStartOption
     ...(options.type !== undefined ? { type: options.type } : {}),
     ...(options.step !== undefined ? { step: options.step } : {}),
     ...(options.job !== undefined ? { job: options.job } : {}),
-    ...lease, ...attribution(options),
+    ...lease,
   };
   const { data } = await client.post('/v0/tasks/start', body);
   outputSuccess(data.data, formatTaskStarted);
 }
 
-export interface TaskStopOptions extends TaskWriteOptions {
+export interface TaskStopOptions {
   /** Who the task is for next, named as on `task add`, or `false` (`--no-assignee`) for anyone. */
   assignee?: string | false;
   /** A comment posted to the task's thread with the stop. */
@@ -314,7 +301,7 @@ export interface TaskStopOptions extends TaskWriteOptions {
  */
 export async function taskStop(id: string, options: TaskStopOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const body: Record<string, unknown> = { ...attribution(options) };
+  const body: Record<string, unknown> = {};
   if (options.assignee !== undefined) body.assignee = options.assignee === false ? null : options.assignee;
   if (options.comment !== undefined) body.comment = options.comment;
   const { data } = await client.post(taskPath(id, 'stop'), body);
@@ -354,29 +341,28 @@ export function parseLinkFlags(raw: string[] | undefined, flag = '--link', withV
 }
 
 /** Complete with what the work produced: links (`--link`) and what came of it (`--result-text`, at most 64,000 characters). */
-export async function taskDone(id: string, options: { link?: string[]; resultText?: string } & TaskWriteOptions): Promise<void> {
+export async function taskDone(id: string, options: { link?: string[]; resultText?: string }): Promise<void> {
   const links = parseLinkFlags(options.link);
   const { client } = requireAuthClient();
-  const body = { ...(links.length ? { links } : {}), ...(options.resultText !== undefined ? { result: options.resultText } : {}), ...attribution(options) };
+  const body = { ...(links.length ? { links } : {}), ...(options.resultText !== undefined ? { result: options.resultText } : {}) };
   const { data } = await client.post(taskPath(id, 'complete'), body);
   outputSuccess(data.data, formatTask);
 }
 
 /** Won't do: To do or Doing → Cancelled (reopenable). */
-export async function taskCancel(id: string, options: { reason?: string; expectedRevision?: string } & TaskWriteOptions): Promise<void> {
+export async function taskCancel(id: string, options: { reason?: string; expectedRevision?: string }): Promise<void> {
   const expectedRevision = options.expectedRevision === undefined ? undefined : parseRevision(options.expectedRevision);
   const { client } = requireAuthClient();
   const { data } = await client.post(taskPath(id, 'cancel'), {
     ...(options.reason ? { reason: options.reason } : {}),
     ...(expectedRevision !== undefined ? { expectedRevision } : {}),
-    ...attribution(options),
   });
   outputSuccess(data.data, formatTask);
 }
 
-export async function taskReopen(id: string, options: TaskWriteOptions = {}): Promise<void> {
+export async function taskReopen(id: string): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post(taskPath(id, 'reopen'), attribution(options));
+  const { data } = await client.post(taskPath(id, 'reopen'), {});
   outputSuccess(data.data, formatTask);
 }
 
@@ -400,7 +386,7 @@ function newTaskFields(id: string | undefined, options: Record<string, unknown>,
   if (given.length) throw invalid(`${given.join(', ')} ${given.length === 1 ? 'is' : 'are'} for a new task only; an existing task keeps its own.`);
 }
 
-export interface TaskProposeOptions extends TaskWriteOptions {
+export interface TaskProposeOptions {
   /** A new proposal: the workspace (or the parent, alone) and the title. */
   workspaceId?: string;
   parentId?: string;
@@ -478,11 +464,11 @@ export async function taskPropose(id: string | undefined, options: TaskProposeOp
   if (options.reviewer !== undefined) body.reviewer = options.reviewer;
   if (links.length) body.links = links;
   const { client } = requireAuthClient();
-  const { data } = await client.post(taskPath(id, 'propose'), { ...body, ...attribution(options) });
+  const { data } = await client.post(taskPath(id, 'propose'), body);
   outputSuccess(data.data, formatTask);
 }
 
-export interface TaskReportOptions extends TaskWriteOptions {
+export interface TaskReportOptions {
   /** A new report: the workspace (or the parent, alone) and the title. */
   workspaceId?: string;
   parentId?: string;
@@ -516,11 +502,11 @@ export async function taskReport(id: string | undefined, options: TaskReportOpti
   if (options.resultText !== undefined) body.result = options.resultText;
   if (links.length) body.links = links;
   const { client } = requireAuthClient();
-  const { data } = await client.post(taskPath(id, 'report'), { ...body, ...attribution(options) });
+  const { data } = await client.post(taskPath(id, 'report'), body);
   outputSuccess(data.data, formatTask);
 }
 
-export interface TaskDecideOptions extends TaskWriteOptions {
+export interface TaskDecideOptions {
   /** Exactly one of the two choices (a no is `rip task cancel`, plan D22). */
   approve?: boolean;
   sendBack?: boolean;
@@ -564,6 +550,6 @@ export async function taskDecide(id: string, options: TaskDecideOptions): Promis
     body.edits = { ...(edited !== undefined ? { text: edited } : {}), ...(editedArtifacts.length ? { artifacts: editedArtifacts } : {}) };
   }
   const { client } = requireAuthClient();
-  const { data } = await client.post(taskPath(id, 'decide'), { ...body, ...attribution(options) });
+  const { data } = await client.post(taskPath(id, 'decide'), body);
   outputSuccess(data.data, formatTask);
 }

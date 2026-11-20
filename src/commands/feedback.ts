@@ -12,7 +12,7 @@ const FEEDBACK_OPERATOR_REFUSALS = new Set(['NO_OPERATOR', 'OPERATOR_AMBIGUOUS']
  */
 export const FEEDBACK_OPERATOR_HINT = "Nothing was sent. Your person can send it from Send feedback in the dashboard's account menu.";
 
-/** Send one note to the Tokenrip team (`POST /v0/feedback`). Not a workspace write, so no why. */
+/** Send one note to the Tokenrip team (`POST /v0/feedback`). Not a workspace write: a why is accepted, not recorded. */
 export async function feedback(text: string): Promise<void> {
   const { client } = requireAuthClient();
   try {

@@ -52,9 +52,32 @@ function migrateV2toV3(): void {
   fs.renameSync(identityFile, `${identityFile}.migrated`);
 }
 
+// v3 → v4: drop a pointer whose account has several sign-ins here. Before v4, `rip auth login`
+// moved the pointer to every new sign-in, so it may name the newest agent rather than the first;
+// plain `rip` refused on such a computer anyway, and now names `rip account use` to set one.
+// Reads identities.json without writing it (pre-v2 entries hold `agentId`, not `accountId`).
+function migrateV3toV4(): void {
+  const config = loadConfig();
+  const pointer = config.currentAccount || config.currentAgent;
+  if (!pointer) return;
+  let store: Record<string, { accountId?: string; agentId?: string }>;
+  try {
+    store = JSON.parse(fs.readFileSync(path.join(getConfigDir(), 'identities.json'), 'utf-8'));
+  } catch {
+    return;
+  }
+  const accountOf = (entry: { accountId?: string; agentId?: string }) => entry.accountId ?? entry.agentId;
+  const accountId = Object.hasOwn(store, pointer) ? accountOf(store[pointer]) : pointer;
+  if (Object.values(store).filter((entry) => accountOf(entry) === accountId).length <= 1) return;
+  delete config.currentAccount;
+  delete config.currentAgent;
+  saveConfig(config);
+}
+
 const MIGRATIONS: Array<{ version: number; run: () => void }> = [
   { version: 2, run: migrateV1toV2 },
   { version: 3, run: migrateV2toV3 },
+  { version: 4, run: migrateV3toV4 },
 ];
 
 export function runMigrations(): void {

@@ -412,8 +412,9 @@ export async function skillInstall(options: { target?: string }, deps: { homeDir
   }
   const { client, apiUrl } = requireAuthClient();
   // The stubs pin the local identity with --agent; an API key in the environment has no local identity.
-  // An account with several sign-ins on this computer is not pinned: `--agent <accountId>` would
-  // match them all, so each agent reading the stub runs as itself.
+  // An account with several sign-ins on this computer is not pinned: `--agent <accountId>` matches
+  // them all and acts as the computer's default agent when the default is one of them (else it refuses),
+  // so each agent reading the stub runs as itself.
   const identity = process.env.TOKENRIP_API_KEY ? null : resolveCurrentIdentity();
   const accountId = identity?.accountId ?? null;
   const pinned = accountId === null || signInsForAccount(loadIdentities(), accountId).length <= 1;

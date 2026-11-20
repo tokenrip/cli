@@ -15,7 +15,6 @@ export async function forkArtifact(
     title?: string;
     folder?: string;
     team?: string;
-    why?: string;
   },
 ): Promise<void> {
   if (identifier !== undefined && options.versionId) {
@@ -31,7 +30,6 @@ export async function forkArtifact(
   if (options.title) body.title = options.title;
   if (options.folder) body.folder = options.folder;
   if (options.team) body.team = options.team;
-  if (options.why !== undefined) body.why = options.why;
 
   const res = await client.post('/v0/forks', body);
   outputSuccess(res.data.data, formatArtifactCreated);

@@ -1,6 +1,6 @@
 export { loadConfig, saveConfig, getApiUrl, getApiKey, CONFIG_DIR } from './config.js';
 export type { TokenripConfig } from './config.js';
-export { createHttpClient } from './client.js';
+export { createHttpClient, setRequestWhy } from './client.js';
 export type { ClientConfig } from './client.js';
 export type { WorkspaceSummary } from './commands/workspace.js';
 export { CliError, toCliError } from './errors.js';

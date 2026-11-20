@@ -22,6 +22,7 @@ import { loadConfig } from './config.js';
 import { runMigrations } from './migrations.js';
 import { checkForUpdate } from './update-check.js';
 import { CLI_VERSION } from './version.js';
+import { setRequestWhy } from './client.js';
 import { listCommandsOnUnknown, nameRenamedOptions } from './command-hints.js';
 
 const WHY_SENTENCE = 'One sentence: what the person is trying to accomplish, in their terms — not a description of this edit.';
@@ -45,6 +46,23 @@ function withOptionalWhy(command: Command): Command {
   return command.addOption(new Option('--why <text>', `${WHY_SENTENCE} Optional: recorded in History when sent.`).env('TOKENRIP_WHY'));
 }
 
+/**
+ * A why is never refused (CLI default agent design §5.6): every other command accepts one, and its
+ * requests carry it (`setRequestWhy`), where the server keeps it with the record of the call.
+ */
+function withUnrecordedWhy(command: Command): Command {
+  return command.addOption(new Option('--why <text>', `${WHY_SENTENCE} Accepted, not recorded by this command.`).env('TOKENRIP_WHY'));
+}
+
+/** Every command that runs (one with no subcommands) and has no --why of its own gets the accepted one. */
+function acceptWhyEverywhere(command: Command): void {
+  if (command.commands.length === 0) {
+    if (!command.options.some(option => option.attributeName() === 'why')) withUnrecordedWhy(command);
+    return;
+  }
+  for (const child of command.commands) acceptWhyEverywhere(child);
+}
+
 const program = new Command();
 
 program
@@ -53,8 +71,11 @@ program
   .version(CLI_VERSION)
   .option('--json', 'Use JSON output instead of human-readable')
   .option('--agent <name>', 'Run this command as one sign-in here: its name, account id or alias')
-  .hook('preAction', async (thisCommand) => {
+  .hook('preAction', async (thisCommand, actionCommand) => {
     if (program.opts().json) setForceJson(true);
+    // The why (--why, else TOKENRIP_WHY) rides on every request this command makes.
+    const why: unknown = actionCommand.opts().why;
+    if (typeof why === 'string') setRequestWhy(why);
     const opts = thisCommand.optsWithGlobals();
     if (opts.agent) {
       const { setAgentOverride } = await import('./identities.js');
@@ -981,8 +1002,8 @@ EXAMPLES:
   }));
 
 // ── notify commands ─────────────────────────────────────────────────
-// Notification settings are not workspace content: no --why. `show` is the default subcommand so
-// `rip notify --for-person` works and each subcommand owns its options (a parent option would
+// Notification settings are not workspace content: --why is accepted, not recorded. `show` is the
+// default subcommand so `rip notify --for-person` works and each subcommand owns its options (a parent option would
 // swallow `--for-person` given after `set`). `show` takes no arguments, so a misplaced subcommand
 // (`rip notify --for-person set …`) or a typo (`rip notify maibox …`) is a usage error, not a read.
 const NOTIFY_TARGETS = `
@@ -1117,12 +1138,12 @@ agent
   .action(wrapCommand(async () => {
     const { accountList } = await import('./commands/account.js');
     const { formatAccountList } = await import('./formatters.js');
-    outputSuccess({ accounts: accountList() }, formatAccountList);
+    outputSuccess(accountList(), formatAccountList);
   }));
 
 agent
   .command('use <name>')
-  .description('Make a sign-in current (by name, account id or alias); with several sign-ins on one account, each agent passes --agent instead')
+  .description('Make a sign-in the default, the one plain `rip` acts as (by name, account id or alias); other agents pass --agent <name>')
   .action(wrapCommand(async (name: string) => {
     const { accountUse } = await import('./commands/account.js');
     accountUse(name);
@@ -1835,11 +1856,11 @@ EXAMPLES:
   }));
 
 // ── message commands ─────────────────────────────────────────────────
-// A message is its own reason: no command here takes --why (none is wrapped in withWhy), and the
-// server refuses a why on a message as an unknown field.
+// A message is its own reason and records no why; like every command, these accept --why
+// (acceptWhyEverywhere), and the call record keeps it.
 const message = program
   .command('message')
-  .description("Messages in a workspace's chat (--workspace-id, read by every member, guests included) or a task's thread (--task-id): questions, requested changes and answers, never a status. A message takes no --why")
+  .description("Messages in a workspace's chat (--workspace-id, read by every member, guests included) or a task's thread (--task-id): questions, requested changes and answers, never a status")
   .addHelpText('after', `
 EXAMPLES:
   $ rip message post --workspace-id launch "Which image goes first?"
@@ -2092,9 +2113,9 @@ withOptionalWhy(task
   .argument('<id>', 'Task id')
   .allowExcessArguments(false)
   .description('Reopen a done or cancelled task')
-  .action(wrapCommand(async (id, options) => {
+  .action(wrapCommand(async (id) => {
     const { taskReopen } = await import('./commands/task.js');
-    await taskReopen(id, options);
+    await taskReopen(id);
   }));
 
 withWhy(task
@@ -2587,9 +2608,9 @@ withWhy(workspace
   .command('delete'))
   .argument('<workspace>', 'Workspace id or slug')
   .description('Move a workspace and everything in it to the trash (restorable for 30 days)')
-  .action(wrapCommand(async (ws, options) => {
+  .action(wrapCommand(async (ws) => {
     const { workspaceDelete } = await import('./commands/workspace.js');
-    await workspaceDelete(ws, options);
+    await workspaceDelete(ws);
   }));
 
 // workspace member subgroup
@@ -2976,4 +2997,5 @@ if (_cfg.preferences?.outputFormat === 'human') setConfigHuman(true);
 checkForUpdate().catch(() => {});
 
 listCommandsOnUnknown(program);
+acceptWhyEverywhere(program);
 program.parse();

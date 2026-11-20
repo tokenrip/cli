@@ -137,7 +137,7 @@ rip artifact get <id>                  # which tasks made, use or have it as a r
 rip search "<plain-language question>" --workspace-id <ws>
 ```
 
-Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`; on a task move it is optional, [Why](#why-a-write-says-what-it-is-for)); pins take none, and neither do messages (`rip message post|update|delete`: a message is its own reason, and `--why` is an unknown option there). Create receipts retain the authoritative `workspaceId` and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call (a content write's `Version ID` is the next `--expected-version-id`).
+Every one of these writes also takes `--why` (and so do `task propose|report|decide|start|stop|done|cancel|reopen`, `artifact fork`, `workspace adopt` and `trash restore`; on a task move it is optional, [Why](#why-a-write-says-what-it-is-for)). Every other command takes `--why` too, pins, messages and reads included: there it is accepted and not recorded. Create receipts retain the authoritative `workspaceId` and initial `workspaceRevision: 1`. Guarded write receipts return the next applicable version/revision; carry it into the next guarded call (a content write's `Version ID` is the next `--expected-version-id`).
 
 Every workspace document is indexed by meaning when it is written. A workspace search prints `mode: hybrid` and each result's best passages; `pending: N` counts chunks written a moment ago that are not yet searchable by meaning (they still match by keyword). Every member searches the whole workspace. A result marked `(meaning only)` (`matchedBy: "meaning"`) is similar, not a match: its text does not hold the query's words. To find an exact identifier, add `--match words`: only results holding the words, none when none does.
 
@@ -220,12 +220,12 @@ Change it with its revision, as a row update already requires: `rip --json table
 
 ## Why: a write says what it is for
 
-A write to workspace content states `why`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit. Moving a task along needs none: start (claiming the next by tags included), stop, done, cancel, reopen, a move in the queue, a later result on a Done task, an output on a task and settling an output record their own reason, and a why sent there is recorded. A message takes none at all.
+A write to workspace content states `why`: one sentence on what the person is trying to accomplish, in their terms, not a description of the edit. Moving a task along needs none: start (claiming the next by tags included), stop, done, cancel, reopen, a move in the queue, a later result on a Done task, an output on a task and settling an output record their own reason, and a why sent there is recorded. A message needs none at all.
 
 - Goal: `--why "Set launch prices the team can defend to finance"`
 - Not a goal: `--why "Update row 4 of the pricing table"`
 
-Pass `--why` on each writing command, or set `TOKENRIP_WHY` once for a script with one purpose (the flag wins). Whitespace collapses to one line; blank is missing. Missing is `WHY_REQUIRED` (400) before anything changes; over 300 characters is `INVALID_FIELD` (`field: "why"`). Standalone items (no workspace) accept `--why` and do not need it. The why lands on every activity event the write records, with your agent key and your conversation (the CLI sends `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, or `TOKENRIP_CONVERSATION`), so the change feed and sessions explain themselves.
+Pass `--why` on each writing command, or set `TOKENRIP_WHY` once for a script with one purpose (the flag wins). Whitespace collapses to one line; blank is missing. Missing is `WHY_REQUIRED` (400) before anything changes; over 300 characters is `INVALID_FIELD` (`field: "why"`). Standalone items (no workspace) accept `--why` and do not need it. Every other command accepts it too and sends it on each request it makes; it is not recorded there, and Tokenrip keeps it only with the record of the call. A `TOKENRIP_WHY` over 300 characters therefore fails reads too. The why lands on every activity event the write records, with your agent key and your conversation (the CLI sends `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, or `TOKENRIP_CONVERSATION`), so the change feed and sessions explain themselves.
 
 ## Load, sessions, and pins
 

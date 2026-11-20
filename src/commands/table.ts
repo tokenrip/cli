@@ -33,7 +33,6 @@ export async function tableCreate(
     folder?: string;
     visibility?: string;
     workspaceId?: string;
-    why?: string;
     dryRun?: boolean;
   },
 ): Promise<void> {
@@ -108,7 +107,7 @@ export async function tableCreate(
 
 export async function tableAppend(
   identifier: string,
-  options: { data?: string; file?: string; upsert?: boolean; expectedTableRevision?: string; why?: string },
+  options: { data?: string; file?: string; upsert?: boolean; expectedTableRevision?: string },
 ): Promise<void> {
   const uuid = parseArtifactId(identifier);
   let rows: Record<string, unknown>[];
@@ -130,7 +129,6 @@ export async function tableAppend(
   // Upsert matches on the table's key (its unique: true column); a table without one refuses NO_TABLE_KEY.
   if (options.upsert) body.upsert = true;
   if (options.expectedTableRevision !== undefined) body.expectedTableRevision = tableRevisionOption(options.expectedTableRevision);
-  if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post(`/v0/artifacts/${uuid}/rows`, body);
   // `data` is the array of rows, so the reply's hints sit beside it; the receipt carries them.
   outputSuccess({ rows: data.data, count: data.data.length, ...(data.hints ? { hints: data.hints } : {}) }, formatRowsAppended);
@@ -232,7 +230,7 @@ const tableRevisionOption = (value: string): number => parseRevision(value, 'rip
 /** `PUT /v0/rows/:rowId`: the row id names its table. */
 export async function tableUpdate(
   rowId: string,
-  options: { data: string; expectedRevision?: string; expectedTableRevision?: string; why?: string },
+  options: { data: string; expectedRevision?: string; expectedTableRevision?: string },
 ): Promise<void> {
   const parsed = parseJsonObjectOption(options.data, '--data');
   const expectedTableRevision = options.expectedTableRevision === undefined ? undefined : tableRevisionOption(options.expectedTableRevision);
@@ -241,7 +239,6 @@ export async function tableUpdate(
     data: parsed,
     expectedRevision: optionalNumber(options.expectedRevision),
     expectedTableRevision,
-    why: options.why,
   });
   outputSuccess(data.data, formatRowUpdated);
 }
@@ -253,7 +250,7 @@ export async function tableUpdate(
  */
 export async function tableDelete(
   rowIds: string[],
-  options: { rowIds?: string; expectedRevisions?: string; expectedTableRevision?: string; why?: string },
+  options: { rowIds?: string; expectedRevisions?: string; expectedTableRevision?: string },
 ): Promise<void> {
   if (rowIds.length > 0 && options.rowIds !== undefined) {
     throw new CliError('INVALID_ARGS', 'Name the rows as arguments or with --row-ids, not both. A row id names its table, so the table is not named: rip table delete <rowId> <rowId>');
@@ -272,7 +269,7 @@ export async function tableDelete(
   }
   // The server's count: an id that names no row you can read is skipped, not deleted.
   const { data } = await client.delete('/v0/rows', {
-    data: { ids, expectedRevisions, expectedTableRevision, why: options.why },
+    data: { ids, expectedRevisions, expectedTableRevision },
   });
   // The table's revision is there only when the named rows resolved a table.
   const receipt = (data as { data: { deleted: number; tableRevision?: number } }).data;

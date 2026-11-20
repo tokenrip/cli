@@ -38,17 +38,15 @@ export async function trashList(options: TrashListOptions = {}): Promise<void> {
 
 export interface TrashRestoreOptions {
   expectedWorkspaceRevision?: string;
-  why?: string;
 }
 
 /** Bring an item back from the trash: the id a `rip trash list` entry shows (the server finds its type). */
 export async function trashRestore(id: string, options: TrashRestoreOptions = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const body: { id: string; expectedWorkspaceRevision?: number; why?: string } = { id };
+  const body: { id: string; expectedWorkspaceRevision?: number } = { id };
   if (options.expectedWorkspaceRevision !== undefined) {
     body.expectedWorkspaceRevision = parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   }
-  if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post('/v0/trash/restore', body);
   outputSuccess(data.data, formatRestored);
 }
@@ -64,12 +62,11 @@ export interface TrashPurgeOptions {
   type?: string;
   /** With --all: only what was deleted at or before this instant (ISO 8601). */
   deletedBefore?: string;
-  why?: string;
 }
 
 type PurgeBody = {
   id?: string; all?: true; workspaceId?: string; team?: string; account?: string;
-  type?: string; deletedBefore?: string; cursor?: string; why?: string;
+  type?: string; deletedBefore?: string; cursor?: string;
 };
 
 interface PurgeReply {
@@ -86,8 +83,7 @@ export function trashPurgeBody(id: string | undefined, options: TrashPurgeOption
   if (id !== undefined && options.all) throw invalid('Pass an entry (<id>) or --all, not both.');
   if (!options.all && (scopes.length || filters.length)) throw invalid('--team, --workspace-id, --account, --type and --deleted-before go with --all.');
   if (id === undefined && !options.all) throw invalid('Pass an entry (<id>, as `rip trash list` shows it) or --all.');
-  const why = options.why !== undefined ? { why: options.why } : {};
-  if (id !== undefined) return { id, ...why };
+  if (id !== undefined) return { id };
   if (scopes.length > 1) throw invalid('Pass at most one of --team, --workspace-id and --account.');
   return {
     all: true,
@@ -96,7 +92,6 @@ export function trashPurgeBody(id: string | undefined, options: TrashPurgeOption
     ...(options.account !== undefined ? { account: options.account } : {}),
     ...(options.type !== undefined ? { type: options.type } : {}),
     ...(options.deletedBefore !== undefined ? { deletedBefore: options.deletedBefore } : {}),
-    ...why,
   };
 }
 

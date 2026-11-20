@@ -1,6 +1,6 @@
 import { requireAuthClient } from '../auth-client.js';
 import { outputSuccess } from '../output.js';
-import { formatTrashed, formatWorkspace, formatWorkspaceList, formatWorkspaceChanges, formatWorkspaceLoad, formatWorkspaceSessions, formatWorkspaceViewReceipt } from '../formatters.js';
+import { formatPin, formatTrashed, formatWorkspace, formatWorkspaceList, formatWorkspaceChanges, formatWorkspaceLoad, formatWorkspaceMemberList, formatWorkspaceSessions, formatWorkspaceViewReceipt } from '../formatters.js';
 import { historyField, parseNonNegativeInteger } from '../input.js';
 import { CliError } from '../errors.js';
 import { parseArtifactId } from '../parse-artifact-id.js';
@@ -15,61 +15,55 @@ export interface WorkspaceSummary {
 function ref(workspace: string): string { return encodeURIComponent(workspace); }
 const workspacePath = (workspace: string) => `/v0/workspaces/${ref(workspace)}`;
 
-/** `why`: one sentence on the person's goal, recorded on workspace writes (`--why` / `TOKENRIP_WHY`). */
-interface WhyOption { why?: string }
-/** A DELETE states why in its body, and sends no body when there is none. */
-const deleteBody = (options: WhyOption) => (options.why !== undefined ? { data: { why: options.why } } : undefined);
-
 /** `name` defaults to the slug on the server; `team` (slug or id) makes it a team workspace. */
-export async function workspaceCreate(slug: string, options: { name?: string; description?: string; team?: string } & WhyOption): Promise<void> {
+export async function workspaceCreate(slug: string, options: { name?: string; description?: string; team?: string }): Promise<void> {
   const { client } = requireAuthClient();
-  const { data } = await client.post('/v0/workspaces', { slug, name: options.name, description: options.description, team: options.team, why: options.why });
+  const { data } = await client.post('/v0/workspaces', { slug, name: options.name, description: options.description, team: options.team });
   outputSuccess(data.data, formatWorkspace);
 }
 export async function workspaceList(): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get('/v0/workspaces'); outputSuccess(data.data, formatWorkspaceList); }
 export async function workspaceShow(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(workspacePath(workspace)); outputSuccess(data.data, formatWorkspace); }
 /** `rip workspace update`: name, description and `--history` (`inherit` clears it). */
-export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null; history?: string } & WhyOption): Promise<void> {
-  const body = { name: options.name, description: options.description, ...historyField(options.history), why: options.why };
+export async function workspaceUpdate(workspace: string, options: { name?: string; description?: string | null; history?: string }): Promise<void> {
+  const body = { name: options.name, description: options.description, ...historyField(options.history) };
   const { client } = requireAuthClient();
   const { data } = await client.patch(workspacePath(workspace), body);
   outputSuccess(data.data, formatWorkspace);
 }
-export async function workspaceDelete(workspace: string, options: WhyOption = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.delete(workspacePath(workspace), deleteBody(options)); outputSuccess(data.data, formatTrashed); }
+export async function workspaceDelete(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.delete(workspacePath(workspace)); outputSuccess(data.data, formatTrashed); }
 
 /** Add or invite by email, alias or account id, as an editor (the default) or a viewer. `note` goes in the invite email. */
-export async function workspaceMemberAdd(workspace: string, member: string, options: { role?: string; note?: string } & WhyOption): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { member, role: options.role, note: options.note, why: options.why }); outputSuccess(data.data); }
+export async function workspaceMemberAdd(workspace: string, member: string, options: { role?: string; note?: string }): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post(`${workspacePath(workspace)}/members`, { member, role: options.role, note: options.note }); outputSuccess(data.data); }
 /** A member row id stands alone; an account id, alias or email names a member in `--workspace-id`. */
 interface MemberTarget { workspaceId?: string }
 const memberPath = (member: string) => `/v0/workspace-members/${encodeURIComponent(member)}`;
 /** Change the role: editor or viewer. */
-export async function workspaceMemberSetRole(member: string, options: { role?: string } & MemberTarget & WhyOption = {}): Promise<void> {
+export async function workspaceMemberSetRole(member: string, options: { role?: string } & MemberTarget = {}): Promise<void> {
   if (options.role === undefined) throw new CliError('INVALID_ARGUMENT', 'Pass --role viewer or --role editor');
   const { client } = requireAuthClient();
-  const { data } = await client.patch(memberPath(member), { workspaceId: options.workspaceId, role: options.role, why: options.why });
+  const { data } = await client.patch(memberPath(member), { workspaceId: options.workspaceId, role: options.role });
   outputSuccess(data.data);
 }
-export async function workspaceMemberRemove(member: string, options: MemberTarget & WhyOption = {}): Promise<void> {
+export async function workspaceMemberRemove(member: string, options: MemberTarget = {}): Promise<void> {
   const { client } = requireAuthClient();
-  const body = { ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}), ...(options.why !== undefined ? { why: options.why } : {}) };
-  await client.delete(memberPath(member), Object.keys(body).length ? { data: body } : undefined);
+  await client.delete(memberPath(member), options.workspaceId !== undefined ? { data: { workspaceId: options.workspaceId } } : undefined);
   outputSuccess({ ok: true });
 }
-export async function workspaceMemberList(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/members`); outputSuccess(data.data); }
+export async function workspaceMemberList(workspace: string): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.get(`${workspacePath(workspace)}/members`); outputSuccess(data.data, formatWorkspaceMemberList); }
 
 /** Standalone artifacts (one or more, ids, aliases or URLs) or one personal folder (`--folder`, id or slug) move in. */
-export async function workspaceAdopt(workspace: string, artifacts: string[], options: { folder?: string; destinationFolderId?: string } & WhyOption): Promise<void> {
+export async function workspaceAdopt(workspace: string, artifacts: string[], options: { folder?: string; destinationFolderId?: string }): Promise<void> {
   if ((artifacts.length === 0) === (options.folder === undefined)) throw new CliError('INVALID_ARGUMENT', 'Name the artifacts to move in, or --folder, one of them');
   if (options.folder !== undefined && options.destinationFolderId !== undefined) throw new CliError('INVALID_ARGUMENT', '--destination-folder-id goes with artifacts; a folder moves in as it is');
   const { client } = requireAuthClient();
   const { data } = await client.post(`${workspacePath(workspace)}/adopt`, {
     ...(options.folder !== undefined ? { folder: options.folder } : { artifactIds: artifacts.map(parseArtifactId) }),
-    destinationFolderId: options.destinationFolderId, why: options.why,
+    destinationFolderId: options.destinationFolderId,
   });
   outputSuccess(data.data);
 }
 /** The pin's workspace is the artifact's (`POST /v0/pins`). */
-export async function workspacePin(artifact: string, options: { position?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post('/v0/pins', { artifactId: parseArtifactId(artifact), ...(options.position === undefined ? {} : { position: parseNonNegativeInteger(options.position, '--position') }) }); outputSuccess(data.data); }
+export async function workspacePin(artifact: string, options: { position?: string } = {}): Promise<void> { const { client } = requireAuthClient(); const { data } = await client.post('/v0/pins', { artifactId: parseArtifactId(artifact), ...(options.position === undefined ? {} : { position: parseNonNegativeInteger(options.position, '--position') }) }); outputSuccess(data.data, formatPin); }
 export async function workspaceUnpin(artifact: string): Promise<void> { const { client } = requireAuthClient(); await client.delete(`/v0/pins/${encodeURIComponent(parseArtifactId(artifact))}`); outputSuccess({ ok: true }); }
 /** Bounded workspace context. Load takes no selector: sessions record themselves. */
 export async function workspaceLoad(workspace: string, options: { artifactOffset?: string; taskCursor?: string; activityCursor?: string }): Promise<void> {

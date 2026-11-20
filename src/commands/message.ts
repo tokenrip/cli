@@ -8,8 +8,8 @@ import { formatMessage, formatMessagePage } from '../formatters.js';
 /**
  * `rip message post|read|update|delete` (workspace threads plan M8) over `/v0/messages`: a message
  * in a workspace's chat (`--workspace-id`, read by every member, guests included) or in a task's thread
- * (`--task-id`). A message takes no why (it is its own reason), so no command here takes `--why` and
- * none sends one.
+ * (`--task-id`). A message records no why (it is its own reason); a why given with `--why` or
+ * `TOKENRIP_WHY` rides on the request (`client.ts`), accepted and not recorded.
  */
 
 export interface MessageThreadOptions {

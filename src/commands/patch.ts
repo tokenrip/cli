@@ -17,7 +17,6 @@ export async function patch(
     visibility?: string;
     history?: string;
     expectedWorkspaceRevision?: string;
-    why?: string;
   },
 ): Promise<void> {
   if (
@@ -53,7 +52,6 @@ export async function patch(
   if (options.expectedWorkspaceRevision !== undefined) {
     body.expectedWorkspaceRevision = parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
   }
-  if (options.why !== undefined) body.why = options.why;
 
   const id = parseArtifactId(identifier);
   const { client, config } = requireAuthClient();

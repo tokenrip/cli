@@ -2,6 +2,60 @@ import { loadTeams } from './teams.js';
 
 export type Formatter = (data: Record<string, unknown>) => string;
 
+/**
+ * The human-mode rendering of a reply with no formatter of its own (`outputSuccess`): one
+ * `Key: value` line per field, keys as sent; nested objects indented two spaces, arrays one `- `
+ * item per line, null as `—`, an empty list or object as `(none)`. Nothing is cut: agents pipe ids
+ * and URLs into the next command. A top-level `hints` is left out: `outputSuccess` prints write
+ * hints on stderr.
+ */
+export function formatReadable(data: unknown): string {
+  if (Array.isArray(data)) return data.length ? readableItems(data, '').join('\n') : '(none)';
+  if (isPlainObject(data)) {
+    const { hints: _hints, ...fields } = data;
+    const lines = readableFields(fields, '');
+    return lines.length ? lines.join('\n') : '(none)';
+  }
+  return readableScalar(data, '  ');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** A leaf value; a multi-line text keeps its lines, each continued at `continued`. */
+function readableScalar(value: unknown, continued: string): string {
+  if (value === null || value === undefined) return '—';
+  return String(value).replace(/\n/g, `\n${continued}`);
+}
+
+/** An empty list, or an object with no field JSON would send (every one undefined, or none). */
+function isEmptyNode(value: unknown): boolean {
+  return Array.isArray(value) ? value.length === 0 : isPlainObject(value) && Object.values(value).every((field) => field === undefined);
+}
+
+/** An object's fields at `indent`; a field JSON would drop (undefined) is left out as JSON leaves it. */
+function readableFields(object: Record<string, unknown>, indent: string): string[] {
+  return Object.entries(object).flatMap(([key, value]) => {
+    if (value === undefined) return [];
+    if (isEmptyNode(value)) return [`${indent}${key}: (none)`];
+    if (Array.isArray(value)) return [`${indent}${key}:`, ...readableItems(value, `${indent}  `)];
+    if (isPlainObject(value)) return [`${indent}${key}:`, ...readableFields(value, `${indent}  `)];
+    return [`${indent}${key}: ${readableScalar(value, `${indent}  `)}`];
+  });
+}
+
+/** A list's items at `indent`, each after `- `; an object item's fields line up under its first. */
+function readableItems(items: unknown[], indent: string): string[] {
+  return items.flatMap((item) => {
+    if (isEmptyNode(item)) return [`${indent}- (none)`];
+    const inner = `${indent}  `;
+    if (!Array.isArray(item) && !isPlainObject(item)) return [`${indent}- ${readableScalar(item, inner)}`];
+    const [first, ...rest] = Array.isArray(item) ? readableItems(item, inner) : readableFields(item, inner);
+    return [`${indent}- ${first!.slice(inner.length)}`, ...rest];
+  });
+}
+
 // Null-safe wrapper over the (hoisted) numeric formatBytes below.
 function fmtSize(n: unknown): string {
   const bytes = typeof n === 'number' ? n : Number(n);
@@ -386,6 +440,13 @@ export const formatArtifactMetadata: Formatter = (data) => {
   if (data.mimeType) lines.push(`  MIME:        ${data.mimeType}`);
   if (data.description) lines.push(`  Description: ${data.description}`);
   if (data.versionCount !== undefined) lines.push(`  Versions:    ${data.versionCount} (rip artifact versions ${data.id})`);
+  // The version a safe update names (`--expected-version-id`); none before the first version.
+  if (data.currentVersionId) {
+    const number = typeof data.currentVersionNumber === 'number' ? `v${data.currentVersionNumber} ` : '';
+    lines.push(`  Current:     ${number}${data.currentVersionId}`);
+  }
+  // A member's read of a workspace file; a standalone file, or an outsider's read, has none.
+  if (data.workspaceId) lines.push(`  Workspace:   ${data.workspaceId}`);
   if (data.creatorContext) lines.push(`  Context:     ${data.creatorContext}`);
   if (data.visibility) lines.push(`  Visibility:  ${data.visibility}`);
   // What its next whole-file update keeps, and where that comes from; none for an outsider.
@@ -409,6 +470,7 @@ export const formatArtifactMetadata: Formatter = (data) => {
   }
 
   if (data.createdAt) lines.push(`  Created:     ${data.createdAt}`);
+  if (data.updatedAt) lines.push(`  Updated:     ${data.updatedAt}`);
   return lines.join('\n');
 };
 
@@ -526,9 +588,13 @@ export const formatSignInRequested: Formatter = (data) =>
 /** `rip auth login` step 2 — signed in on the person's account (outcome `run`: as its agent, for one run). */
 export const formatSignedIn: Formatter = (data) => {
   const run = data.outcome === 'run';
+  // What selects this sign-in: its name, else (unnamed) its account id, as `signInSelector` does.
+  const me = String(data.signed_in_as ?? data.account_id);
+  // Not the default: plain `rip` acts as another sign-in, so the next step names this one.
+  const next = data.is_default === false ? `rip --agent ${me} workspace list` : 'rip workspace list';
   const lines = [run
-    ? `Signed in as ${data.name} on ${data.email}'s Tokenrip for this run. Next: rip workspace list`
-    : `Connected to ${data.email}'s Tokenrip. Next: rip workspace list`];
+    ? `Signed in as ${data.name} on ${data.email}'s Tokenrip for this run. Next: ${next}`
+    : `Connected to ${data.email}'s Tokenrip. Next: ${next}`];
   lines.push(`  Account: ${data.account_id}`);
   if (run) {
     lines.push(`  Ends after ${Number(data.idle_timeout_seconds) / 3600} hours without use, by ${data.ends_by} at the latest. Then get a new code at ${data.renew_url}.`);
@@ -536,10 +602,14 @@ export const formatSignedIn: Formatter = (data) => {
     lines.push(`  Key:     ${data.name}`);
   }
   if (data.signed_in_as) lines.push(`  Name:    ${data.signed_in_as}`);
+  if (data.is_default === false) {
+    lines.push(data.default_sign_in == null
+      ? `  ${noDefaultLine(me)}`
+      : `  Plain \`rip\` still acts as ${data.default_sign_in}. Run as \`rip --agent ${me} …\`, or \`rip account use ${me}\` to make this the default.`);
+  }
   const siblings = (data.siblings ?? []) as string[];
   if (siblings.length > 0) {
-    const me = data.signed_in_as ?? '<your name>';
-    lines.push(`  Other agents on this account here: ${siblings.join(', ')}. Run commands as \`rip --agent ${me} …\`; to sign in again, use \`--name ${me}\`.`);
+    lines.push(`  Other agents on this account here: ${siblings.join(', ')}. To sign in again, use \`--name ${me}\`.`);
   }
   if (data.previous_key === 'not_revoked') lines.push(`  The key this one replaced could not be revoked; remove it with \`rip auth keys revoke ${data.previous_key_id ?? '<id>'}\`.`);
   if (data.overridden_by === 'TOKENRIP_API_KEY') lines.push('  Warning: TOKENRIP_API_KEY is set, so commands will keep using that key; unset it to use this sign-in.');
@@ -557,9 +627,16 @@ export const formatAuthAdded: Formatter = (data) => {
     `Saved sign-in ${data.name} on ${where}: the agent called ${data.name} runs every Tokenrip command as \`rip --agent ${data.name} …\` and saves that line in its own instructions.`,
     `  Account: ${data.account_id}`,
     `  Key:     ${data.name} (id ${data.key_id})`,
-    `  Made from sign-in ${data.added_by}, which now runs as \`rip --agent ${data.added_by} …\` (several agents use this account here).`,
+    data.default_sign_in == null
+      ? `  Made from sign-in ${data.added_by}. ${noDefaultLine(String(data.name))}`
+      : `  Made from sign-in ${data.added_by}. Plain \`rip\` still acts as ${data.default_sign_in}.`,
   ].join('\n');
 };
+
+/** Several sign-ins here and none is the default: plain `rip` refuses. */
+function noDefaultLine(name: string): string {
+  return `No default here: plain \`rip\` refuses. Run as \`rip --agent ${name} …\`, or \`rip account use <name>\` to make one the default.`;
+}
 
 /** `rip auth code` — the line for the person to give their next agent. */
 export const formatSignInCode: Formatter = (data) =>
@@ -918,6 +995,7 @@ export const formatSelfUpdate: Formatter = (data) => {
   return lines.join('\n');
 };
 
+/** `rip account list`: `(default)` marks the sign-in plain `rip` acts as; with several and none, how to set one. */
 export const formatAccountList: Formatter = (data) => {
   const accounts = (data as any).accounts as Array<{
     name?: string;
@@ -928,12 +1006,12 @@ export const formatAccountList: Formatter = (data) => {
   if (!Array.isArray(accounts) || accounts.length === 0) {
     return 'No accounts configured. Sign in with your email: `rip auth login --email <your email>`.';
   }
-  return accounts
-    .map(
-      (a) =>
-        `${a.current ? '*' : ' '} ${(a.name || '(no name)').padEnd(20)} ${(a.alias || '—').padEnd(20)} ${a.accountId}${a.current ? '  (current)' : ''}`,
-    )
-    .join('\n');
+  const lines = accounts.map(
+    (a) =>
+      `${a.current ? '*' : ' '} ${(a.name || '(no name)').padEnd(20)} ${(a.alias || '—').padEnd(20)} ${a.accountId}${a.current ? '  (default)' : ''}`,
+  );
+  if (data.defaultMissing) lines.push('No default: plain `rip` refuses. Set one with `rip account use <name>`.');
+  return lines.join('\n');
 };
 
 function formatSnippet(snippet: string): string {
@@ -1720,6 +1798,46 @@ function capabilityList(capabilities: unknown): string | null {
   return allowed.length ? allowed.join(', ') : 'none';
 }
 
+/** Where a folder lives, from `serializeFolder`'s fields: a workspace, a team, or personal. */
+function folderHome(folder: Record<string, any>): string {
+  if (folder.workspace_id) return `workspace ${folder.workspace_id}`;
+  if (folder.team_id) return `team ${folder.team_id}`;
+  return 'personal';
+}
+
+/**
+ * `rip folder list`: one row per folder with its slug, id, home, a workspace folder's revision (what
+ * `--expected-workspace-revision` takes) and file count (when sent), ids whole.
+ */
+export const formatFolderList: Formatter = (data) => {
+  const folders = data as unknown as Array<Record<string, any>>;
+  if (!Array.isArray(folders) || folders.length === 0) return 'No folders.';
+  const lines = [`${folders.length} folder(s):`];
+  for (const folder of folders) {
+    const revision = folder.workspace_revision == null ? '' : `  revision ${folder.workspace_revision}`;
+    const count = folder.artifact_count == null ? '' : `  ${folder.artifact_count} file(s)`;
+    lines.push(`  ${folder.slug}  ${folder.id}  ${folderHome(folder)}${revision}${count}`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip folder show|create|rename|update`: one folder, as `serializeFolder` sends it. */
+export const formatFolder: Formatter = (data) => {
+  const folder = data as Record<string, any>;
+  const owner = !folder.workspace_id && !folder.team_id && folder.owner_id ? ` (${folder.owner_id})` : '';
+  const lines = [`${folder.slug} [${folder.id}]`, `  Home:      ${folderHome(folder)}${owner}`];
+  if (folder.workspace_revision !== undefined) lines.push(`  Revision:  ${folder.workspace_revision}`);
+  if (folder.artifact_count != null) lines.push(`  Files:     ${folder.artifact_count}`);
+  // Its own setting; not set follows the workspace (a workspace folder) or is off.
+  if ('history' in folder) {
+    const unset = folder.workspace_id ? 'not set (follows the workspace)' : 'not set (off)';
+    lines.push(`  History:   ${folder.history === null ? unset : historyWords(folder.history)}`);
+  }
+  if (folder.created_at) lines.push(`  Created:   ${folder.created_at}`);
+  if (folder.updated_at) lines.push(`  Updated:   ${folder.updated_at}`);
+  return lines.join('\n');
+};
+
 /** A delete reply: the item is in the trash, restorable until `purgeAt`, and the command that restores it. */
 export const formatTrashed: Formatter = (data) => {
   const reply = data as Record<string, any>;
@@ -1833,6 +1951,31 @@ export const formatWorkspaceList: Formatter = (data) => {
   if (!rows.length) return 'No workspaces.';
   return rows.map(w => `${w.name}  ${accessWords(w)}  [${w.id}]  slug=${w.slug}  home=${w.ownerAccountId ?? (w.teamId ? `team ${w.teamId}` : '-')}  can=${capabilityList(w.capabilities) || '-'}${typeof w.needsYou === 'number' ? `  needsYou=${w.needsYou}` : ''}${typeof w.unreadMessages === 'number' ? `  unread=${w.unreadMessages}${w.unreadMessagesTruncated ? '+' : ''}` : ''}`).join('\n');
 };
+
+/**
+ * `rip workspace member list`: one row per member (`memberList`), named by alias, else account id,
+ * else invited address; then the role, the account id and address when not the name, and the row id
+ * and invite link when the caller may share (a viewer gets neither). Ids whole.
+ */
+export const formatWorkspaceMemberList: Formatter = (data) => {
+  const rows = data as unknown as Array<Record<string, any>>;
+  if (!Array.isArray(rows) || rows.length === 0) return 'No members.';
+  const lines = [`${rows.length} member(s):`];
+  for (const row of rows) {
+    const name = row.alias ? `@${row.alias}` : (row.accountId ?? row.email ?? '(unknown)');
+    const parts = [name, row.role];
+    if (row.status === 'invited') parts.push('invited');
+    if (row.accountId && row.accountId !== name) parts.push(row.accountId);
+    if (row.email && row.email !== name) parts.push(row.email);
+    if (row.id) parts.push(`[${row.id}]`);
+    if (row.inviteUrl) parts.push(`invite ${row.inviteUrl}`);
+    lines.push(`  ${parts.join('  ')}`);
+  }
+  return lines.join('\n');
+};
+
+/** `rip workspace pin add`: the pinned artifact and its position in the workspace's pins. */
+export const formatPin: Formatter = (data) => `Pinned ${data.artifactId} at position ${data.position}.`;
 
 /**
  * A pinned document: inline markdown is printed whole; a large one
@@ -2542,8 +2685,8 @@ const STUB_SKIP_REASONS: Record<string, string> = {
 /** `rip skill install` — the folder, then each change and each skipped skill with its reason. */
 export const formatSkillInstall: Formatter = (data) => {
   const d = data as Record<string, any>;
-  // Unpinned stubs (several sign-ins of the account here): `--agent <account id>` would be ambiguous,
-  // so the re-run line uses the installer's own sign-in name, else plain rip.
+  // Unpinned stubs (several sign-ins of the account here): `--agent <account id>` would act as the
+  // computer's default agent when it is one of them (else refuse), so the re-run line uses the installer's own sign-in name, else plain rip.
   const unpinned = d.pinned === false;
   const owner = !d.accountId ? '' : unpinned ? `, account ${d.accountId}: each agent on this computer runs them as itself` : `, agent ${d.accountId}`;
   const runAs = unpinned ? d.signInName : d.accountId;

@@ -23,14 +23,12 @@ export interface OutputRecordOptions {
   label?: string[];
   status?: string;
   key?: string;
-  why?: string;
 }
 
 export interface OutputUpdateOptions {
   status: string;
   ref?: string;
   text?: string;
-  why?: string;
 }
 
 export interface OutputListOptions {
@@ -50,10 +48,6 @@ export interface OutputListOptions {
 
 function invalid(message: string): CliError {
   return new CliError('INVALID_ARGUMENT', message);
-}
-
-function attribution(options: { why?: string }): Record<string, string> {
-  return options.why !== undefined ? { why: options.why } : {};
 }
 
 /**
@@ -82,7 +76,7 @@ export async function outputRecord(options: OutputRecordOptions): Promise<void> 
   const labels = labelFlags(options.label);
   if (labels.length) body.labels = labels;
   const { client } = requireAuthClient();
-  const { data } = await client.post(outputPath(), { ...body, ...attribution(options) });
+  const { data } = await client.post(outputPath(), body);
   outputSuccess(data.data, formatOutput);
 }
 
@@ -91,7 +85,7 @@ export async function outputUpdate(id: string, options: OutputUpdateOptions): Pr
   if (options.ref !== undefined) body.ref = options.ref;
   if (options.text !== undefined) body.text = options.text;
   const { client } = requireAuthClient();
-  const { data } = await client.patch(outputPath(id), { ...body, ...attribution(options) });
+  const { data } = await client.patch(outputPath(id), body);
   outputSuccess(data.data, formatOutput);
 }
 

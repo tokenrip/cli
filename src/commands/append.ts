@@ -8,7 +8,6 @@ import { formatVersionCreated } from '../formatters.js';
 
 interface AppendOptions {
   expectedVersionId?: string;
-  why?: string;
 }
 
 /** The text to append: the file's, else stdin's (piped), verbatim. */
@@ -35,7 +34,6 @@ export async function append(identifier: string, filePath: string | undefined, o
   const { client } = requireAuthClient();
   const body: Record<string, unknown> = { text };
   if (options.expectedVersionId) body.expectedVersionId = options.expectedVersionId;
-  if (options.why !== undefined) body.why = options.why;
   const { data } = await client.post(`/v0/artifacts/${uuid}/append`, body);
   outputSuccess(data.data, formatVersionCreated);
 }

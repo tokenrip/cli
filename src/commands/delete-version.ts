@@ -6,7 +6,7 @@ import { parseNonNegativeInteger } from '../input.js';
 /** `DELETE /v0/versions/:versionId`: the version id names its artifact; inputs in the body. */
 export async function deleteVersion(
   versionId: string,
-  options: { dryRun?: boolean; expectedWorkspaceRevision?: string; why?: string } = {},
+  options: { dryRun?: boolean; expectedWorkspaceRevision?: string } = {},
 ): Promise<void> {
   if (options.dryRun) {
     outputSuccess({ dryRun: true, action: 'would delete version', versionId }, formatVersionDeleted);
@@ -17,11 +17,8 @@ export async function deleteVersion(
   const expectedWorkspaceRevision = options.expectedWorkspaceRevision === undefined
     ? undefined
     : parseNonNegativeInteger(options.expectedWorkspaceRevision, '--expected-workspace-revision');
-  const body = {
-    ...(expectedWorkspaceRevision !== undefined ? { expectedWorkspaceRevision } : {}),
-    ...(options.why !== undefined ? { why: options.why } : {}),
-  };
-  await client.delete(`/v0/versions/${encodeURIComponent(versionId)}`, Object.keys(body).length ? { data: body } : {});
+  await client.delete(`/v0/versions/${encodeURIComponent(versionId)}`,
+    expectedWorkspaceRevision !== undefined ? { data: { expectedWorkspaceRevision } } : {});
 
   outputSuccess({ versionId, deleted: true }, formatVersionDeleted);
 }

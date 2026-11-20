@@ -34,8 +34,10 @@ export const RUN_KEY_PREFIX = 'tr_run_';
 /**
  * `rip auth login` — sign in with the person's email. Without `code`, Tokenrip emails a six-digit
  * code; with it (emailed, or issued by a connected agent or the dashboard), the CLI gets a key of
- * its own on the person's account, stores it as a keypair-less sign-in, and makes that sign-in
- * current.
+ * its own on the person's account and stores it as a keypair-less sign-in. That sign-in becomes
+ * the computer's default (what plain `rip` acts as) only when there was none, or when it replaces
+ * the default: a login never moves a live default (design 2026-11-20 §5.3). The receipt says
+ * which sign-in is the default (`is_default`, `default_sign_in`).
  *
  * Several agents can keep sign-ins on one account here, each under its own name (design
  * 2026-11-13-shared-computer-sign-ins §5). The target is `--name`; else the account's only sign-in
@@ -147,6 +149,8 @@ export async function authLogin(options: { email: string; code?: string; name?: 
         : name === undefined ? {} : { name }),
       ...(targetName === undefined ? {} : { signed_in_as: targetName }),
       siblings,
+      is_default: committed.isDefault,
+      default_sign_in: committed.defaultLabel,
       ...(previousKey ? { previous_key: previousKey.status } : {}),
       ...(previousKey?.id ? { previous_key_id: previousKey.id } : {}),
       ...(overriddenBy ? { overridden_by: overriddenBy } : {}),

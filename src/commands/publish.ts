@@ -26,9 +26,8 @@ export function addHomeFields(body: Record<string, unknown>, options: { team?: s
   }
 }
 
-export function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string; why?: string }): void {
+export function addWorkspaceFields(body: Record<string, unknown>, options: { workspaceId?: string }): void {
   if (options.workspaceId) body.workspaceId = options.workspaceId;
-  if (options.why !== undefined) body.why = options.why;
 }
 
 /**
@@ -77,7 +76,6 @@ export async function publish(
     visibility?: string;
     strict?: boolean;
     workspaceId?: string;
-    why?: string;
   },
 ): Promise<void> {
   assertWorkspaceCreationScope(options);
@@ -158,10 +156,10 @@ export async function publish(
   // with --from-csv, else the schema file (unless --schema names the columns inline).
   if (options.type === 'table') {
     const { tableCreate } = await import('./table.js');
-    const { alias, parent, context, refs, team, folder, visibility, strict, workspaceId, why, headers, dryRun } = options;
+    const { alias, parent, context, refs, team, folder, visibility, strict, workspaceId, headers, dryRun } = options;
     const schema = options.schema || undefined;
     await tableCreate(options.title, {
-      alias, parent, context, refs, team, folder, visibility, strict, workspaceId, why, headers, dryRun,
+      alias, parent, context, refs, team, folder, visibility, strict, workspaceId, headers, dryRun,
       ...(options.fromCsv ? { fromCsv: filePath!, schema } : schema ? { schema } : { schemaFile: filePath! }),
     });
     return;

@@ -1,5 +1,5 @@
 import { CliError, toCliError, type PrincipalCandidateDetails, type TaskAnswerDetails, type WorkspaceCandidateDetails } from './errors.js';
-import { principalWho, taskAnswerLines, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
+import { formatReadable, principalWho, taskAnswerLines, taskHolderLine, verdictWords, type Formatter } from './formatters.js';
 
 let forceJson = false;
 let configHuman = false;
@@ -20,11 +20,15 @@ function isJsonMode(): boolean {
   return false;
 }
 
+/**
+ * A success on stdout: the envelope `{ ok: true, data }` in JSON mode, else the command's formatter,
+ * else `formatReadable`. Human mode never prints the envelope.
+ */
 export function outputSuccess(data: Record<string, unknown>, formatter?: Formatter): void {
-  if (isJsonMode() || !formatter) {
+  if (isJsonMode()) {
     console.log(JSON.stringify({ ok: true, data }));
   } else {
-    console.log(formatter(data));
+    console.log((formatter ?? formatReadable)(data));
   }
   // Write hints (a write's receipt, `data.hints`): stderr in human mode, so stdout stays
   // the receipt; --json already carries them.
@@ -157,7 +161,7 @@ export const ERROR_HINTS: Record<string, string> = {
   UNAUTHORIZED: 'A key stops working when it is revoked (`rip auth keys revoke`, the dashboard) or replaced by a newer sign-in on this machine.',
   NO_IDENTITY: 'Sign in with your email: `rip auth login --email <your email>`.',
   IDENTITY_NOT_FOUND: 'Run `rip account list` to see available agents.',
-  AMBIGUOUS_IDENTITY: 'Run every command as `rip --agent <your name> …` (`rip account list` shows the names); for separate accounts, `rip account use <name>` also selects one. Old skill stubs that pin `--agent <account id>`: run `rip --agent <your name> skill install --target claude|agents` for each folder that has them (`~/.claude/skills`, `~/.agents/skills`).',
+  AMBIGUOUS_IDENTITY: 'Run as `rip --agent <your name> …` (`rip account list` shows the names), or make one the default for plain `rip`: `rip account use <name>`. Old skill stubs that pin `--agent <account id>`: run `rip --agent <your name> skill install --target claude|agents` for each folder that has them (`~/.claude/skills`, `~/.agents/skills`).',
   NAME_TAKEN: 'Each agent on this computer needs its own name: pick another (`rip account list` shows the names in use).',
   ENV_KEY_ADD: 'Unset TOKENRIP_API_KEY to add a sign-in beside a stored one; a key for a host\'s vault is `rip auth keys create --name <name>`.',
   LAST_IDENTITY: 'Sign in to another account first with `rip auth login --email <your email>`.',

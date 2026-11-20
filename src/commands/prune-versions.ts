@@ -10,7 +10,7 @@ import { parseNonNegativeInteger } from '../input.js';
  */
 export async function pruneVersions(
   identifier: string,
-  options: { keep?: string; expectedWorkspaceRevision?: string; why?: string } = {},
+  options: { keep?: string; expectedWorkspaceRevision?: string } = {},
 ): Promise<void> {
   const uuid = parseArtifactId(identifier);
   const keep = options.keep === undefined ? undefined : parseNonNegativeInteger(options.keep, '--keep');
@@ -22,7 +22,6 @@ export async function pruneVersions(
   const body = {
     ...(keep !== undefined ? { keep } : {}),
     ...(expectedWorkspaceRevision !== undefined ? { expectedWorkspaceRevision } : {}),
-    ...(options.why !== undefined ? { why: options.why } : {}),
   };
   const { data } = await client.delete(`/v0/artifacts/${uuid}/versions`, Object.keys(body).length ? { data: body } : {});
   outputSuccess(data.data, formatVersionsPruned);

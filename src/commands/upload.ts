@@ -10,7 +10,7 @@ import { formatArtifactCreated } from '../formatters.js';
 import { getFrontendUrl } from '../config.js';
 import { addHomeFields } from './publish.js';
 
-export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string; workspaceId?: string; why?: string }): Promise<void> {
+export async function upload(filePath: string, options: { title?: string; parent?: string; context?: string; refs?: string; dryRun?: boolean; team?: string; folder?: string; publicAsset?: boolean; visibility?: string; workspaceId?: string }): Promise<void> {
   assertWorkspaceCreationScope(options);
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
@@ -42,7 +42,6 @@ export async function upload(filePath: string, options: { title?: string; parent
   if (home.folder) form.append('folder', home.folder as string);
   if (home.team) form.append('team', home.team as string);
   if (options.workspaceId) form.append('workspaceId', options.workspaceId);
-  if (options.why !== undefined) form.append('why', options.why);
   // Public-asset uploads land in a public bucket and get a direct CDN URL
   // (data.publicUrl). A public asset can't be private, so pass a non-private
   // visibility (defaults to `public` when --public-asset is set without one).
